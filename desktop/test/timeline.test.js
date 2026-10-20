@@ -1,52 +1,103 @@
-const { test } = require("node:test");
-const assert = require("node:assert/strict");
-const Timeline = require("../src/model");
+const { test } = require("node:test"),
+  assert = require("node:assert/strict"),
+  T = require("../src/model");
 const media = [
   { id: "v", name: "video", path: "/video.mp4", kind: "video", duration: 20 },
 ];
-const clip = (id, a, b) => ({ id, mediaId: "v", in: a, out: b, volume: 1 });
-test("split uses source trim and the playhead position in the whole sequence", () => {
-  const clips = [clip("first", 0, 4), clip("second", 3, 12)];
-  assert.equal(Timeline.split(clips, "second", 7, "new"), true);
+const clip = (id, start, track = 0, speed = 1) => ({
+  id,
+  mediaId: "v",
+  start,
+  track,
+  speed,
+  in: 2,
+  out: 10,
+  volume: 1,
+});
+test("speed-aware split preserves absolute placement, trim and track", () => {
+  const clips = [clip("x", 3, 2, 2.4), clip("other", 15, 1)];
+  assert.equal(
+    T.split(clips, ["x"], 4, () => "right"),
+    1,
+  );
+  assert.equal(clips[0].out, 4.4);
+  assert.equal(clips[1].in, 4.4);
+  assert.equal(clips[1].start, 4);
+  assert.equal(clips[1].track, 2);
+  assert.equal(clips[2].start, 15);
+  assert.equal(T.total(clips), 23);
+});
+test("move/delete leave other clips in place, gaps and overlaps are allowed", () => {
+  const clips = [clip("a", 0), clip("b", 10, 1), clip("c", 20, 2)];
+  T.move(clips, ["b"], 2.37, 0);
+  assert.ok(Math.abs(clips[1].start - 12.37) < 1e-9);
+  assert.equal(clips[2].start, 20);
+  clips.splice(0, 1);
+  assert.ok(Math.abs(clips[0].start - 12.37) < 1e-9);
+  assert.equal(clips[1].start, 20);
   assert.deepEqual(
-    clips.map((c) => [c.id, c.in, c.out]),
+    T.active(clips, 21).map((c) => c.id),
+    ["c"],
+  );
+});
+test("group move clamps all members together and keeps offsets", () => {
+  const clips = [
+    { ...clip("a", 2, 1), groupId: "g" },
+    { ...clip("b", 5, 2), groupId: "g" },
+  ];
+  T.move(clips, ["a", "b"], -8, 2);
+  assert.deepEqual(
+    clips.map((c) => [c.start, c.track]),
     [
-      ["first", 0, 4],
-      ["second", 3, 6],
-      ["new", 6, 12],
+      [0, 1],
+      [3, 2],
     ],
   );
-  assert.equal(Timeline.total(clips), 13);
-  assert.deepEqual(Timeline.locate(clips, 7), {
-    clip: clips[2],
-    index: 2,
-    start: 7,
-    local: 6,
-  });
+  const blocks = T.groups([...clips, { ...clip("c", 8, 1), groupId: "g" }]);
+  assert.equal(blocks.length, 2);
+  assert.equal(blocks[0].members.length, 2);
 });
-test("split refuses edges and positions outside the selected clip", () => {
-  const clips = [clip("first", 0, 4), clip("second", 0, 8)],
-    before = JSON.stringify(clips);
-  for (const t of [0, 4, 4.01, 12, 15])
-    assert.equal(Timeline.split(clips, "second", t, "new"), false);
-  assert.equal(JSON.stringify(clips), before);
+test("version 1 migrates without moving original video/audio positions", () => {
+  const old = {
+    version: 1,
+    media,
+    clips: [
+      { id: "a", mediaId: "v", in: 0, out: 2, volume: 1 },
+      { id: "b", mediaId: "v", in: 3, out: 8, volume: 1 },
+    ],
+    music: [],
+  };
+  const p = T.validate(old);
+  assert.equal(p.version, 2);
+  assert.deepEqual(
+    p.clips.map((c) => c.start),
+    [0, 2],
+  );
+  assert.equal(old.version, 1);
 });
-test("project validation rejects missing media and invalid source intervals", () => {
-  const p = { version: 1, media, clips: [clip("x", 1, 5)], music: [] };
-  assert.equal(Timeline.validate(p), p);
-  for (const props of [
-    { mediaId: "missing" },
+test("validation accepts any media on any track; rejects bad speed/region/times", () => {
+  const p = { version: 2, media, clips: [clip("x", 0, 2)] };
+  assert.equal(T.validate(p), p);
+  for (const bad of [
+    { speed: 0 },
+    { speed: NaN },
+    { track: 3 },
     { in: -1 },
+    { start: -1 },
     { out: 21 },
-    { volume: NaN },
+    {
+      effect: {
+        type: "blur",
+        strength: 20,
+        x: 80,
+        y: 0,
+        width: 40,
+        height: 50,
+      },
+    },
   ])
     assert.throws(() =>
-      Timeline.validate({ ...p, clips: [{ ...p.clips[0], ...props }] }),
+      T.validate({ ...p, clips: [{ ...p.clips[0], ...bad }] }),
     );
-  assert.throws(() =>
-    Timeline.validate({
-      ...p,
-      music: [{ ...p.clips[0], id: "audio", start: 0 }],
-    }),
-  );
+  assert.throws(() => T.validate({ ...p, clips: [null] }));
 });

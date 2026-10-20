@@ -1,13 +1,17 @@
-Prima versione di Crea Studio per Windows 10/11 x64.
+Crea Studio 0.2.0 — tre tracce libere e strumenti di montaggio estesi.
 
-- Importazione di video, immagini e musica.
-- Timeline magnetica, trascinamento, taglio con S, annulla/ripristina e comandi personalizzabili.
-- Ctrl+rotellina per scorrere; Shift+rotellina per zoomare.
-- Registrazione schermo/finestra con impostazioni video e audio, microfono e audio di sistema Windows.
-- Esportazione MP4 H.264/AAC con profili di qualità, salvataggio e apertura progetti.
+- Zoom timeline ancorato alla linea verde, non al mouse.
+- Tre tracce universali: video, immagini, musica e annotazioni; sovrapposizioni e posizione/dimensioni del riquadro.
+- Nessuna calamita o ripple: spazi e posizioni mantenuti.
+- Forme d'onda reali anche nei video, con silenzi riconoscibili.
+- Selezione multipla e raggruppamento reversibile dal tasto destro; taglio e spostamento dei gruppi.
+- Velocità numerica 0,1–16×, valori come 2,4× e ripristino multiplo a 1×.
+- Sfocatura e pixelatura con area e intensità; zoom in/out per clip.
+- Testo con font/dimensioni/colori/sfondo opzionale, frecce e cerchi a chiusura animata.
+- Microfono selezionabile, filtri audio opzionali, registrazione finale MP4 o WebM.
+- FPS personalizzati 1–120 e slider qualità con 70% consigliata, sia per registrazione sia per export.
+- Migrazione dei progetti 0.1 e build ripetibile di installer, ZIP e sorgenti.
 
-Scaricare Setup.exe per installare oppure estrarre interamente il pacchetto Windows-x64.zip e aprire Crea Studio.exe. Non sono necessarie installazioni separate di Node.js o FFmpeg.
+Versione preliminare non firmata. Test automatici ed Electron verificati su Linux con sorgenti sintetiche per registrazione/microfono. Installazione e cattura reale di schermo, microfono e audio di sistema devono essere provate su Windows. Il gruppo è un insieme modificabile di clip, non un nuovo file video unificato.
 
-Versione preliminare non firmata digitalmente. Test automatici e prova completa Electron passati su Linux; registrazione verificata con una sorgente sintetica. Installazione e cattura reale di schermo, microfono e audio di sistema devono essere provate su Windows. Non include ancora titoli, transizioni o ritaglio libero dell'area di registrazione.
-
-Sono inclusi l'archivio dei sorgenti applicativi con lockfile e istruzioni di build, e SHA256SUMS.txt per verificare i download. Le licenze e i riferimenti upstream dei componenti sono descritti in desktop/THIRD_PARTY.md nell'archivio dei sorgenti.
+Scaricare Setup.exe oppure estrarre tutto Windows-x64.zip in una cartella dedicata e avviare Crea Studio.exe. Il runtime e FFmpeg sono inclusi. Sorgenti, istruzioni di build e riferimenti di licenza sono nell'archivio Sorgenti.zip; SHA256SUMS.txt permette di verificare i file.

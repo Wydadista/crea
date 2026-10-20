@@ -1,12 +1,12 @@
-# Crea Studio — editor video desktop
+# Crea Studio 0.2 — editor desktop a tre tracce libere
 
-Prima versione per Windows 10/11 x64, ispirata al flusso di montaggio di Camtasia. È un'applicazione indipendente: non usa codice o componenti di Camtasia. Il vecchio editor di immagini `../creapost.html` rimane disponibile e invariato.
+Editor video indipendente per Windows 10/11 x64. La versione 0.2 sostituisce la timeline magnetica con tre tracce universali: video, immagini, audio e annotazioni possono occupare qualsiasi traccia, sovrapporsi e lasciare spazi vuoti. Il vecchio editor di immagini `../creapost.html` rimane invariato.
 
-## Avvio su Windows
+## Installazione e ricostruzione
 
-Per utilizzare l'installer generato, aprire `dist/Crea-Studio-0.1.0-x64-Setup.exe` e scegliere la cartella di installazione. L'installer di sviluppo non è firmato digitalmente. Non occorre installare FFmpeg o Node.js per eseguire l'app installata.
+Eseguire `dist/Crea-Studio-0.2.0-x64-Setup.exe`, oppure estrarre **tutto** `dist/Crea-Studio-0.2.0-Windows-x64.zip` in una cartella dedicata e aprire `Crea Studio.exe`. L'app contiene Electron, FFmpeg e FFprobe; sul PC non occorrono Node.js o FFmpeg separati. L'installer di sviluppo non è firmato digitalmente.
 
-Per sviluppare o ricostruire l'app dai sorgenti, installare Node.js 24 LTS, aprire PowerShell nella cartella `desktop` ed eseguire:
+Per sviluppare con Node.js 24, da `desktop`:
 
 ```powershell
 npm ci
@@ -14,68 +14,69 @@ npx install-electron --no
 npm start
 ```
 
-Electron 42 scarica il runtime con `install-electron` o al primo avvio. Non disabilitare TLS o la verifica dei checksum. L'installazione richiede accesso a npm, GitHub e ai server degli asset delle release GitHub.
-
-Per creare un nuovo installer sul PC Windows:
+Per ricreare installer, ZIP portabile, sorgenti e checksum:
 
 ```powershell
-npm run build:win
+npm run build:release
 ```
 
-Il risultato è in `dist/`. Il build prepara la cartella `win-unpacked` con Electron Builder e genera l'installer con NSIS tramite `scripts/make-installer.cjs`. Il compilatore NSIS viene ottenuto attraverso gli strumenti di Electron Builder, mantenendo la verifica degli artefatti. L'installer si installa per il solo utente corrente, crea i collegamenti e registra la disinstallazione; la disinstallazione rimuove solo i file presenti nel pacchetto.
+Sono inclusi lockfile, script di preparazione Windows e cloud Linux, installer NSIS e generatore/verificatore ZIP. Non occorre Wine. Istruzioni per il cloud e per riprendere la pubblicazione: [RESUME.md](RESUME.md). Non eseguire una reinstallazione npm mentre è in corso un build.
 
-Il build include Electron, FFmpeg e FFprobe. Non richiede un server HTTP. I dati multimediali rimangono sul PC. Se usi il pacchetto portabile `Crea-Studio-0.1.0-Windows-x64.zip`, estrai **tutta** la cartella e avvia `Crea Studio.exe`: non spostare il solo eseguibile, perché servono anche `resources` e gli altri file.
+## Timeline, zoom, tagli e gruppi
 
-Nell'ambiente cloud Linux, `bash scripts/prepare-cloud.sh` prepara le dipendenze e un display virtuale Xvfb locale, senza modificare i pacchetti di sistema. Per i test UI, avvia Xvfb in una sessione persistente (`.local-tools/bin/Xvfb :99 -screen 0 1600x1000x24 -nolisten tcp -ac`) e poi esegui `DISPLAY=:99 npm run test:ui`. Non avviare un secondo server X sulla stessa porta/display se il primo è già attivo.
+- Importare file o trascinarli nella finestra. Trascinarli poi su **qualsiasi** traccia, nel punto desiderato; il pulsante `+` li aggiunge nel punto della linea verde sulla traccia scelta nella libreria.
+- La traccia 3 è sopra la 2, che è sopra la 1. Dimensioni e posizione della clip si regolano nelle proprietà per mostrare più video contemporaneamente, ad esempio immagine nell'immagine. Se più clip della stessa traccia si sovrappongono, la timeline le mostra su sottorighe; l'ordine di inserimento decide quale appare davanti. Tutti gli audio attivi vengono miscelati.
+- **Nessuna calamita e nessun ripple**: muovere, cancellare, tagliare, accorciare o cambiare velocità non sposta automaticamente le altre clip. I vuoti sono mantenuti; in esportazione lo sfondo è nero dove non c'è alcun contenuto visivo.
+- **Ctrl+rotellina** scorre orizzontalmente. **Shift+rotellina** e i pulsanti/slider di zoom mantengono come riferimento la **linea verde**, indipendentemente dalla posizione del mouse. Se il cursore è fuori vista, lo zoom lo riporta al centro della vista.
+- Cliccare sul righello per spostare la linea verde; **S** divide le clip selezionate attraversate dalla linea. Trascinare i bordi per rifilare. I campi di inizio/fine sorgente permettono un taglio numerico preciso.
+- **Ctrl/Shift+clic**, selezione a rettangolo trascinando su uno spazio vuoto o **Ctrl+A** selezionano più clip. **Canc** elimina; **Ctrl+Z** annulla; **Ctrl+Shift+Z** ripristina.
+- Tasto destro → **Unifica in un gruppo modificabile** (o **Ctrl+G**) raccoglie anche molti frammenti in un unico blocco per traccia. Il gruppo mantiene tagli, spazi, effetti e posizioni relative. Si sposta come un insieme; **S** lo divide in due gruppi alla linea verde. **Separa gruppo** / **Ctrl+Shift+G** rende di nuovo visibili i frammenti. È un raggruppamento reversibile, non la ricodifica dei frammenti in un nuovo file sorgente.
+- **Comandi** personalizza i tasti singoli per divisione, riproduzione e cancellazione. Le scorciatoie non intervengono mentre si scrive nei campi.
 
-## Montare un video
+## Forma d'onda e velocità
 
-1. Premi **Importa file** o trascina i file nella finestra. Sono supportati video, immagini e musica; la riproduzione in anteprima dipende dai codec disponibili in Electron.
-2. Trascina video e immagini sulla traccia principale. Il pulsante `+` della libreria aggiunge una clip in fondo. Le immagini durano inizialmente 5 secondi.
-3. Trascina la musica sulla traccia audio. Puoi aggiungere più clip audio, anche sovrapposte; trascinale per cambiarne il punto di inizio.
-4. Seleziona una clip, posiziona il cursore cliccando sul righello e premi **S** per dividerla. Trascina i bordi per accorciarla o inserisci i punti di inizio/fine nelle proprietà.
-5. Trascina il corpo delle clip video per cambiarne l'ordine. La traccia principale è magnetica: non mantiene vuoti tra le clip. Premi **Canc** per eliminare la selezione.
-6. Usa **Spazio** per riprodurre/fermare, **Ctrl+rotellina** per scorrere la timeline e **Shift+rotellina** per zoomare intorno al mouse. **Ctrl+Z** annulla e **Ctrl+Shift+Z** ripristina.
-7. In **Comandi** puoi cambiare i tasti per divisione, riproduzione e cancellazione. Le preferenze vengono salvate sul PC. Le scorciatoie non intervengono mentre scrivi nei campi.
-8. **Salva progetto** salva il montaggio in JSON, con riferimenti ai file originali. Per riaprirlo, usa **Apri**. Il progetto non incorpora i media: conserva i file nei percorsi originali.
+La forma d'onda di video e audio proviene dai campioni reali del file: picchi del PCM stereo a banda intera, 50 punti al secondo, massimo fra i canali per evitare cancellazioni di fase. Non è un disegno decorativo. I silenzi non hanno picchi; i livelli molto bassi sotto circa −54 dB vengono omessi. L'altezza è normalizzata per file per rendere leggibili anche voci poco forti. Rifilatura, volume e velocità cambiano la rappresentazione. L'analisi viene eseguita in coda senza bloccare l'importazione; i file lunghi possono richiedere tempo.
 
-## Registrare lo schermo
+**Velocità ×** accetta valori numerici da `0,1` a `16`, compresi `0,5`, `2` o `2,4`. Su più clip selezionate applica il valore a tutte. **Ripristina selezione a 1×** ripristina la velocità originale; anche il valore `0` nel campo è interpretato come ripristino a `1×`. La durata sulla timeline è `(fine − inizio sorgente) / velocità`. Le posizioni delle altre clip restano invariate. L'export adatta l'audio con mantenimento dell'intonazione; l'anteprima a velocità estreme dipende anche dai limiti di Chromium.
 
-Apri **Registra schermo**, scegli uno schermo o una finestra e imposta risoluzione massima (720p, 1080p, 2160p), FPS (30/60), bitrate video (2,5/8/16 Mbps) e audio (96–256 kbps). Puoi abilitare l'audio del computer su Windows e aggiungere il microfono predefinito.
+## Sfocatura, pixelatura, zoom e annotazioni
 
-La registrazione è scritta progressivamente in un file temporaneo, senza conservare tutto il filmato in memoria. Premi **Ferma e salva**, scegli la destinazione WebM e attendi l'aggiunta alla libreria. La finalizzazione WebM con FFmpeg permette di leggere durata e punti di taglio. Puoi esportarla successivamente in MP4. Finché non salvi, la registrazione è temporanea: non chiudere l'app o spegnere il PC.
+Selezionare una clip video/immagine e aprire le proprietà:
 
-La risoluzione e il frame rate effettivi dipendono dalla sorgente e dalle capacità del PC; i bitrate sono obiettivi di codifica. La cattura audio del computer richiede il supporto loopback di Windows. Se la sorgente non fornisce audio, l'app lo segnala. Al momento si può selezionare una finestra, ma non disegnare un rettangolo libero sullo schermo.
+- **Sfocatura e pixelatura**: tipo, intensità e area X/Y/larghezza/altezza in percentuale della clip. Si può trascinare l'area tratteggiata nell'anteprima. Per applicare l'effetto soltanto a una parte del video, dividere il segmento con S e applicarlo al pezzo selezionato. La cornice è un aiuto di modifica e non viene esportata.
+- **Posizione, dimensioni e zoom**: X/Y e dimensioni del riquadro, zoom iniziale/finale da 1× a 5× e centro X/Y. Valori diversi fra inizio e fine producono uno zoom in/out lineare lungo la clip. Si può spostare il riquadro anche trascinandolo nell'anteprima quando non è attiva un'area effetto.
+- **Testo**: testo su più righe, carattere fra quelli installati sul PC, dimensione, colore, sfondo opzionale e suo colore. I font non vengono incorporati nei progetti; su un altro PC devono essere installati per mantenere lo stesso aspetto.
+- **Freccia**: colore (rosso iniziale), posizione, lunghezza, angolo e spessore.
+- **Cerchio**: colore, posizione, diametro e spessore; il tempo di chiusura 0–2 secondi disegna progressivamente il cerchio. `0` lo rende fisso.
 
-## Esportare
+Testi e indicatori sono clip con posizione, durata e traccia proprie. Possono essere rifilati, divisi, spostati e raggruppati. Possono essere trascinati nell'anteprima. Gli effetti e le annotazioni sono inclusi nell'export, non soltanto nell'anteprima. Per il testo l'esportazione usa raster generati con lo stesso disegno Canvas dell'anteprima e con il font locale scelto.
 
-**Esporta** genera un MP4 H.264 con audio AAC, con proporzioni 16:9 e bande per i contenuti di proporzioni diverse. Puoi scegliere 720p, 1080p, 1440p o 2160p, 24/25/30/60 FPS e tre profili:
+## Registrazione di schermo e microfono
 
-- **Dimensione ridotta**: CRF 30, maggiore compressione.
-- **Bilanciata**: CRF 23.
-- **Alta qualità**: CRF 18.
+**Registra schermo** permette di scegliere:
 
-Il peso finale dipende anche dalla durata e dalla complessità delle immagini: non è garantito che un video già molto compresso diventi più piccolo. Risoluzioni inferiori e il profilo ridotto aiutano a contenerlo. L'export usa l'audio originale e tutte le clip musicali, con i volumi impostati, e termina alla fine della traccia video. Può essere annullato; i file originali non vengono modificati. Le clip intermedie sono conservate temporaneamente sul disco: assicurati di avere spazio libero sufficiente.
+- Schermo o finestra.
+- Formato finale **MP4 H.264/AAC** (predefinito) oppure WebM.
+- Risoluzione massima 720p / 1080p / 2160p e **FPS interi personalizzati 1–120**, anche inferiori a 24.
+- Qualità video su slider 1–100%, con indicazione **70% consigliata**, e bitrate audio 32–320 kbps.
+- Audio del computer su Windows e/o **microfono specifico**. **Rileva microfoni / autorizza accesso** richiede il permesso e mostra i nomi dei dispositivi; la scelta viene passata come `deviceId` esatto.
+- Filtri di riduzione rumore, eco e guadagno automatico, disattivati inizialmente per acquisire senza elaborazioni automatiche del browser.
 
-## Verifiche
+**Ferma e salva** apre il salvataggio nel formato scelto e importa il risultato nella libreria. Internamente la cattura viene scritta progressivamente su disco; l'MP4 viene finalizzato con FFmpeg quando si ferma la registrazione. Attendere la finalizzazione prima di chiudere l'app. Risoluzione, FPS e bitrate effettivi dipendono da sorgente e hardware. Il ritaglio libero di un rettangolo di schermo non è incluso: si può scegliere una finestra.
+
+## Esportazione, progetti e verifiche
+
+**Esporta** produce MP4 H.264/AAC a 720p / 1080p / 1440p / 2160p, **FPS interi personalizzati 1–120** e qualità 1–100% (70% consigliata). La qualità video corrisponde a CRF 40–14; non è una percentuale di compressione o una garanzia sul peso finale. Il file ha proporzioni 16:9. Le tracce sono composte con le posizioni e i riquadri impostati; l'audio è miscelato con limitazione dei picchi. Anche progetti con solo audio sono esportabili su sfondo nero.
+
+Il motore renderizza intervalli definiti dagli inizi/fini delle clip, con un massimo di due thread per encoder e un thread di filtri, poi ricostruisce il flusso finale a FPS costanti. Usa file temporanei: durata, numero di clip, risoluzione e sovrapposizioni influenzano tempi e spazio disco. I tagli vengono adattati ai fotogrammi disponibili nel frame rate scelto. L'esportazione è annullabile.
+
+**Salva progetto** conserva il montaggio JSON e i riferimenti ai media; i file originali devono restare nei loro percorsi. I progetti 0.1 vengono migrati automaticamente mantenendo la posizione originale della sequenza e della musica; il salvataggio usa il formato 2.
 
 ```powershell
 npm test
 npm run test:ui
 ```
 
-`npm test` verifica tagli, validazione del progetto e un export reale tramite i binari FFmpeg inclusi: video tagliato + immagine + musica ritardata, decodifica dell'MP4, dimensioni, durata, ultimo fotogramma e annullamento.
+I test verificano posizioni senza ripple, gruppi e tagli a velocità variabile, migrazione, tre livelli realmente composti, audio sulle tracce video, spazi vuoti, export a 12 FPS, pixelatura/sfocatura/zoom nel video finale e silenzi reali nella forma d'onda. Il test Electron esercita selezione, trascinamento, gruppi, zoom sulla linea verde, proprietà, testi e indicatori, export, salvataggio/riapertura e una registrazione sintetica MP4 con microfono selezionato.
 
-`test:ui` avvia Electron con Playwright ed esegue importazione e analisi dei file, trascinamento e riordino, taglio con S, annulla/ripristina, cancellazione, Ctrl/Shift+rotellina, riproduzione, personalizzazione tasti, salvataggio e apertura progetto, export MP4 e registrazione sintetica con finalizzazione WebM. Su Linux richiede un display X (anche Xvfb). Genera `test/desktop-smoke.png`.
-
-Verificato nell'ambiente Linux con Electron e display virtuale. **La cattura reale dello schermo, microfono e loopback di sistema, così come l'installazione e l'avvio su Windows, devono essere provati su un PC Windows.** Il test di registrazione genera fotogrammi artificiali e non prova i driver audio/video del PC.
-
-## Perimetro della prima versione
-
-Questa versione comprende il flusso essenziale di montaggio. Non comprende ancora sovrapposizione di più tracce video, titoli, transizioni, dissolvenze, ritaglio libero della registrazione, registrazione webcam o un sistema di recupero dopo crash. Alcuni formati importabili da FFmpeg potrebbero non essere riproducibili in anteprima: per l'uso iniziale sono consigliati MP4 H.264/AAC, PNG/JPEG e MP3/WAV.
-
-Le scorciatoie personalizzabili sono tasti singoli; Ctrl/Shift+rotellina e le combinazioni di salvataggio/annullamento restano fisse. Il progetto non viene salvato automaticamente. Le licenze e i riferimenti dei componenti inclusi sono elencati in [THIRD_PARTY.md](THIRD_PARTY.md).
-
-## Ricostruzione e ripresa in cloud
-
-Le istruzioni complete per riprendere da un nuovo checkout, rigenerare installer e ZIP e pubblicare la release sono in [RESUME.md](RESUME.md). `npm run build:release` ricrea tutti gli artefatti; `npm run bundle:release` ricrea solo gli archivi e i checksum dopo un build Windows esistente.
+**Installazione, cattura reale dello schermo e loopback audio restano da verificare su Windows reale.** La prova automatica di registrazione usa sorgenti sintetiche e non prova i driver del PC. L'app non comprende ancora transizioni, webcam, animazioni a keyframe arbitrarie o recupero automatico dopo crash. Licenze e riferimenti: [THIRD_PARTY.md](THIRD_PARTY.md).

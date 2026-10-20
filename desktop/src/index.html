@@ -14,14 +14,14 @@
     <header>
       <div class="brand">
         <span class="brand-icon">C</span> CREA <b>STUDIO</b
-        ><span class="badge">DESKTOP · 0.1</span>
+        ><span class="badge">DESKTOP · 0.2</span>
       </div>
       <div class="project-name">
-        Il tuo prossimo video <span>• Progetto locale</span>
+        Monta a modo tuo<span>Tre tracce libere · Nessuna calamita</span>
       </div>
       <button id="openProject">Apri</button
       ><button id="saveProject">Salva progetto</button
-      ><button id="keysBtn" title="Personalizza scorciatoie">⌨ Comandi</button
+      ><button id="keysBtn">⌨ Comandi</button
       ><button id="recordBtn" class="record"><i></i> Registra schermo</button
       ><button id="exportBtn" class="primary">↗ Esporta</button>
     </header>
@@ -30,111 +30,308 @@
         <button class="active">▦<span>Media</span></button
         ><button id="railRecord">◉<span>Registra</span></button>
         <div class="rail-bottom">
-          CREA<br /><small>Il montaggio,<br />senza ostacoli.</small>
+          CREA<br /><small>Spazio alle tue idee.</small>
         </div>
       </aside>
       <section class="library">
-        <div class="section-title">
-          <div>
-            <span class="eyebrow">IL TUO MATERIALE</span>
-            <h2>Libreria media <span id="mediaCount">0</span></h2>
-          </div>
-        </div>
+        <span class="eyebrow">IL TUO MATERIALE</span>
+        <h2>Libreria media <span id="mediaCount">0</span></h2>
         <button id="importBtn" class="import">＋ Importa file</button>
-        <p class="hint">Video, immagini e musica. Trascina i file qui.</p>
+        <p class="hint">Trascina file su qualsiasi traccia.</p>
+        <div class="annotation-tools">
+          <button id="addText">T Testo</button
+          ><button id="addArrow">➜ Freccia</button
+          ><button id="addCircle">◯ Cerchio</button>
+        </div>
+        <p class="hint">
+          Aggiungi alla traccia
+          <select id="activeTrack">
+            <option value="2">3 · Superiore</option>
+            <option value="1">2 · Centrale</option>
+            <option value="0" selected>1 · Inferiore</option>
+          </select>
+        </p>
         <div id="mediaList" class="media-list"></div>
         <div id="libraryEmpty" class="library-empty">
           <div>▧</div>
           <h3>Ogni storia inizia qui</h3>
-          <p>
-            Importa i tuoi file, poi trascinali<br />sulla timeline per
-            cominciare.
-          </p>
+          <p>Importa video, foto e audio.<br />Sovrapponili liberamente.</p>
         </div>
-        <div class="library-footer">● I tuoi file rimangono sul tuo PC</div>
+        <div class="library-footer">● File locali · forme d’onda reali</div>
       </section>
       <section class="viewer">
         <div class="viewer-head">
-          <span>ANTEPRIMA</span><span>16:9 <b>FIT</b></span>
+          <span>ANTEPRIMA · 16:9</span
+          ><span>Zoom timeline sulla linea verde</span>
         </div>
         <div class="stage">
-          <video id="previewVideo" preload="auto"></video
-          ><img id="previewImage" alt="Anteprima immagine" />
+          <canvas id="previewCanvas" width="1280" height="720"></canvas>
           <div id="stageEmpty">
             <span>▷</span>
             <h2>Spazio alla tua storia.</h2>
-            <p>Aggiungi una clip alla timeline per iniziare</p>
+            <p>Trascina una clip su una delle tre tracce.</p>
           </div>
         </div>
         <div class="transport">
-          <span id="timecode">00:00.00 <em>/ 00:00.00</em></span>
+          <span id="timecode">00:00.00</span>
           <div>
-            <button id="toStart" title="Torna all'inizio">|◁</button
-            ><button
-              id="playBtn"
-              class="play"
-              title="Riproduci / pausa (Spazio)"
-            >
-              ▶</button
-            ><button id="toEnd" title="Vai alla fine">▷|</button>
+            <button id="toStart">|◁</button
+            ><button id="playBtn" class="play">▶</button
+            ><button id="toEnd">▷|</button>
           </div>
-          <span id="playbackState">Anteprima locale</span>
+          <span id="playbackState">Nessuna calamita</span>
         </div>
       </section>
       <aside class="properties">
-        <span class="eyebrow">IL DETTAGLIO FA LA DIFFERENZA</span>
-        <h2>Proprietà</h2>
+        <span class="eyebrow">SELEZIONE E ASPETTO</span>
+        <h2>Proprietà <small id="selectionCount"></small></h2>
         <div id="noSelection" class="no-selection">
-          <span>☷</span>
-          <p>Seleziona una clip<br />per modificarla</p>
+          Seleziona una clip.
+          <p>
+            Ctrl / Shift + clic: selezione multipla.<br />Tasto destro:
+            raggruppa.
+          </p>
         </div>
         <div id="clipProperties" hidden>
           <p id="selectedName" class="selected-name"></p>
-          <label
-            >Inizio sorgente (secondi)<input
-              id="trimIn"
-              type="number"
-              min="0"
-              step="0.1" /></label
-          ><label
-            >Fine sorgente / durata immagine<input
-              id="trimOut"
-              type="number"
-              min="0.1"
-              step="0.1" /></label
-          ><label id="offsetLabel"
-            >Posizione sulla timeline (s)<input
-              id="musicStart"
-              type="number"
-              min="0"
-              step="0.1" /></label
-          ><label
-            >Volume <span id="volumeValue">100%</span
-            ><input id="clipVolume" type="range" min="0" max="100" value="100"
-          /></label>
+          <details open>
+            <summary>Tempo, velocità e audio</summary>
+            <div class="control-group">
+              <div class="form-grid">
+                <label
+                  >Posizione (s)<input
+                    id="clipStart"
+                    type="number"
+                    min="0"
+                    step="0.01" /></label
+                ><label
+                  >Traccia<select id="clipTrack">
+                    <option value="0">1 · Inferiore</option>
+                    <option value="1">2 · Centrale</option>
+                    <option value="2">3 · Superiore</option>
+                  </select></label
+                ><label
+                  >Inizio sorgente (s)<input
+                    id="trimIn"
+                    type="number"
+                    min="0"
+                    step="0.01" /></label
+                ><label
+                  >Fine sorgente (s)<input
+                    id="trimOut"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                /></label>
+              </div>
+              <label
+                >Velocità × (0,1–16; 0 ripristina 1×)<input
+                  id="clipSpeed"
+                  type="number"
+                  min="0"
+                  max="16"
+                  step="0.1" /></label
+              ><button id="resetSpeed">Ripristina selezione a 1×</button
+              ><label
+                >Volume <span id="volumeValue"></span
+                ><input id="clipVolume" type="range" min="0" max="100" /></label
+              ><button id="splitBtn">✂ Dividi · S</button>
+            </div>
+          </details>
+          <details id="layoutPanel">
+            <summary>Posizione, dimensioni e zoom</summary>
+            <div class="control-group">
+              <p class="hint">
+                Percentuali del fotogramma. Riduci larghezza/altezza per vedere
+                il video sottostante.
+              </p>
+              <div class="form-grid">
+                <label
+                  >X %<input
+                    id="layoutX"
+                    type="number"
+                    min="-100"
+                    max="100" /></label
+                ><label
+                  >Y %<input
+                    id="layoutY"
+                    type="number"
+                    min="-100"
+                    max="100" /></label
+                ><label
+                  >Larghezza %<input
+                    id="layoutW"
+                    type="number"
+                    min="1"
+                    max="200" /></label
+                ><label
+                  >Altezza %<input
+                    id="layoutH"
+                    type="number"
+                    min="1"
+                    max="200" /></label
+                ><label
+                  >Zoom iniziale ×<input
+                    id="zoomFrom"
+                    type="number"
+                    min="1"
+                    max="5"
+                    step="0.1" /></label
+                ><label
+                  >Zoom finale ×<input
+                    id="zoomTo"
+                    type="number"
+                    min="1"
+                    max="5"
+                    step="0.1" /></label
+                ><label
+                  >Centro zoom X %<input
+                    id="zoomX"
+                    type="number"
+                    min="0"
+                    max="100" /></label
+                ><label
+                  >Centro zoom Y %<input
+                    id="zoomY"
+                    type="number"
+                    min="0"
+                    max="100"
+                /></label>
+              </div>
+            </div>
+          </details>
+          <details id="effectsPanel">
+            <summary>Sfocatura e pixelatura</summary>
+            <div class="control-group">
+              <label
+                >Effetto<select id="effectType">
+                  <option value="none">Nessuno</option>
+                  <option value="blur">Sfocatura</option>
+                  <option value="pixel">Pixelatura</option>
+                </select></label
+              ><label
+                >Intensità / dimensione pixel<input
+                  id="effectStrength"
+                  type="number"
+                  min="1"
+                  max="100"
+              /></label>
+              <p class="hint">
+                Area relativa alla clip. La cornice tratteggiata è visibile solo
+                durante la modifica: trascinala nell’anteprima.
+              </p>
+              <div class="form-grid">
+                <label
+                  >X %<input
+                    id="effectX"
+                    type="number"
+                    min="0"
+                    max="99" /></label
+                ><label
+                  >Y %<input
+                    id="effectY"
+                    type="number"
+                    min="0"
+                    max="99" /></label
+                ><label
+                  >Larghezza %<input
+                    id="effectW"
+                    type="number"
+                    min="1"
+                    max="100" /></label
+                ><label
+                  >Altezza %<input id="effectH" type="number" min="1" max="100"
+                /></label>
+              </div>
+            </div>
+          </details>
+          <details id="annotationPanel" open>
+            <summary>Testo e indicatori</summary>
+            <div class="control-group">
+              <label id="textField"
+                >Testo<textarea id="annotationText" rows="3"></textarea></label
+              ><label id="fontField"
+                >Carattere<select id="annotationFont">
+                  <option>Arial</option>
+                </select></label
+              >
+              <div class="form-grid">
+                <label
+                  >Dimensione testo<input
+                    id="annotationSize"
+                    type="number"
+                    min="8"
+                    max="400" /></label
+                ><label>Colore<input id="annotationColor" type="color" /></label
+                ><label
+                  >X %<input
+                    id="annotationX"
+                    type="number"
+                    min="0"
+                    max="100" /></label
+                ><label
+                  >Y %<input
+                    id="annotationY"
+                    type="number"
+                    min="0"
+                    max="100" /></label
+                ><label
+                  >Lunghezza / diametro %<input
+                    id="annotationLength"
+                    type="number"
+                    min="1"
+                    max="100" /></label
+                ><label
+                  >Spessore<input
+                    id="annotationLine"
+                    type="number"
+                    min="1"
+                    max="50" /></label
+                ><label
+                  >Angolo freccia °<input
+                    id="annotationAngle"
+                    type="number"
+                    min="-360"
+                    max="360" /></label
+                ><label
+                  >Chiusura cerchio (s; 0 = fisso)<input
+                    id="annotationAnimate"
+                    type="number"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                /></label>
+              </div>
+              <label class="check"
+                ><input id="annotationBgEnabled" type="checkbox" /> Sfondo del
+                testo</label
+              ><label
+                >Colore sfondo<input id="annotationBg" type="color"
+              /></label>
+              <p class="hint">
+                Puoi trascinare l’indicatore o il testo nell’anteprima.
+              </p>
+            </div>
+          </details>
           <div class="property-actions">
-            <button id="splitBtn">✂ Dividi · S</button
-            ><button id="deleteBtn" class="danger">Elimina clip</button>
+            <button id="groupBtn">Raggruppa selezione</button
+            ><button id="ungroupBtn">Separa gruppo</button
+            ><button id="deleteBtn" class="danger">Elimina selezione</button>
           </div>
-          <p class="hint">
-            Trascina i bordi per accorciare. Le clip video si riordinano senza
-            lasciare vuoti.
-          </p>
         </div>
       </aside>
     </main>
     <section class="timeline-panel">
       <div class="timeline-toolbar">
         <div>
-          <button id="undoBtn" title="Annulla (Ctrl+Z)">↶</button
-          ><button id="redoBtn" title="Ripristina (Ctrl+Shift+Z)">↷</button
-          ><span class="separator"></span
-          ><button id="cutTool" title="Dividi (S)">✂ Dividi</button
-          ><button id="deleteTool">⌫ Elimina</button>
+          <button id="undoBtn">↶</button><button id="redoBtn">↷</button
+          ><button id="cutTool">✂ Dividi</button
+          ><button id="deleteTool">⌫ Elimina</button
+          ><button id="groupTool">▣ Raggruppa</button>
         </div>
         <div class="timeline-tips">
-          <kbd>Ctrl</kbd> + rotella: scorri <span>·</span> <kbd>Shift</kbd> +
-          rotella: zoom
+          <kbd>Ctrl</kbd> + rotella: scorri · <kbd>Shift</kbd> + rotella: zoom
+          sulla linea verde
         </div>
         <div class="zoom-controls">
           <button id="zoomOut">−</button
@@ -142,78 +339,90 @@
             id="zoom"
             type="range"
             min="8"
-            max="240"
+            max="320"
             value="40"
             aria-label="Zoom timeline"
-          /><button id="zoomIn">＋</button><span id="zoomLabel">40 px/s</span>
+          /><button id="zoomIn">＋</button><span id="zoomLabel"></span>
         </div>
       </div>
       <div class="timeline-body">
         <div class="track-labels">
-          <div class="ruler-label">TRACCE</div>
-          <div>
-            <span>▧</span><b>Video e immagini</b
-            ><small>Traccia principale</small>
+          <div class="ruler-label">TRACCE LIBERE</div>
+          <div id="labelViewport">
+            <div id="labelRows">
+              <div data-choose-track="2">
+                <span>3</span><b>Traccia superiore</b
+                ><small>Video · foto · audio · testi</small>
+              </div>
+              <div data-choose-track="1">
+                <span>2</span><b>Traccia centrale</b
+                ><small>Video · foto · audio · testi</small>
+              </div>
+              <div data-choose-track="0">
+                <span>1</span><b>Traccia inferiore</b
+                ><small>Video · foto · audio · testi</small>
+              </div>
+            </div>
           </div>
-          <div><span>♫</span><b>Musica</b><small>Audio aggiuntivo</small></div>
         </div>
         <div id="timelineScroll">
           <div id="timeline">
             <div id="ruler"></div>
-            <div id="visualTrack" class="track visual-track"></div>
-            <div id="musicTrack" class="track music-track"></div>
+            <div id="track2" class="track" data-track="2"></div>
+            <div id="track1" class="track" data-track="1"></div>
+            <div id="track0" class="track" data-track="0"></div>
             <div id="playhead"><span></span></div>
+            <div id="marquee" hidden></div>
           </div>
         </div>
       </div>
       <footer>
-        <span id="status">Pronto per creare.</span
-        ><span id="durationLabel">0 clip · 00:00.00</span>
+        <span id="status"
+          >Pronto. Nessuna calamita: le clip restano dove le metti.</span
+        ><span id="durationLabel"></span>
       </footer>
     </section>
     <dialog id="exportDialog">
       <form method="dialog">
         <div class="modal-title">
-          <div>
-            <span class="eyebrow">L'ULTIMO PASSO</span>
-            <h2>Il tuo video, pronto da condividere.</h2>
-          </div>
-          <button value="cancel" class="close">×</button>
+          <h2>Esporta il montaggio</h2>
+          <button class="close" value="cancel">×</button>
         </div>
-        <p class="hint">MP4 · H.264 + AAC · formato orizzontale 16:9</p>
+        <p class="hint">MP4 H.264 / AAC · tre tracce composte · 16:9</p>
         <div class="form-grid">
           <label
             >Risoluzione<select id="exportHeight">
-              <option value="720">HD · 720p</option>
-              <option value="1080" selected>Full HD · 1080p</option>
-              <option value="1440">QHD · 1440p</option>
-              <option value="2160">4K · 2160p</option>
+              <option value="720">720p</option>
+              <option value="1080" selected>1080p</option>
+              <option value="1440">1440p</option>
+              <option value="2160">2160p</option>
             </select></label
           ><label
-            >Fotogrammi al secondo<select id="exportFps">
-              <option>24</option>
-              <option>25</option>
-              <option selected>30</option>
-              <option>60</option>
-            </select></label
-          >
+            >FPS personalizzati (1–120)<input
+              id="exportFps"
+              type="number"
+              min="1"
+              max="120"
+              step="1"
+              value="30"
+          /></label>
         </div>
         <label
-          >Qualità e compressione<select id="exportQuality">
-            <option value="small">Dimensione ridotta · più compressione</option>
-            <option value="balanced" selected>Bilanciata · consigliata</option>
-            <option value="high">Alta qualità · file più grande</option>
-          </select></label
-        >
+          >Qualità <b id="exportQualityValue">70%</b
+          ><input
+            id="exportQuality"
+            type="range"
+            min="1"
+            max="100"
+            value="70"
+            list="qualityMarks"
+        /></label>
         <p class="hint">
-          La dimensione dipende dal contenuto e dalla durata: il profilo ridotto
-          usa una compressione maggiore. L'export include audio originale e
-          musica, con i volumi impostati.
+          ↑ Consigliata: 70%. Valori inferiori riducono qualità e peso.
+          Dimensione finale variabile secondo le scene.
         </p>
-        <progress id="exportProgress" max="100" value="0"></progress>
-        <p id="exportStatus">
-          Scegli il profilo, poi il percorso di salvataggio.
-        </p>
+        <progress id="exportProgress" value="0" max="100"></progress>
+        <p id="exportStatus">Scegli dove salvare il video.</p>
         <div class="modal-actions">
           <button id="cancelExport" type="button" hidden>
             Annulla esportazione</button
@@ -226,51 +435,72 @@
     <dialog id="recordDialog">
       <form method="dialog">
         <div class="modal-title">
-          <div>
-            <span class="eyebrow">CATTURA UN'IDEA</span>
-            <h2>Registra il tuo schermo</h2>
-          </div>
-          <button value="cancel" class="close">×</button>
+          <h2>Registra schermo e audio</h2>
+          <button class="close" value="cancel">×</button>
         </div>
-        <label>Schermo o finestra<select id="captureSource"></select></label>
+        <label>Schermo / finestra<select id="captureSource"></select></label>
         <div class="form-grid">
           <label
+            >Formato finale<select id="recordFormat">
+              <option value="mp4" selected>MP4 · H.264 / AAC</option>
+              <option value="webm">WebM · VP9 / Opus</option>
+            </select></label
+          ><label
             >Risoluzione massima<select id="recordHeight">
               <option value="720">720p</option>
               <option value="1080" selected>1080p</option>
               <option value="2160">2160p</option>
             </select></label
           ><label
-            >FPS<select id="recordFps">
-              <option selected>30</option>
-              <option>60</option>
-            </select></label
+            >FPS personalizzati (1–120)<input
+              id="recordFps"
+              type="number"
+              min="1"
+              max="120"
+              value="30" /></label
           ><label
-            >Qualità video<select id="recordBitrate">
-              <option value="2500000">Compatta · 2,5 Mbps</option>
-              <option value="8000000" selected>Alta · 8 Mbps</option>
-              <option value="16000000">Molto alta · 16 Mbps</option>
-            </select></label
-          ><label
-            >Qualità audio<select id="recordAudioBitrate">
-              <option value="96000">96 kbps</option>
-              <option value="128000" selected>128 kbps</option>
-              <option value="192000">192 kbps</option>
-              <option value="256000">256 kbps</option>
-            </select></label
-          >
+            >Bitrate audio (kbps)<input
+              id="recordAudioBitrate"
+              type="number"
+              min="32"
+              max="320"
+              value="192"
+          /></label>
         </div>
+        <label
+          >Qualità video <b id="recordQualityValue">70%</b
+          ><input
+            id="recordQuality"
+            type="range"
+            min="1"
+            max="100"
+            value="70"
+            list="qualityMarks"
+        /></label>
+        <p class="hint">
+          ↑ 70% consigliata. FPS e risoluzione effettivi dipendono dal
+          dispositivo.
+        </p>
         <label class="check"
-          ><input id="systemAudio" type="checkbox" checked /> Registra audio del
-          computer (Windows)</label
+          ><input id="systemAudio" type="checkbox" checked /> Audio del computer
+          (Windows)</label
         ><label class="check"
-          ><input id="microphone" type="checkbox" /> Aggiungi microfono
-          predefinito</label
+          ><input id="microphone" type="checkbox" /> Registra microfono</label
+        ><label
+          >Microfono<select id="microphoneDevice">
+            <option value="default">Predefinito del sistema</option>
+          </select></label
+        ><button id="refreshMicrophones" type="button">
+          Rileva microfoni / autorizza accesso</button
+        ><label class="check"
+          ><input id="audioProcessing" type="checkbox" /> Riduzione rumore, eco
+          e guadagno automatico</label
         >
         <p class="hint">
-          La registrazione viene salvata in WebM e aggiunta alla libreria. Puoi
-          poi montarla ed esportarla in MP4. Per un'area specifica, seleziona
-          una finestra; il ritaglio libero non è ancora disponibile.
+          Lascia disattivati i filtri per acquisire il segnale del microfono
+          senza elaborazioni automatiche. La cattura viene scritta
+          progressivamente sul disco e finalizzata nel formato scelto quando
+          premi Ferma.
         </p>
         <div class="modal-actions">
           <button id="startRecording" type="button" class="primary">
@@ -285,26 +515,33 @@
           <h2>I tuoi comandi</h2>
           <button class="close">×</button>
         </div>
-        <p class="hint">
-          Clicca un campo e premi un singolo tasto. I comandi restano salvati su
-          questo PC.
-        </p>
-        <label>Dividi clip<input id="keySplit" readonly /></label
+        <label>Dividi<input id="keySplit" readonly /></label
         ><label>Riproduci / pausa<input id="keyPlay" readonly /></label
-        ><label>Elimina clip<input id="keyDelete" readonly /></label>
+        ><label>Elimina<input id="keyDelete" readonly /></label>
         <p class="hint">
-          Ctrl+rotella: scorrimento · Shift+rotella: zoom<br />Ctrl+Z: annulla ·
-          Ctrl+Shift+Z: ripristina · Ctrl+S: salva progetto
+          Ctrl+A seleziona tutte le clip. Ctrl/Shift+clic seleziona più clip.
+          Ctrl+G raggruppa, Ctrl+Shift+G separa. Ctrl+Z annulla. Ctrl+S salva.
         </p>
         <button id="resetKeys" type="button">Ripristina predefiniti</button>
       </form>
     </dialog>
+    <datalist id="qualityMarks">
+      <option value="70" label="Consigliata"></option>
+    </datalist>
+    <div id="contextMenu" hidden>
+      <button data-action="split">✂ Dividi al cursore</button
+      ><button data-action="group">▣ Unifica in un gruppo modificabile</button
+      ><button data-action="ungroup">Separa gruppo</button
+      ><button data-action="speed">Ripristina velocità a 1×</button
+      ><button data-action="delete">Elimina selezione</button>
+    </div>
     <div id="recordingBar" hidden>
-      <i></i><span id="recordingTime">Registrazione in corso</span
+      <i></i><span id="recordingTime"></span
       ><button id="stopRecording">■ Ferma e salva</button>
     </div>
     <div id="toast" role="status" hidden></div>
     <script src="model.js"></script>
+    <script src="scene.js"></script>
     <script src="renderer.js"></script>
   </body>
 </html>

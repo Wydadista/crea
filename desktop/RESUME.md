@@ -50,12 +50,12 @@ npm run build:release
 
 Il processo è sequenziale: non eseguire `npm ci` mentre il build è in corso. `prebuild:win` scarica anche il binario Windows di FFmpeg per i build eseguiti da Linux. Electron Builder prepara `dist/win-unpacked`, poi NSIS crea l'installer; lo script `bundle-release.cjs` genera e verifica gli archivi ZIP e calcola SHA-256. Il pacchetto sorgenti comprende i file di `desktop` versionati da Git, inclusi script e lockfile.
 
-Risultati della versione 0.1.0:
+Risultati della versione 0.2.0:
 
 ```text
-dist/Crea-Studio-0.1.0-x64-Setup.exe
-dist/Crea-Studio-0.1.0-Windows-x64.zip
-dist/Crea-Studio-0.1.0-Sorgenti.zip
+dist/Crea-Studio-0.2.0-x64-Setup.exe
+dist/Crea-Studio-0.2.0-Windows-x64.zip
+dist/Crea-Studio-0.2.0-Sorgenti.zip
 dist/SHA256SUMS.txt
 ```
 
@@ -72,7 +72,7 @@ npm run build:release
 
 ## Riprendere il caricamento su GitHub
 
-La pubblicazione di installer e ZIP è già stata autorizzata dall'utente nella chat. Prima controllare l'accesso specifico alle API:
+La pubblicazione di installer e ZIP del progetto è già stata autorizzata dall'utente nella chat. Prima controllare l'accesso specifico alle API:
 
 ```bash
 gh api repos/Wydadista/crea --jq '{full_name,permissions}'
@@ -86,29 +86,29 @@ Quando il controllo API riesce, verificare se esiste già la release:
 gh release list --repo Wydadista/crea --limit 10
 ```
 
-Se `crea-studio-v0.1.0` non esiste, pubblicare una prerelease dal commit dei sorgenti presenti nel checkout:
+Se `crea-studio-v0.2.0` non esiste, pubblicare una prerelease dal commit dei sorgenti presenti nel checkout:
 
 ```bash
-gh release create crea-studio-v0.1.0 \
+gh release create crea-studio-v0.2.0 \
   --repo Wydadista/crea \
   --target "$(git rev-parse HEAD)" \
-  --title "Crea Studio 0.1.0 — prima versione" \
+  --title "Crea Studio 0.2.0 — prima versione" \
   --prerelease \
   --notes-file RELEASE-NOTES.md \
-  dist/Crea-Studio-0.1.0-x64-Setup.exe \
-  dist/Crea-Studio-0.1.0-Windows-x64.zip \
-  dist/Crea-Studio-0.1.0-Sorgenti.zip \
+  dist/Crea-Studio-0.2.0-x64-Setup.exe \
+  dist/Crea-Studio-0.2.0-Windows-x64.zip \
+  dist/Crea-Studio-0.2.0-Sorgenti.zip \
   dist/SHA256SUMS.txt
 ```
 
 Se una release esiste già, ispezionarne prima gli asset e caricare soltanto quelli mancanti con `gh release upload`; non cancellare o sovrascrivere asset alla cieca. Infine ottenere e verificare i link effettivi:
 
 ```bash
-gh release view crea-studio-v0.1.0 --repo Wydadista/crea --json url,assets
+gh release view crea-studio-v0.2.0 --repo Wydadista/crea --json url,assets
 ```
 
 ## Stato dei controlli
 
-Verificati nella sessione originale: quattro test automatici, test completo Electron con importazione/drag-drop/tagli/scorciatoie/salvataggio/riapertura/export MP4, registrazione sintetica e finalizzazione WebM. Installer NSIS generato e contenuto ispezionato; ZIP portabile verificato tramite CRC. La pipeline di bundle è verificata separatamente prima del commit di salvataggio.
+Verificati nella sessione originale: nove test automatici, test completo Electron con importazione/drag-drop/tagli/scorciatoie/salvataggio/riapertura/export MP4, registrazione sintetica MP4 con microfono scelto, forme d’onda reali, tre tracce, gruppi, effetti e annotazioni. Installer NSIS generato e contenuto ispezionato; ZIP portabile verificato tramite CRC. La pipeline di bundle è verificata separatamente prima del commit di salvataggio.
 
 Restano da provare su Windows reale l'installazione e l'acquisizione di schermo, microfono e audio di sistema. L'installer di sviluppo non è firmato digitalmente. Limiti funzionali e licenze sono descritti in README.md e THIRD_PARTY.md.

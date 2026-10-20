@@ -14,7 +14,8 @@ const { promisify } = require("node:util");
 const { pathToFileURL } = require("node:url");
 const { randomUUID } = require("node:crypto");
 const Timeline = require("./model");
-const { renderProject } = require("./render");
+const { renderProject, encoding } = require("./render");
+const { waveform } = require("./waveform");
 const unpack = (p) =>
   app.isPackaged ? p.replace(/app\.asar([/\\])/, "app.asar.unpacked$1") : p;
 const binaries = {
@@ -80,7 +81,7 @@ app.whenReady().then(() => {
     width: 1500,
     height: 950,
     minWidth: 1080,
-    minHeight: 740,
+    minHeight: 820,
     backgroundColor: "#15191f",
     title: "Crea Studio",
     webPreferences: {
@@ -169,11 +170,20 @@ ipcMain.handle("choose-source", (_e, value) => {
 });
 ipcMain.handle("platform", () => process.platform);
 let recordingFile = null;
-ipcMain.handle("recording-begin", async () => {
+ipcMain.handle("recording-begin", async (_e, settings) => {
+  encoding(settings);
+  if (
+    !Number.isInteger(settings.audioBitrate) ||
+    settings.audioBitrate < 32 ||
+    settings.audioBitrate > 320
+  )
+    throw Error("Bitrate audio: 32–320 kbps");
+  if (!["mp4", "webm"].includes(settings.format))
+    throw Error("Formato registrazione non valido");
   if (recordingFile) throw Error("Registrazione già attiva");
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "crea-record-"));
   const input = path.join(dir, "capture.webm");
-  recordingFile = { dir, input, handle: await fs.open(input, "w") };
+  recordingFile = { settings, dir, input, handle: await fs.open(input, "w") };
 });
 ipcMain.handle("recording-chunk", async (_e, buffer) => {
   if (!recordingFile?.handle) throw Error("Registrazione non attiva");
@@ -199,27 +209,44 @@ ipcMain.handle("recording-finish", async () => {
     await current.handle.close();
     current.handle = null;
     const result = await dialog.showSaveDialog(win, {
-      defaultPath: `Registrazione-${Date.now()}.webm`,
-      filters: [{ name: "Registrazione WebM", extensions: ["webm"] }],
+      defaultPath: `Registrazione-${Date.now()}.${current.settings.format}`,
+      filters: [
+        { name: "Registrazione", extensions: [current.settings.format] },
+      ],
     });
     if (result.canceled) return null;
-    const finalized = path.join(current.dir, "final.webm");
-    // MediaRecorder writes a streaming WebM without duration. Remux it before probing/importing.
-    await promisify(execFile)(
-      binaries.ffmpeg,
-      [
-        "-v",
-        "error",
-        "-nostdin",
-        "-y",
-        "-i",
-        current.input,
-        "-c",
-        "copy",
-        finalized,
-      ],
-      { windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
+    const finalized = path.join(
+      current.dir,
+      `final.${current.settings.format}`,
     );
+    const cfg = encoding(current.settings);
+    const args = ["-v", "error", "-nostdin", "-y", "-i", current.input];
+    if (current.settings.format === "mp4")
+      args.push(
+        "-vf",
+        `fps=${cfg.fps},scale=trunc(iw/2)*2:trunc(ih/2)*2`,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        String(cfg.crf),
+        "-threads",
+        "2",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-b:a",
+        String(current.settings.audioBitrate || 192) + "k",
+        "-movflags",
+        "+faststart",
+      );
+    else args.push("-c", "copy");
+    await promisify(execFile)(binaries.ffmpeg, [...args, finalized], {
+      windowsHide: true,
+      maxBuffer: 4 * 1024 * 1024,
+    });
     await fs.copyFile(finalized, result.filePath);
     return await inspect(result.filePath);
   } finally {
@@ -227,7 +254,7 @@ ipcMain.handle("recording-finish", async () => {
   }
 });
 ipcMain.handle("save-project", async (_e, project) => {
-  Timeline.validate(project);
+  project = Timeline.validate(project);
   const result = await dialog.showSaveDialog(win, {
     defaultPath: "Montaggio.crea.json",
     filters: [{ name: "Progetto Crea", extensions: ["json"] }],
@@ -247,6 +274,7 @@ ipcMain.handle("open-project", async () => {
   );
   const missing = [];
   for (const m of project.media) {
+    if (m.kind === "annotation") continue;
     try {
       await fs.access(m.path);
     } catch {
@@ -264,7 +292,7 @@ ipcMain.handle("open-project", async () => {
 });
 ipcMain.handle("export", async (_e, project, settings) => {
   if (exportController) throw Error("Esportazione già in corso");
-  Timeline.validate(project);
+  project = Timeline.validate(project);
   const result = await dialog.showSaveDialog(win, {
     defaultPath: "Video-crea.mp4",
     filters: [{ name: "Video MP4", extensions: ["mp4"] }],
@@ -273,7 +301,8 @@ ipcMain.handle("export", async (_e, project, settings) => {
   const target = path.resolve(result.filePath);
   if (
     project.media.some(
-      (m) => path.resolve(m.path).toLowerCase() === target.toLowerCase(),
+      (m) =>
+        m.path && path.resolve(m.path).toLowerCase() === target.toLowerCase(),
     )
   )
     throw Error("Scegli un file diverso dai media originali");
@@ -293,3 +322,45 @@ ipcMain.handle("export", async (_e, project, settings) => {
 });
 ipcMain.handle("cancel-export", () => exportController?.abort());
 app.on("before-quit", () => exportController?.abort());
+
+const waveformJobs = new Map(),
+  waveformController = new AbortController();
+app.on("before-quit", () => waveformController.abort());
+ipcMain.handle("waveform", async (_e, file) => {
+  const stat = await fs.stat(file),
+    key = file + ":" + stat.mtimeMs + ":" + stat.size;
+  if (!waveformJobs.has(key))
+    waveformJobs.set(
+      key,
+      waveform(file, binaries.ffmpeg, waveformController.signal).catch((e) => {
+        waveformJobs.delete(key);
+        throw e;
+      }),
+    );
+  return waveformJobs.get(key);
+});
+ipcMain.handle("fonts", async () => {
+  try {
+    if (process.platform === "win32") {
+      const { stdout } = await promisify(execFile)(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "Add-Type -AssemblyName System.Drawing; (New-Object System.Drawing.Text.InstalledFontCollection).Families.Name | ConvertTo-Json -Compress",
+        ],
+        { windowsHide: true, maxBuffer: 1024 * 1024 },
+      );
+      return JSON.parse(stdout);
+    }
+    const { stdout } = await promisify(execFile)(
+      "fc-list",
+      ["--format", "%{family}\n"],
+      { maxBuffer: 2 * 1024 * 1024 },
+    );
+    return [...new Set(stdout.split(/[\n,]/).filter(Boolean))].sort();
+  } catch {
+    return ["Arial", "Segoe UI", "Georgia", "Verdana", "Courier New"];
+  }
+});

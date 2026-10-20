@@ -1,0 +1,177 @@
+/* Canvas preview and export rasterization share exactly the same annotation drawing. */
+(function (root) {
+  const buffers = new Map();
+  function buffer(id, name, w, h) {
+    const key = id + ":" + name;
+    let cv = buffers.get(key);
+    if (!cv) {
+      cv = document.createElement("canvas");
+      buffers.set(key, cv);
+    }
+    if (cv.width !== w) cv.width = w;
+    if (cv.height !== h) cv.height = h;
+    return cv;
+  }
+  const scene = {
+    release(ids) {
+      for (const key of buffers.keys())
+        if (!ids.has(key.split(":")[0])) buffers.delete(key);
+    },
+    annotation(ctx, a, t, W, H) {
+      const x = (a.x / 100) * W,
+        y = (a.y / 100) * H,
+        s = H / 1080;
+      ctx.save();
+      ctx.strokeStyle = a.color;
+      ctx.fillStyle = a.color;
+      ctx.lineWidth = a.lineWidth * s;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      if (a.type === "text") {
+        ctx.font = `${a.size * s}px "${a.font.replace(/["\\]/g, "")}"`;
+        ctx.textBaseline = "middle";
+        ctx.textAlign = "center";
+        const lines = a.text.split("\n"),
+          lh = a.size * s * 1.25,
+          width = Math.max(1, ...lines.map((l) => ctx.measureText(l).width));
+        if (a.backgroundEnabled) {
+          ctx.fillStyle = a.background;
+          ctx.fillRect(
+            x - width / 2 - 12 * s,
+            y - (lines.length * lh) / 2 - 8 * s,
+            width + 24 * s,
+            lines.length * lh + 16 * s,
+          );
+        }
+        ctx.fillStyle = a.color;
+        lines.forEach((line, i) =>
+          ctx.fillText(line, x, y + (i - (lines.length - 1) / 2) * lh),
+        );
+      } else if (a.type === "arrow") {
+        const r = (a.angle * Math.PI) / 180,
+          len = (a.length / 100) * W,
+          ex = x + Math.cos(r) * len,
+          ey = y + Math.sin(r) * len,
+          head = Math.max(18 * s, ctx.lineWidth * 3);
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(
+          ex - head * Math.cos(r - 0.5),
+          ey - head * Math.sin(r - 0.5),
+        );
+        ctx.lineTo(ex, ey);
+        ctx.lineTo(
+          ex - head * Math.cos(r + 0.5),
+          ey - head * Math.sin(r + 0.5),
+        );
+        ctx.stroke();
+      } else {
+        const f = a.animate ? Math.max(0, Math.min(1, t / a.animate)) : 1;
+        ctx.beginPath();
+        ctx.arc(
+          x,
+          y,
+          ((a.length / 100) * H) / 2,
+          -Math.PI / 2,
+          -Math.PI / 2 + Math.PI * 2 * f,
+        );
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+    draw(ctx, c, m, source, t, W, H) {
+      if (m.kind === "annotation") {
+        scene.annotation(ctx, c.annotation, t, W, H);
+        return;
+      }
+      const l = c.layout || { x: 0, y: 0, width: 100, height: 100 },
+        rw = Math.max(2, Math.round((W * l.width) / 100)),
+        rh = Math.max(2, Math.round((H * l.height) / 100));
+      const layer = buffer(c.id, "layer", rw, rh);
+      const p = layer.getContext("2d");
+      p.fillStyle = "#000";
+      if (m.kind === "image") p.clearRect(0, 0, rw, rh);
+      else p.fillRect(0, 0, rw, rh);
+      const sw = source.videoWidth || source.naturalWidth || 1,
+        sh = source.videoHeight || source.naturalHeight || 1,
+        k = Math.min(rw / sw, rh / sh);
+      p.drawImage(source, (rw - sw * k) / 2, (rh - sh * k) / 2, sw * k, sh * k);
+      const z = c.zoom || { from: 1, to: 1, x: 0.5, y: 0.5 },
+        v = Math.max(0, Math.min(1, (t - c.in) / (c.out - c.in))),
+        zoom = z.from + (z.to - z.from) * v;
+      if (zoom !== 1) {
+        const cp = buffer(c.id, "zoom", rw, rh);
+        cp.getContext("2d").clearRect(0, 0, rw, rh);
+        cp.getContext("2d").drawImage(layer, 0, 0);
+        p.clearRect(0, 0, rw, rh);
+        p.drawImage(
+          cp,
+          (rw - rw / zoom) * z.x,
+          (rh - rh / zoom) * z.y,
+          rw / zoom,
+          rh / zoom,
+          0,
+          0,
+          rw,
+          rh,
+        );
+      }
+      const e = c.effect;
+      if (e && e.type !== "none") {
+        const x = Math.round((e.x / 100) * rw),
+          y = Math.round((e.y / 100) * rh),
+          w = Math.max(1, Math.round((e.width / 100) * rw)),
+          h = Math.max(1, Math.round((e.height / 100) * rh)),
+          cp = buffer(
+            c.id,
+            "effect",
+            e.type === "blur"
+              ? rw
+              : Math.max(
+                  1,
+                  Math.round(w / Math.max(2, (e.strength * rh) / 1080)),
+                ),
+            e.type === "blur"
+              ? rh
+              : Math.max(
+                  1,
+                  Math.round(h / Math.max(2, (e.strength * rh) / 1080)),
+                ),
+          );
+        if (e.type === "blur") {
+          cp.getContext("2d").clearRect(0, 0, rw, rh);
+          cp.getContext("2d").drawImage(layer, 0, 0);
+          p.save();
+          p.beginPath();
+          p.rect(x, y, w, h);
+          p.clip();
+          p.filter = `blur(${(e.strength * rh) / 1080}px)`;
+          p.drawImage(cp, 0, 0);
+          p.restore();
+        } else {
+          cp.getContext("2d").clearRect(0, 0, cp.width, cp.height);
+          cp.getContext("2d").drawImage(
+            layer,
+            x,
+            y,
+            w,
+            h,
+            0,
+            0,
+            cp.width,
+            cp.height,
+          );
+          p.save();
+          p.imageSmoothingEnabled = false;
+          p.drawImage(cp, 0, 0, cp.width, cp.height, x, y, w, h);
+          p.restore();
+        }
+      }
+      ctx.drawImage(layer, (l.x / 100) * W, (l.y / 100) * H, rw, rh);
+    },
+  };
+  root.Scene = scene;
+})(globalThis);

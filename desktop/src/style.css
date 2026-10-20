@@ -863,3 +863,305 @@ progress {
     padding: 20px 12px 0;
   }
 }
+/* Version 0.2: three generic tracks and a composited canvas. */
+main {
+  height: calc(100vh - 428px);
+  min-height: 0;
+  grid-template-columns: 65px 235px minmax(300px, 1fr) 285px;
+}
+.timeline-panel {
+  height: 354px;
+}
+.timeline-body {
+  height: 275px;
+}
+.track-labels > div:last-child span {
+  color: var(--purple);
+}
+.track-labels > div[data-choose-track] {
+  cursor: pointer;
+}
+.track-labels small {
+  font-size: 8px;
+}
+.track:empty:after {
+  content: "Video, immagini, audio o annotazioni";
+  font-size: 10px;
+}
+.stage canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  cursor: move;
+}
+.annotation-tools {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+.annotation-tools button {
+  font-size: 10px;
+  padding: 7px 6px;
+}
+.library #activeTrack {
+  display: inline-block;
+  width: auto;
+  font-size: 10px;
+  margin: 0 0 0 4px;
+  padding: 5px;
+}
+.properties {
+  padding: 18px 14px;
+}
+.properties h2 {
+  margin-bottom: 12px;
+}
+.properties h2 small {
+  font-size: 10px;
+  color: var(--accent);
+}
+.properties details {
+  background: #181e25;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin: 10px 0;
+}
+.properties summary {
+  cursor: pointer;
+  padding: 11px 9px;
+  font-size: 11px;
+  color: #c4cedc;
+}
+.control-group {
+  padding: 0 10px 12px;
+}
+.properties label {
+  font-size: 10px;
+  margin: 12px 0;
+}
+.properties input[type="number"],
+.properties select {
+  font-size: 11px;
+  padding: 7px;
+}
+.properties textarea {
+  width: 100%;
+  background: #10151c;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px;
+  color: var(--text);
+  margin-top: 8px;
+  resize: vertical;
+}
+.properties .form-grid {
+  gap: 0 10px;
+}
+.properties .form-grid label {
+  min-width: 0;
+  margin: 8px 0;
+}
+.properties button {
+  font-size: 11px;
+}
+.properties input[type="color"] {
+  display: block;
+  margin-top: 7px;
+  width: 100%;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  background: none;
+}
+.properties .hint {
+  font-size: 10px;
+}
+.clip {
+  touch-action: none;
+  cursor: grab;
+  background: #4e426e;
+}
+.clip.group {
+  border-style: dashed;
+  background: #4c4268;
+}
+.clip.annotation {
+  background: #71512d;
+  border-color: #d1974c;
+}
+.clip.audio:after {
+  display: none;
+}
+.clip.wave-pending:after {
+  content: "Analisi audio…";
+  position: absolute;
+  bottom: 8px;
+  left: 10px;
+  font-size: 9px;
+  color: #afbaca;
+}
+.clip-name {
+  position: relative;
+  z-index: 1;
+  background: #0002;
+  padding: 7px 10px !important;
+}
+.clip-duration {
+  position: absolute;
+  right: 5px;
+  top: 7px;
+  font-size: 8px !important;
+  padding: 0 !important;
+  z-index: 1;
+  background: #0006;
+}
+.waveform {
+  position: absolute;
+  bottom: 0;
+  height: 30px;
+  pointer-events: none;
+}
+.handle {
+  width: 7px;
+}
+.group .clip-name {
+  font-weight: 600;
+}
+#contextMenu {
+  position: fixed;
+  z-index: 90;
+  min-width: 260px;
+  padding: 5px;
+  border: 1px solid #5c6879;
+  background: #242d38;
+  border-radius: 7px;
+  box-shadow: 0 10px 30px #0008;
+}
+#contextMenu button {
+  display: block;
+  text-align: left;
+  width: 100%;
+  border: 0;
+  background: none;
+  font-size: 12px;
+}
+#contextMenu button:hover {
+  background: #414b59;
+}
+#marquee {
+  position: absolute;
+  border: 1px solid var(--accent);
+  background: #b4ed7025;
+  pointer-events: none;
+  z-index: 5;
+}
+.timeline-toolbar button {
+  font-size: 11px;
+  padding: 5px;
+}
+.timeline-tips {
+  font-size: 9px;
+}
+.transport > span {
+  min-width: 110px;
+}
+.transport #playbackState {
+  text-align: right;
+}
+.media-card {
+  padding: 9px 6px;
+}
+.media-card small {
+  font-size: 9px;
+}
+dialog {
+  max-height: 92vh;
+  overflow: auto;
+}
+dialog input[type="number"] {
+  padding: 10px;
+}
+dialog .check {
+  font-size: 11px;
+}
+.no-selection {
+  font-size: 12px;
+  margin-top: 50px;
+}
+.no-selection p {
+  font-size: 10px;
+}
+.hint b {
+  color: var(--accent);
+}
+@media (max-width: 1250px) {
+  main {
+    grid-template-columns: 55px 200px minmax(300px, 1fr) 260px;
+  }
+  .annotation-tools button {
+    padding: 6px 3px;
+    font-size: 9px;
+  }
+  .library {
+    padding: 18px 10px 0;
+  }
+  .properties {
+    padding: 15px 10px;
+  }
+}
+
+#timeline {
+  height: auto;
+  min-height: 275px;
+}
+.timeline-body {
+  overflow: hidden;
+}
+.track-labels {
+  align-self: flex-start;
+}
+.track-labels > div {
+  box-sizing: border-box;
+}
+
+#ruler {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+}
+#playhead {
+  z-index: 9;
+}
+#playhead span {
+  position: sticky;
+  top: 0;
+  display: block;
+  margin-left: -5px;
+  left: auto;
+}
+.track-labels {
+  height: 275px;
+  align-self: stretch;
+}
+.track-labels > #labelViewport {
+  height: 240px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  position: relative;
+}
+#labelRows > div {
+  position: relative;
+  border-top: 1px solid #333a44;
+  padding: 20px 10px 12px 40px;
+  cursor: pointer;
+}
+#labelRows small {
+  display: block;
+  font-size: 8px;
+  color: #717e90;
+  margin-top: 5px;
+}
