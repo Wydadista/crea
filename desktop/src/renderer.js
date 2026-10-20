@@ -2,6 +2,7 @@
 const $ = (id) => document.getElementById(id),
   uid = () => crypto.randomUUID(),
   clone = (x) => JSON.parse(JSON.stringify(x));
+let previewFocus = null;
 let project = Timeline.empty(),
   selection = new Set(),
   time = 0,
@@ -29,7 +30,7 @@ try {
 } catch {}
 const mediaOf = (c) => project.media.find((m) => m.id === c.mediaId),
   selected = () => project.clips.filter((c) => selection.has(c.id)),
-  first = () => selected()[0];
+  first = () => selected().find((c) => c.id === previewFocus) || selected()[0];
 const fmt = (t) => {
   t = Math.max(0, t || 0);
   return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(Math.floor(t % 60)).padStart(2, "0")}.${String(Math.floor((t % 1) * 100)).padStart(2, "0")}`;
@@ -81,6 +82,7 @@ function undo(from, to) {
   render();
 }
 function render() {
+  updatePreviewView();
   renderLibrary();
   renderTimeline();
   properties();
@@ -91,6 +93,7 @@ function render() {
   $("redoBtn").disabled = !future.length;
 }
 function changed() {
+  updatePreviewView();
   time = Math.min(time, Timeline.total(project.clips));
   renderTimeline();
   properties();
@@ -190,6 +193,14 @@ async function imported(result) {
   if (result.media.length) {
     checkpoint();
     project.media.push(...result.media);
+    if (
+      !project.canvasSize &&
+      result.media.some(
+        (m) => ["video", "image"].includes(m.kind) && m.width && m.height,
+      )
+    )
+      project.canvasSize = Timeline.projectSize(project);
+    updatePreviewView();
     renderLibrary();
     for (const m of result.media) requestWave(m);
     toast(
@@ -226,6 +237,7 @@ function addMedia(id, start, track) {
   }
   if (!project.media.some((existing) => existing.id === m.id))
     project.media.push(m);
+  c.sourceInstanceId ||= c.id;
   project.clips.push(c);
   selection = new Set([c.id]);
   changed();
@@ -584,12 +596,11 @@ function beginClipDrag(e, block) {
         return toast("Posizione non disponibile: le clip sono rimaste ferme.");
       checkpoint();
       for (let i = 0; i < add; i++) Timeline.addTrack(project);
-      proposals.forEach((c) =>
-        Object.assign(
-          project.clips.find((o) => o.id === c.id),
-          c,
-        ),
-      );
+      proposals.forEach((c) => {
+        const target = project.clips.find((o) => o.id === c.id);
+        Object.assign(target, c);
+        delete target.speedHomeTrack;
+      });
       changed();
     },
   );
@@ -791,12 +802,13 @@ $("zoomIn").onclick = () => setZoom(scale * 1.25);
 $("zoomOut").onclick = () => setZoom(scale / 1.25);
 function properties() {
   const all = selected(),
-    c = all[0],
+    c = first(),
     m = c && mediaOf(c);
   $("noSelection").hidden = !!c;
   $("clipProperties").hidden = !c;
   $("selectionCount").textContent = all.length ? `${all.length} clip` : "";
   if (!c) return;
+  $("lockAspect").checked = !c.aspectUnlocked;
   $("selectedName").textContent =
     all.length > 1
       ? `${all.length} clip selezionate (i parametri comuni si applicano a tutte)`
@@ -893,12 +905,14 @@ $("clipStart").onchange = () => {
     delta = Number($("clipStart").value) - c.start;
   edit((c) => {
     c.start += delta;
+    delete c.speedHomeTrack;
   });
 };
 $("clipTrack").onchange = () => {
   const delta = Number($("clipTrack").value) - first().track;
   edit((c) => {
     c.track += delta;
+    delete c.speedHomeTrack;
   });
 };
 for (const id of ["trimIn", "trimOut"])
@@ -907,13 +921,38 @@ for (const id of ["trimIn", "trimOut"])
       c.in = Number($("trimIn").value);
       c.out = Number($("trimOut").value);
     });
-$("clipSpeed").onchange = () =>
+function changeSpeed(speed, includeFamily = false) {
+  if (!selection.size) return;
+  pause();
+  try {
+    const ids = includeFamily
+      ? Timeline.familyIds(project, [...selection])
+      : [...selection];
+    const next = Timeline.retime(project, ids, speed);
+    checkpoint();
+    project = next;
+    selection = new Set(ids);
+    resetPlayers();
+    changed();
+  } catch (e) {
+    toast(e.message);
+    properties();
+  }
+}
+$("clipSpeed").onchange = () => {
+  try {
+    changeSpeed(Timeline.parseSpeed($("clipSpeed").value));
+  } catch (e) {
+    toast(e.message);
+    properties();
+  }
+};
+$("resetSpeed").onclick = () => changeSpeed(null, true);
+$("selectSourceSegments").onclick = () =>
+  selectIds(Timeline.familyIds(project, [...selection]));
+$("lockAspect").onchange = () =>
   edit((c) => {
-    c.speed = Timeline.parseSpeed($("clipSpeed").value);
-  });
-$("resetSpeed").onclick = () =>
-  edit((c) => {
-    c.speed = 1;
+    c.aspectUnlocked = !$("lockAspect").checked;
   });
 $("clipVolume").onchange = () =>
   edit((c) => {
@@ -923,6 +962,7 @@ for (const id of ["layoutX", "layoutY", "layoutW", "layoutH"])
   $(id).onchange = () =>
     edit((c) => {
       c.layout = {
+        ...(c.layout || {}),
         x: Number($("layoutX").value),
         y: Number($("layoutY").value),
         width: Number($("layoutW").value),
@@ -1069,10 +1109,7 @@ for (const button of $("contextMenu").querySelectorAll("button"))
     if (a === "split") split();
     if (a === "group") group();
     if (a === "ungroup") editGroup(false);
-    if (a === "speed")
-      edit((c) => {
-        c.speed = 1;
-      });
+    if (a === "speed") changeSpeed(null, true);
     if (a === "delete") remove();
   };
 window.addEventListener("pointerdown", (e) => {
@@ -1235,40 +1272,94 @@ function previewRect() {
     height,
   };
 }
-function previewBox(c) {
-  if (c.effect && c.effect.type !== "none") {
-    const l =
-        mediaOf(c).kind === "effect"
-          ? { x: 0, y: 0, width: 100, height: 100 }
-          : c.layout || { x: 0, y: 0, width: 100, height: 100 },
-      e = c.effect;
-    return {
-      x: l.x + (e.x * l.width) / 100,
-      y: l.y + (e.y * l.height) / 100,
-      width: (e.width * l.width) / 100,
-      height: (e.height * l.height) / 100,
-      type: "effect",
-    };
-  }
-  if (c.annotation?.type === "text") {
-    const a = c.annotation;
+function annotationBox(a) {
+  const size = Timeline.projectSize(project);
+  if (a.type === "text") {
     const ctx = $("previewCanvas").getContext("2d");
-    ctx.font = `${a.size}px "${a.font}"`;
-    const lines = Scene.wrap(ctx, a.text, ((a.width || 80) / 100) * 1920);
+    ctx.font = `${(a.size * size.height) / 1080}px "${a.font}"`;
+    const lines = Scene.wrap(ctx, a.text, ((a.width || 80) / 100) * size.width);
     return {
       x: a.x - (a.width || 80) / 2,
       y: a.y - ((lines.length * a.size * 1.25) / 1080) * 50,
       width: a.width || 80,
-      height: ((lines.length * a.size * 1.25) / 1080) * 100,
-      type: "text",
+      height: Math.max(1, ((lines.length * a.size * 1.25) / 1080) * 100),
     };
   }
-  if (["video", "image"].includes(mediaOf(c).kind))
+  const pad = (Math.max(a.lineWidth, 18) / 1080) * 100;
+  if (a.type === "circle")
     return {
-      ...(c.layout || { x: 0, y: 0, width: 100, height: 100 }),
-      type: "zoom",
+      x: a.x - (a.length * size.height) / size.width / 2 - pad,
+      y: a.y - a.length / 2 - pad,
+      width: (a.length * size.height) / size.width + 2 * pad,
+      height: a.length + 2 * pad,
     };
-  return null;
+  const r = (a.angle * Math.PI) / 180,
+    ex = a.x + Math.cos(r) * a.length,
+    ey = a.y + (Math.sin(r) * a.length * size.width) / size.height;
+  return {
+    x: Math.min(a.x, ex) - pad,
+    y: Math.min(a.y, ey) - pad,
+    width: Math.max(1, Math.abs(ex - a.x)) + 2 * pad,
+    height: Math.max(1, Math.abs(ey - a.y)) + 2 * pad,
+  };
+}
+function mediaContent(c) {
+  if (c.layout?.content) return c.layout.content;
+  const m = mediaOf(c),
+    l = c.layout || { width: 100, height: 100 },
+    size = Timeline.projectSize(project),
+    player = players.get(c.id)?.element;
+  const sw =
+      m.width || player?.videoWidth || player?.naturalWidth || size.width,
+    sh =
+      m.height || player?.videoHeight || player?.naturalHeight || size.height;
+  const fw = (size.width * l.width) / 100,
+    fh = (size.height * l.height) / 100,
+    k = Math.min(fw / sw, fh / sh);
+  const width = Math.min(100, ((sw * k) / fw) * 100),
+    height = Math.min(100, ((sh * k) / fh) * 100);
+  return { x: (100 - width) / 2, y: (100 - height) / 2, width, height };
+}
+function previewBox(c) {
+  const m = mediaOf(c);
+  if (m.kind === "effect") return { ...c.effect, type: "effect" };
+  if (m.kind === "audio") return null;
+  const l = c.layout || { x: 0, y: 0, width: 100, height: 100 };
+  const b = c.annotation
+    ? annotationBox(c.annotation)
+    : m.kind === "image"
+      ? mediaContent(c)
+      : { x: 0, y: 0, width: 100, height: 100 };
+  return {
+    x: l.x + (b.x * l.width) / 100,
+    y: l.y + (b.y * l.height) / 100,
+    width: (b.width * l.width) / 100,
+    height: (b.height * l.height) / 100,
+    type: "visual",
+  };
+}
+function boxHandles(b) {
+  return [
+    ["nw", b.x, b.y],
+    ["n", b.x + b.width / 2, b.y],
+    ["ne", b.x + b.width, b.y],
+    ["e", b.x + b.width, b.y + b.height / 2],
+    ["se", b.x + b.width, b.y + b.height],
+    ["s", b.x + b.width / 2, b.y + b.height],
+    ["sw", b.x, b.y + b.height],
+    ["w", b.x, b.y + b.height / 2],
+  ];
+}
+function hitHandle(box, x, y) {
+  if (!box) return null;
+  const r = previewRect();
+  return (
+    boxHandles(box).find(
+      ([, hx, hy]) =>
+        Math.abs(x - hx) < (9 / r.width) * 100 &&
+        Math.abs(y - hy) < (9 / r.height) * 100,
+    )?.[0] || null
+  );
 }
 function draw() {
   const cv = $("previewCanvas"),
@@ -1327,38 +1418,18 @@ function draw() {
       ctx.lineWidth = 2;
       ctx.strokeRect(x, y, w, h);
       ctx.fillStyle = "#b4ed70";
-      ctx.fillRect(x + w - 6, y + h - 6, 12, 12);
-      if (box.type === "zoom") {
-        ctx.font = "18px sans-serif";
-        ctx.fillText(
-          Math.round((c.zoom?.from || 1) * 100) + "%",
-          x + 10,
-          y + 24,
+      const r = previewRect(),
+        hw = (8 / r.width) * cv.width,
+        hh = (8 / r.height) * cv.height;
+      for (const [, hx, hy] of boxHandles(box))
+        ctx.fillRect(
+          (hx / 100) * cv.width - hw / 2,
+          (hy / 100) * cv.height - hh / 2,
+          hw,
+          hh,
         );
-      }
       ctx.restore();
     }
-  }
-  if (
-    c &&
-    c.effect?.type !== "none" &&
-    c.effect &&
-    time >= c.start &&
-    time < c.start + Timeline.duration(c)
-  ) {
-    const l = c.layout || { x: 0, y: 0, width: 100, height: 100 },
-      e = c.effect;
-    ctx.save();
-    ctx.setLineDash([8, 5]);
-    ctx.strokeStyle = "#b4ed70";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(
-      ((l.x + (e.x * l.width) / 100) * cv.width) / 100,
-      ((l.y + (e.y * l.height) / 100) * cv.height) / 100,
-      (e.width * l.width * cv.width) / 10000,
-      (e.height * l.height * cv.height) / 10000,
-    );
-    ctx.restore();
   }
 }
 function pause() {
@@ -1407,81 +1478,145 @@ function tick() {
 $("playBtn").onclick = () => (playing || preparing ? pause() : play());
 $("toStart").onclick = () => seek(0);
 $("toEnd").onclick = () => seek(Timeline.total(project.clips));
+let panView = false;
+$("panPreview").onclick = () => {
+  panView = !panView;
+  $("panPreview").setAttribute("aria-pressed", String(panView));
+  $("previewCanvas").style.cursor = panView ? "grab" : "move";
+};
 $("previewCanvas").onpointerdown = (e) => {
-  const c = first();
-  if (!c || e.button !== 0) return;
+  if (e.button !== 0 && e.button !== 1) return;
+  const stage = document.querySelector(".stage");
+  if (e.button === 1 || panView) {
+    e.preventDefault();
+    const x = e.clientX,
+      y = e.clientY,
+      left = stage.scrollLeft,
+      top = stage.scrollTop;
+    captureMove(e, (ev) => {
+      stage.scrollLeft = left + x - ev.clientX;
+      stage.scrollTop = top + y - ev.clientY;
+    });
+    return;
+  }
+  e.preventDefault();
   pause();
-  const cv = $("previewCanvas"),
-    r = previewRect(),
-    k = Math.min(r.width / cv.width, r.height / cv.height),
-    x = e.clientX,
-    y = e.clientY,
-    old = clone(c);
-  const box = previewBox(c),
-    clickX = ((e.clientX - r.left) / r.width) * 100,
-    clickY = ((e.clientY - r.top) / r.height) * 100,
-    resize =
-      box &&
-      Math.abs(clickX - box.x - box.width) < (14 / r.width) * 100 &&
-      Math.abs(clickY - box.y - box.height) < (14 / r.height) * 100;
-  let dirty = false;
-  captureMove(e, (ev) => {
-    if (!dirty) {
-      checkpoint();
-      dirty = true;
+  const r = previewRect(),
+    x = ((e.clientX - r.left) / r.width) * 100,
+    y = ((e.clientY - r.top) / r.height) * 100;
+  let c = first();
+  if (c && (time < c.start || time >= c.start + Timeline.duration(c))) c = null;
+  let box = c && previewBox(c),
+    handle = c && hitHandle(box, x, y);
+  if (!handle) {
+    c = Timeline.active(project.clips, previewTime())
+      .reverse()
+      .find((item) => {
+        const b = previewBox(item);
+        return (
+          b && x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height
+        );
+      });
+    if (!c) {
+      selection.clear();
+      renderTimeline();
+      properties();
+      draw();
+      return;
     }
-    const px = ((ev.clientX - x) / (cv.width * k)) * 100,
-      py = ((ev.clientY - y) / (cv.height * k)) * 100;
-    if (resize && box?.type === "effect") {
-      const l = c.layout || { width: 100, height: 100 };
-      c.effect.width = Math.max(
-        1,
-        Math.min(100 - c.effect.x, old.effect.width + (px * 100) / l.width),
-      );
-      c.effect.height = Math.max(
-        1,
-        Math.min(100 - c.effect.y, old.effect.height + (py * 100) / l.height),
-      );
-    } else if (resize && box?.type === "text") {
-      c.annotation.width = Math.max(
-        1,
-        Math.min(100, (old.annotation.width || 80) + 2 * px),
-      );
-    } else if (resize && box?.type === "zoom") {
-      const z = old.zoom || { from: 1, to: 1, x: 0.5, y: 0.5 };
-      const value = Math.max(1, Math.min(5, z.from + (px + py) / 30));
-      c.zoom = { ...z, from: value, to: value };
-    } else if (c.zoom?.from > 1 && box?.type === "zoom") {
-      const z = old.zoom,
-        l = c.layout || { width: 100, height: 100 };
-      c.zoom = {
-        ...z,
-        x: Math.max(0, Math.min(1, z.x - px / l.width / (1 - 1 / z.from))),
-        y: Math.max(0, Math.min(1, z.y - py / l.height / (1 - 1 / z.from))),
-      };
-    } else if (c.annotation) {
-      c.annotation.x = Math.max(0, Math.min(100, old.annotation.x + px));
-      c.annotation.y = Math.max(0, Math.min(100, old.annotation.y + py));
-    } else if (c.effect && c.effect.type !== "none") {
-      const l = c.layout || { width: 100, height: 100 };
-      c.effect.x = Math.max(
-        0,
-        Math.min(100 - c.effect.width, old.effect.x + (px * 100) / l.width),
-      );
-      c.effect.y = Math.max(
-        0,
-        Math.min(100 - c.effect.height, old.effect.y + (py * 100) / l.height),
-      );
-    } else if (mediaOf(c).kind !== "audio") {
-      c.layout = {
-        ...(old.layout || { x: 0, y: 0, width: 100, height: 100 }),
-        x: Math.max(-100, Math.min(100, (old.layout?.x || 0) + px)),
-        y: Math.max(-100, Math.min(100, (old.layout?.y || 0) + py)),
-      };
-    }
+    selectIds([c.id]);
+    previewFocus = c.id;
     properties();
     draw();
-  });
+    box = previewBox(c);
+  }
+  const old = clone(c),
+    initial = clone(box);
+  let dirty = false;
+  captureMove(
+    e,
+    (ev) => {
+      const dx = ((ev.clientX - e.clientX) / r.width) * 100,
+        dy = ((ev.clientY - e.clientY) / r.height) * 100;
+      if (!dirty && Math.abs(dx) + Math.abs(dy) < 0.05) return;
+      if (!dirty) {
+        checkpoint();
+        dirty = true;
+      }
+      const next = handle
+        ? Timeline.resizeBox(initial, handle, dx, dy, !c.aspectUnlocked)
+        : { ...initial, x: initial.x + dx, y: initial.y + dy };
+      if (handle && !c.aspectUnlocked) {
+        const original =
+          mediaOf(c).kind === "effect"
+            ? old.effect
+            : old.layout || { width: 100, height: 100 };
+        const max = mediaOf(c).kind === "effect" ? 100 : 200;
+        const factor = Math.max(
+          1 / original.width,
+          1 / original.height,
+          Math.min(
+            next.width / initial.width,
+            max / original.width,
+            max / original.height,
+          ),
+        );
+        const limited = Timeline.resizeBox(
+          initial,
+          handle,
+          (factor - 1) * initial.width * (handle.includes("w") ? -1 : 1),
+          (factor - 1) * initial.height * (handle.includes("n") ? -1 : 1),
+          true,
+        );
+        Object.assign(next, limited);
+      }
+      if (mediaOf(c).kind === "effect") {
+        const width = Math.min(100, Math.max(1, next.width)),
+          height = Math.min(100, Math.max(1, next.height));
+        c.effect = {
+          ...old.effect,
+          x: Math.max(0, Math.min(100 - width, next.x)),
+          y: Math.max(0, Math.min(100 - height, next.y)),
+          width,
+          height,
+        };
+      } else {
+        const l = old.layout || { x: 0, y: 0, width: 100, height: 100 };
+        const base = c.annotation
+          ? annotationBox(old.annotation)
+          : mediaOf(c).kind === "image"
+            ? mediaContent(old)
+            : { x: 0, y: 0, width: 100, height: 100 };
+        const width = Math.min(
+            200,
+            Math.max(1, (l.width * next.width) / initial.width),
+          ),
+          height = Math.min(
+            200,
+            Math.max(1, (l.height * next.height) / initial.height),
+          );
+        c.layout = {
+          x: Math.max(-100, Math.min(100, next.x - (base.x * width) / 100)),
+          y: Math.max(-100, Math.min(100, next.y - (base.y * height) / 100)),
+          width,
+          height,
+          ...(!c.annotation ? { content: mediaContent(old) } : {}),
+        };
+      }
+      properties();
+      draw();
+    },
+    (ev) => {
+      if (ev.type === "pointercancel" && dirty) {
+        delete c.layout;
+        Object.assign(c, old);
+      }
+      if (dirty) {
+        $("undoBtn").disabled = !history.length;
+        $("redoBtn").disabled = !future.length;
+      }
+    },
+  );
 };
 $("saveProject").onclick = safe(async () => {
   if (await studio.saveProject(project))
@@ -1597,8 +1732,7 @@ document.onkeydown = (e) => {
 async function exportProject(settings) {
   const output = clone(project);
   output.rasters = {};
-  const H = Number(settings.height),
-    W = Math.round((H * 16) / 9 / 2) * 2;
+  const { width: W, height: H } = Timeline.outputSize(project, settings.height);
   for (const c of output.clips) {
     if (mediaOf(c).kind !== "annotation") continue;
     await document.fonts.load(
@@ -1616,7 +1750,7 @@ async function exportProject(settings) {
       if (exportCancelled) throw Error("Esportazione annullata");
       if (i % 4 === 0) await new Promise(requestAnimationFrame);
       ctx.clearRect(0, 0, W, H);
-      Scene.annotation(ctx, c.annotation, i / fps, W, H);
+      Scene.draw(ctx, c, mediaOf(c), null, i / fps, W, H);
       frames.push(cv.toDataURL("image/png"));
     }
     output.rasters[c.id] = { fps, frames };
@@ -1626,6 +1760,8 @@ async function exportProject(settings) {
 $("exportBtn").onclick = () => {
   if (!project.clips.length) return toast("Aggiungi una clip.");
   pause();
+  updatePreviewView();
+  $("exportResultActions").hidden = true;
   $("exportDialog").showModal();
 };
 $("exportQuality").oninput = () => {
@@ -1644,6 +1780,7 @@ $("exportDialog").onsubmit = (e) => {
 $("doExport").onclick = safe(async () => {
   if (!$("exportFps").checkValidity())
     return toast("Inserisci FPS interi tra 1 e 120.");
+  $("exportResultActions").hidden = true;
   exportBusy = true;
   exportCancelled = false;
   $("doExport").disabled = true;
@@ -1651,7 +1788,10 @@ $("doExport").onclick = safe(async () => {
   $("exportProgress").value = 0;
   try {
     const s = {
-      height: Number($("exportHeight").value),
+      height:
+        $("exportHeight").value === "original"
+          ? "original"
+          : Number($("exportHeight").value),
       fps: Number($("exportFps").value),
       quality: Number($("exportQuality").value),
       encoder: $("exportEncoder").value,
@@ -1663,7 +1803,10 @@ $("doExport").onclick = safe(async () => {
     $("exportStatus").textContent = result
       ? "Salvato in " + result
       : "Esportazione annullata";
-    if (result) toast("Video MP4 esportato.");
+    if (result) {
+      $("exportResultActions").hidden = false;
+      toast("Video MP4 esportato.");
+    }
   } catch (e) {
     $("exportStatus").textContent = e.message;
   } finally {
@@ -1990,15 +2133,70 @@ $("resetFrame").onclick = () =>
     delete c.zoom;
     delete c.layout;
   });
+function updatePreviewView(center = false) {
+  const cv = $("previewCanvas"),
+    stage = document.querySelector(".stage"),
+    surface = $("previewSurface"),
+    size = Timeline.projectSize(project);
+  const mode = $("previewScale").value;
+  const quality = Number($("previewQuality").value) || 1280;
+  const w =
+      quality === 1280
+        ? Math.min(
+            size.width,
+            mode === "fit"
+              ? 1280
+              : Math.max(1280, (size.width * Number(mode)) / 100),
+          )
+        : quality,
+    h = Math.round((w * size.height) / size.width);
+  if (cv.width !== w) cv.width = w;
+  if (cv.height !== h) cv.height = h;
+  $("projectDimensions").textContent =
+    `PROGETTO · ${size.width} × ${size.height}`;
+  $("originalResolution").textContent =
+    `Originale · ${size.width} × ${size.height}`;
+  const dpr = window.devicePixelRatio || 1;
+  const factor =
+    mode === "fit"
+      ? Math.min(
+          stage.clientWidth / size.width,
+          stage.clientHeight / size.height,
+        )
+      : Number(mode) / 100 / dpr;
+  const width = size.width * factor,
+    height = size.height * factor;
+  surface.style.width = Math.max(stage.clientWidth, width) + "px";
+  surface.style.height = Math.max(stage.clientHeight, height) + "px";
+  Object.assign(cv.style, {
+    width: width + "px",
+    height: height + "px",
+    left: Math.max(0, (stage.clientWidth - width) / 2) + "px",
+    top: Math.max(0, (stage.clientHeight - height) / 2) + "px",
+  });
+  if (center) {
+    stage.scrollLeft = Math.max(0, (width - stage.clientWidth) / 2);
+    stage.scrollTop = Math.max(0, (height - stage.clientHeight) / 2);
+  }
+}
 $("previewQuality").onchange = () => {
-  const cv = $("previewCanvas");
-  cv.width = Number($("previewQuality").value);
-  cv.height = Math.round((cv.width * 9) / 16);
+  updatePreviewView();
   draw();
-  localStorage.setItem("crea-preview", String(cv.width));
+  localStorage.setItem("crea-preview", $("previewQuality").value);
 };
 $("previewQuality").value = localStorage.getItem("crea-preview") || "1280";
-$("previewQuality").onchange();
+$("previewScale").value = localStorage.getItem("crea-preview-scale") || "fit";
+$("previewScale").onchange = () => {
+  updatePreviewView(true);
+  draw();
+  localStorage.setItem("crea-preview-scale", $("previewScale").value);
+};
+new ResizeObserver(() => {
+  updatePreviewView();
+  draw();
+}).observe(document.querySelector(".stage"));
+$("openExportVideo").onclick = safe(() => studio.openExport("video"));
+$("openExportFolder").onclick = safe(() => studio.openExport("folder"));
 for (const prefix of ["export", "record"]) {
   const preset = $(prefix + "Preset"),
     slider = $(prefix + "Quality");
@@ -2265,17 +2463,30 @@ $("playhead").onpointerdown = (e) => {
 };
 
 $("previewCanvas").onpointermove = (e) => {
+  if (panView) {
+    $("previewCanvas").style.cursor = "grab";
+    return;
+  }
   const c = first(),
-    box = c && previewBox(c),
-    r = previewRect();
-  const x = ((e.clientX - r.left) / r.width) * 100,
-    y = ((e.clientY - r.top) / r.height) * 100;
-  $("previewCanvas").style.cursor =
-    box &&
-    Math.abs(x - box.x - box.width) < (14 / r.width) * 100 &&
-    Math.abs(y - box.y - box.height) < (14 / r.height) * 100
-      ? "nwse-resize"
-      : "move";
+    r = previewRect(),
+    handle =
+      c &&
+      hitHandle(
+        previewBox(c),
+        ((e.clientX - r.left) / r.width) * 100,
+        ((e.clientY - r.top) / r.height) * 100,
+      );
+  const cursors = {
+    nw: "nwse-resize",
+    se: "nwse-resize",
+    ne: "nesw-resize",
+    sw: "nesw-resize",
+    n: "ns-resize",
+    s: "ns-resize",
+    e: "ew-resize",
+    w: "ew-resize",
+  };
+  $("previewCanvas").style.cursor = cursors[handle] || "move";
 };
 
 transport.onbuffering = (at) => {

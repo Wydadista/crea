@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld("studio", {
   abortRecording: () => ipcRenderer.invoke("recording-abort"),
   saveProject: (project) => ipcRenderer.invoke("save-project", project),
   openProject: () => ipcRenderer.invoke("open-project"),
+  openExport: (kind) => ipcRenderer.invoke("open-export", kind),
   exportVideo: (project, settings) =>
     ipcRenderer.invoke("export", project, settings),
   cancelExport: () => ipcRenderer.invoke("cancel-export"),

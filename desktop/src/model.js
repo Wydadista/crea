@@ -56,6 +56,140 @@
         !api.overlaps([...clips.filter((c) => !ids.has(c.id)), ...candidates])
       );
     },
+    sourceFamily(c) {
+      return c.sourceInstanceId || c.mediaId;
+    },
+    familyIds(p, ids) {
+      const families = new Set(
+        p.clips.filter((c) => ids.includes(c.id)).map(api.sourceFamily),
+      );
+      return p.clips
+        .filter((c) => families.has(api.sourceFamily(c)))
+        .map((c) => c.id);
+    },
+    retime(input, ids, speed) {
+      const p = JSON.parse(JSON.stringify(input));
+      api.validate(p);
+      const chosen = p.clips.filter((c) => ids.includes(c.id));
+      if (!chosen.length) return p;
+      const groups = new Map();
+      for (const c of chosen) {
+        const key = api.sourceFamily(c);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(c);
+      }
+      const proposals = [];
+      for (const clips of groups.values()) {
+        clips.sort(
+          (a, b) =>
+            a.start - b.start || p.clips.indexOf(a) - p.clips.indexOf(b),
+        );
+        let oldEnd, newEnd;
+        for (const c of clips) {
+          const oldSpeed = c.speed || 1,
+            oldStart = c.start,
+            oldDuration = api.duration(c);
+          const target =
+            speed === null ? (c.speedReference ?? 1) : api.parseSpeed(speed);
+          if (speed !== null && target > oldSpeed && !c.workSpeedActive) {
+            c.speedReference =
+              c.speedReference === undefined && oldSpeed > 1 ? 1 : oldSpeed;
+            c.workSpeedActive = true;
+          }
+          if (speed === null) c.workSpeedActive = false;
+          c.start =
+            oldEnd === undefined
+              ? oldStart
+              : newEnd + Math.max(0, oldStart - oldEnd);
+          oldEnd = oldStart + oldDuration;
+          c.speed = target;
+          newEnd = c.start + api.duration(c);
+          proposals.push(c);
+        }
+      }
+      // Unaffected clips never move. Reserve all original/home-track positions first,
+      // so an overflow fragment cannot displace another fragment that fits at home.
+      const chosenIds = new Set(chosen.map((c) => c.id));
+      const placed = p.clips.filter((c) => !chosenIds.has(c.id)),
+        overflow = [];
+      proposals.sort((a, b) => a.start - b.start);
+      for (const c of proposals) {
+        const home = c.speedHomeTrack ?? c.track;
+        c.track = home;
+        if (api.canPlace(placed, [c])) placed.push(c);
+        else overflow.push({ c, home });
+      }
+      for (const { c, home } of overflow) {
+        let track = -1;
+        for (let t = 0; t < p.trackCount; t++)
+          if (t !== home && api.canPlace(placed, [{ ...c, track: t }])) {
+            track = t;
+            break;
+          }
+        if (track < 0) track = api.addTrack(p);
+        c.track = track;
+        c.speedHomeTrack = home;
+        placed.push(c);
+      }
+      api.validate(p);
+      return p;
+    },
+    projectSize(p) {
+      if (p.canvasSize) return { ...p.canvasSize };
+      const m = p.media.find(
+        (m) =>
+          ["video", "image"].includes(m.kind) &&
+          Number.isInteger(m.width) &&
+          Number.isInteger(m.height) &&
+          m.width >= 2 &&
+          m.height >= 2,
+      );
+      return m
+        ? { width: m.width, height: m.height }
+        : { width: 1920, height: 1080 };
+    },
+    outputSize(p, height) {
+      if (height === "original") return api.projectSize(p);
+      const h = Number(height);
+      if (![720, 1080, 1440, 2160].includes(h))
+        throw Error("Risoluzione non valida");
+      const size = api.projectSize(p);
+      return {
+        width: Math.round((h * size.width) / size.height / 2) * 2,
+        height: h,
+      };
+    },
+    resizeBox(box, handle, dx, dy, locked = true) {
+      let left = box.x,
+        top = box.y,
+        right = box.x + box.width,
+        bottom = box.y + box.height;
+      if (handle.includes("w")) left += dx;
+      if (handle.includes("e")) right += dx;
+      if (handle.includes("n")) top += dy;
+      if (handle.includes("s")) bottom += dy;
+      let width = Math.max(1, right - left),
+        height = Math.max(1, bottom - top);
+      if (locked) {
+        const fx = width / box.width,
+          fy = height / box.height;
+        const factor =
+          handle.length === 1
+            ? handle === "e" || handle === "w"
+              ? fx
+              : fy
+            : Math.abs(fx - 1) > Math.abs(fy - 1)
+              ? fx
+              : fy;
+        width = box.width * factor;
+        height = box.height * factor;
+        if (handle.includes("w")) left = box.x + box.width - width;
+        else if (!handle.includes("e")) left = box.x + (box.width - width) / 2;
+        if (handle.includes("n")) top = box.y + box.height - height;
+        else if (!handle.includes("s")) top = box.y + (box.height - height) / 2;
+      }
+      return { x: left, y: top, width, height };
+    },
     parseSpeed(value) {
       const text = String(value).trim().replace(",", ".");
       if (!/^[0-9]+(?:\.[0-9]+)?$/.test(text))
@@ -227,6 +361,13 @@
         throw Error("Numero tracce non valido (1–128)");
       p.trackHeights ||= Array(p.trackCount).fill(100);
       p.trackMuted ||= Array(p.trackCount).fill(false);
+      p.canvasSize ||= api.projectSize(p);
+      if (
+        ![p.canvasSize.width, p.canvasSize.height].every(
+          (v) => Number.isInteger(v) && v >= 2 && v <= 8192,
+        )
+      )
+        throw Error("Dimensioni progetto non valide");
       const media = new Map(),
         ids = new Set();
       for (const m of p.media) {
@@ -269,6 +410,30 @@
           (c.groupId !== undefined && typeof c.groupId !== "string")
         )
           throw Error("Clip non valida");
+        if (
+          c.sourceInstanceId !== undefined &&
+          typeof c.sourceInstanceId !== "string"
+        )
+          throw Error("Sorgente clip non valida");
+        if (c.speedReference !== undefined && !n(c.speedReference, 0.1, 16))
+          throw Error("Velocità di riferimento non valida");
+        if (
+          c.workSpeedActive !== undefined &&
+          typeof c.workSpeedActive !== "boolean"
+        )
+          throw Error("Riferimento velocità non valido");
+        if (
+          c.speedHomeTrack !== undefined &&
+          (!Number.isInteger(c.speedHomeTrack) ||
+            c.speedHomeTrack < 0 ||
+            c.speedHomeTrack >= p.trackCount)
+        )
+          throw Error("Traccia di riferimento non valida");
+        if (
+          c.aspectUnlocked !== undefined &&
+          typeof c.aspectUnlocked !== "boolean"
+        )
+          throw Error("Proporzioni non valide");
         if (c.muted !== undefined && typeof c.muted !== "boolean")
           throw Error("Audio non valido");
         if (c.mono !== undefined && typeof c.mono !== "boolean")
@@ -283,6 +448,16 @@
             ["height", 1, 200],
           ])
             if (!n(c.layout[k], lo, hi)) throw Error("Posizione non valida");
+        if (c.layout?.content) {
+          const b = c.layout.content;
+          if (
+            !n(b.x, 0, 100) ||
+            !n(b.y, 0, 100) ||
+            !n(b.width, 1e-6, 100 - b.x + 0.001) ||
+            !n(b.height, 1e-6, 100 - b.y + 0.001)
+          )
+            throw Error("Geometria visiva non valida");
+        }
         if (c.zoom) {
           for (const k of ["from", "to"])
             if (!n(c.zoom[k], 1, 5)) throw Error("Zoom non valido");

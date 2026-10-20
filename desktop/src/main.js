@@ -5,6 +5,7 @@ const {
   dialog,
   desktopCapturer,
   session,
+  shell,
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
@@ -22,7 +23,7 @@ const binaries = {
   ffmpeg: unpack(require("ffmpeg-static")),
   ffprobe: unpack(require("ffprobe-static").path),
 };
-let win, chosenSource, exportController;
+let win, chosenSource, exportController, lastExport;
 let projectPath = null,
   savedProject = null,
   savingProject = false;
@@ -519,7 +520,8 @@ ipcMain.handle("export", async (_e, project, settings) => {
     throw Error("Scegli un file diverso dai media originali");
   exportController = new AbortController();
   try {
-    return await renderProject(
+    lastExport = null;
+    const completed = await renderProject(
       project,
       target,
       settings,
@@ -527,9 +529,29 @@ ipcMain.handle("export", async (_e, project, settings) => {
       (p) => win?.webContents.send("export-progress", p),
       exportController.signal,
     );
+    await fs.access(completed);
+    lastExport = completed;
+    return completed;
   } finally {
     exportController = null;
   }
+});
+ipcMain.handle("open-export", async (_e, kind) => {
+  if (exportController || !lastExport)
+    throw Error("Nessun video esportato pronto.");
+  try {
+    await fs.access(lastExport);
+  } catch {
+    throw Error(
+      "Il video esportato non è più disponibile nel percorso originale.",
+    );
+  }
+  if (kind === "video") {
+    const error = await shell.openPath(lastExport);
+    if (error) throw Error(error);
+  } else if (kind === "folder") shell.showItemInFolder(lastExport);
+  else throw Error("Comando non valido");
+  return true;
 });
 ipcMain.handle("cancel-export", () => exportController?.abort());
 app.on("before-quit", () => exportController?.abort());

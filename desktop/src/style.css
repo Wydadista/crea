@@ -1337,3 +1337,57 @@ header button {
 .timeline-toolbar .timeline-tips {
   display: none;
 }
+/* View magnification is CSS only; element geometry remains project data. */
+.stage {
+  display: block;
+  overflow: auto;
+}
+#previewSurface {
+  position: relative;
+  min-width: 100%;
+  min-height: 100%;
+}
+.stage #previewCanvas {
+  position: absolute;
+  inset: auto;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
+}
+.viewer-head {
+  min-height: 55px;
+  height: auto;
+  align-items: center;
+}
+#previewScale {
+  max-width: 160px;
+}
+#stageEmpty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  pointer-events: none;
+}
+#panPreview[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#exportResultActions {
+  display: flex;
+  gap: 8px;
+}
+.viewer {
+  min-height: 0;
+  overflow: hidden;
+}
+.viewer-head,
+.transport {
+  flex-shrink: 0;
+}
+.stage {
+  flex: 1 1 0;
+}
+#previewSurface {
+  min-height: 0;
+}

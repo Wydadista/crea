@@ -17,7 +17,7 @@
 
 ## Verifiche
 
-`npm test` esercita FFmpeg reale, canali audio, pixel esportati prima/durante/dopo un effetto, avanzamento, ripiego GPU, migrazione e modello timeline. `DISPLAY=:99 npm run test:ui` esegue tre prove Electron: funzionalità precedenti e nuove interazioni, elaborazione audio, export dopo riapertura, snapshot da timer e recupero.
+`npm test` esercita FFmpeg reale, canali audio, pixel esportati prima/durante/dopo un effetto, avanzamento, ripiego GPU, migrazione e modello timeline. `DISPLAY=:99 npm run test:ui` esegue quattro prove Electron: funzionalità precedenti e nuove interazioni, elaborazione audio, export dopo riapertura, snapshot da timer e recupero.
 
 La generazione dell’installer NSIS è verificabile su Linux. Installazione/disinstallazione, associazione con doppio clic, cattura reale schermo/audio e accelerazione hardware vanno collaudate anche su un PC Windows con i driver desiderati. L’installer non è firmato. Nessuna release viene pubblicata automaticamente da queste modifiche.
 
@@ -40,3 +40,15 @@ npm run build:release
 ```
 
 I risultati della build locale saranno nella cartella `desktop\dist`. Questo aggiornamento viene consegnato come sorgenti su GitHub; non richiede un EXE generato nel cloud.
+
+
+## Ripristino del montaggio accelerato e controllo dell’immagine
+
+- **Seleziona segmenti della sorgente** raccoglie i tagli della stessa aggiunta del file; **Ripristina velocità originale** ripristina il riferimento precedente all’accelerazione di lavoro. Nuove aggiunte indipendenti dello stesso file hanno identificatori distinti. I progetti precedenti senza tali identificatori usano il media come riferimento. Il campo numerico permette una velocità comune diversa sui selezionati.
+- I punti sorgente `in/out` non cambiano. L’ordine e i vuoti esistenti vengono mantenuti; i frammenti consecutivi sono riposizionati consecutivamente. Le clip estranee non si spostano. Solo i frammenti in conflitto cambiano traccia conservando il tempo calcolato; una traccia aggiuntiva viene riutilizzata per tutti gli intervalli liberi. Il limite di 128 tracce causa un errore atomico, senza modifiche parziali. Tutto è annullabile con un Ctrl+Z.
+- Il menu di visualizzazione anteprima offre Adatta, 10%, 25%, 50%, 75%, 100%. Il 100% usa i pixel fisici del monitor, tenendo conto del fattore DPI. Pan con barre di scorrimento, **Sposta vista** o tasto centrale. Il menu e il pan non modificano il montaggio.
+- Otto maniglie ridimensionano l’elemento, con proporzioni bloccate inizialmente e sblocco esplicito nelle proprietà. Video, foto, testi e indicatori condividono posizione/dimensioni salvate ed esportate. Il disegno legacy dei vecchi riquadri rimane leggibile; una manipolazione nuova memorizza anche l’area sorgente adattata, così lo sblocco può allargare realmente il contenuto anziché aggiungere solo bordi vuoti.
+- **Originale** mostra la risoluzione esatta del progetto, stabilita dalla prima sorgente visiva e salvata; non dipende dalla selezione corrente. I preset mantengono le proporzioni del progetto. Sono testate anche dimensioni dispari: per conservarle viene usato H.264 4:4:4, con ripiego CPU se l’encoder hardware non lo supporta.
+- **Apri video / Apri cartella** compaiono dopo completamento e copia del file finale. Usano `shell.openPath` e `shell.showItemInFolder`; spazi e accenti non richiedono quoting manuale. I test verificano l’IPC nativo e i percorsi; l’apertura del lettore Windows viene eseguita sul PC dell’utente.
+
+Verifiche aggiuntive: `retime.test.js` usa 100 frammenti e parti eliminate, clip estranee, riutilizzo tracce, riferimento 0,8× e fallimento atomico al limite. `original-export.test.js` controlla con FFmpeg dimensioni 1536×864, 1535×863 e 432×768, più pixel dell’elemento ridimensionato. `workflow-ui.cjs` verifica accelerazione/tagli/eliminazione/ripristino, undo/redo, sincronizzazione, sei ingrandimenti, pan, otto maniglie, foto/testi/frecce, salvataggio/riapertura, export originale e comandi di apertura con percorsi accentati. `npm run test:ui` esegue ora quattro suite.

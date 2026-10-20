@@ -22,6 +22,7 @@ test("one initial track, 30+ independent universal tracks, disk roundtrip and li
   p.clips = [c("a", 0, 30), c("b", 1, 30)];
   p.trackHeights[30] = 250;
   p.trackMuted[30] = true;
+  T.validate(p);
   const restored = T.validate(JSON.parse(JSON.stringify(p)));
   assert.deepEqual(restored, p);
   for (let i = 31; i < 128; i++) T.addTrack(p);

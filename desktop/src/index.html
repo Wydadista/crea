@@ -64,7 +64,22 @@
       </section>
       <section class="viewer">
         <div class="viewer-head">
-          <span>ANTEPRIMA · 16:9</span
+          <span id="projectDimensions">ANTEPRIMA</span
+          ><select
+            id="previewScale"
+            aria-label="Ingrandimento visualizzazione anteprima"
+          >
+            <option value="fit">Adatta al pannello</option>
+            <option value="10">10%</option>
+            <option value="25">25%</option>
+            <option value="50">50%</option>
+            <option value="75">75%</option>
+            <option value="100">100%</option></select
+          ><button
+            id="panPreview"
+            title="Sposta la vista senza muovere gli elementi"
+          >
+            ✥ Sposta vista</button
           ><select id="previewQuality" aria-label="Qualità anteprima">
             <option value="1280">Alta</option>
             <option value="854">Media</option>
@@ -73,7 +88,9 @@
           ><span>Zoom timeline sulla linea verde</span>
         </div>
         <div class="stage">
-          <canvas id="previewCanvas" width="1280" height="720"></canvas>
+          <div id="previewSurface">
+            <canvas id="previewCanvas" width="1280" height="720"></canvas>
+          </div>
           <div id="stageEmpty">
             <span>▷</span>
             <h2>Spazio alla tua storia.</h2>
@@ -102,6 +119,10 @@
         </div>
         <div id="clipProperties" hidden>
           <p id="selectedName" class="selected-name"></p>
+          <label class="check"
+            ><input id="lockAspect" type="checkbox" checked /> Mantieni
+            proporzioni</label
+          >
           <details open>
             <summary>Tempo, velocità e audio</summary>
             <div class="control-group">
@@ -139,7 +160,9 @@
                   inputmode="decimal"
                   maxlength="16"
                   aria-label="Velocità, virgola o punto decimale" /></label
-              ><button id="resetSpeed">Ripristina selezione a 1×</button
+              ><button id="selectSourceSegments">
+                Seleziona segmenti della sorgente</button
+              ><button id="resetSpeed">Ripristina velocità originale</button
               ><label
                 >Volume <span id="volumeValue"></span
                 ><input id="clipVolume" type="range" min="0" max="100" /></label
@@ -428,6 +451,9 @@
         <div class="form-grid">
           <label
             >Risoluzione<select id="exportHeight">
+              <option value="original" id="originalResolution">
+                Originale
+              </option>
               <option value="720">720p</option>
               <option value="1080" selected>1080p</option>
               <option value="1440">1440p</option>
@@ -475,6 +501,10 @@
         <p id="gpuStatus" class="hint"></p>
         <progress id="exportProgress" value="0" max="100"></progress>
         <p id="exportStatus">Scegli dove salvare il video.</p>
+        <div id="exportResultActions" hidden>
+          <button id="openExportVideo" type="button">Apri video</button
+          ><button id="openExportFolder" type="button">Apri cartella</button>
+        </div>
         <div class="modal-actions">
           <button id="cancelExport" type="button" hidden>
             Annulla esportazione</button

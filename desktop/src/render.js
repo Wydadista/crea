@@ -4,9 +4,9 @@ const fs = require("node:fs/promises"),
   path = require("node:path");
 const T = require("./model");
 const { audioFilters } = require("./audio");
-function encoding(s) {
+function encoding(s, project) {
   const fps = Number(s.fps),
-    height = Number(s.height);
+    { width, height } = T.outputSize(project || { media: [] }, s.height);
   const old = { small: 30, balanced: 23, high: 18 };
   const quality = s.quality === undefined ? 70 : Number(s.quality);
   const crf = Object.hasOwn(old, s.quality)
@@ -16,12 +16,18 @@ function encoding(s) {
     !Number.isInteger(fps) ||
     fps < 1 ||
     fps > 120 ||
-    ![720, 1080, 1440, 2160].includes(height) ||
+    !(s.height === "original" || [720, 1080, 1440, 2160].includes(height)) ||
     (!Object.hasOwn(old, s.quality) &&
       (!Number.isFinite(quality) || quality < 1 || quality > 100))
   )
     throw Error("FPS: 1–120; qualità: 1–100%; risoluzione non valida");
-  return { fps, height, width: Math.round((height * 16) / 9 / 2) * 2, crf };
+  return {
+    fps,
+    height,
+    width,
+    crf,
+    pixelFormat: width % 2 || height % 2 ? "yuv444p" : "yuv420p",
+  };
 }
 function tempo(speed) {
   const filters = [];
@@ -45,7 +51,7 @@ async function renderProject(
   signal,
 ) {
   const p = T.validate(input),
-    cfg = encoding(settings),
+    cfg = encoding(settings, p),
     { fps, width: W, height: H, crf } = cfg,
     total = T.total(p.clips);
   if (!total) throw Error("Aggiungi una clip alla timeline");
@@ -168,7 +174,7 @@ async function renderProject(
           "-f",
           "lavfi",
           "-i",
-          `color=c=black:s=${W}x${H}:r=${fps}:d=${d}`,
+          `color=c=black:s=${W}x${H}:r=${fps}:d=${d},format=${cfg.pixelFormat}`,
           "-f",
           "lavfi",
           "-i",
@@ -201,7 +207,7 @@ async function renderProject(
                 : `scale=${Math.max(1, Math.round(w / Math.max(2, (e.strength * H) / 1080)))}:${Math.max(1, Math.round(h / Math.max(2, (e.strength * H) / 1080)))}:flags=area,scale=${w}:${h}:flags=neighbor`;
             filters.push(
               `[ec${id}]crop=${w}:${h}:${x}:${y},${fx}[ef${id}]`,
-              `[eb${id}][ef${id}]overlay=${x}:${y}:shortest=1[v${id}]`,
+              `[eb${id}][ef${id}]overlay=${x}:${y}:shortest=1:format=${cfg.pixelFormat === "yuv444p" ? "auto" : "yuv420"}[v${id}]`,
             );
             video = `v${id}`;
           }
@@ -252,12 +258,26 @@ async function renderProject(
             rw =
               m.kind === "annotation"
                 ? W
-                : Math.max(2, Math.round((W * l.width) / 100 / 2) * 2),
+                : Math.max(2, Math.round((W * l.width) / 100)),
             rh =
               m.kind === "annotation"
                 ? H
-                : Math.max(2, Math.round((H * l.height) / 100 / 2) * 2);
+                : Math.max(2, Math.round((H * l.height) / 100));
           let chain = `[${inputIndex}:v]setpts=(PTS-STARTPTS)/${speed},fps=${fps},tpad=stop_mode=clone:stop_duration=${d},scale=${rw}:${rh}:force_original_aspect_ratio=decrease,pad=${rw}:${rh}:(ow-iw)/2:(oh-ih)/2:color=black${["annotation", "image"].includes(m.kind) ? "@0" : ""},setsar=1,format=rgba`;
+          if (l.content && m.kind !== "annotation") {
+            const b = l.content,
+              x = Math.round((b.x / 100) * rw),
+              y = Math.round((b.y / 100) * rh),
+              w = Math.max(
+                1,
+                Math.min(rw - x, Math.round((b.width / 100) * rw)),
+              ),
+              h = Math.max(
+                1,
+                Math.min(rh - y, Math.round((b.height / 100) * rh)),
+              );
+            chain = `[${inputIndex}:v]setpts=(PTS-STARTPTS)/${speed},fps=${fps},tpad=stop_mode=clone:stop_duration=${d},scale=${w}:${h},pad=${rw}:${rh}:${x}:${y}:color=black${m.kind === "image" ? "@0" : ""},setsar=1,format=rgba`;
+          }
           const z = c.zoom || { from: 1, to: 1, x: 0.5, y: 0.5 };
           if (m.kind !== "annotation" && (z.from !== 1 || z.to !== 1)) {
             const at = (offset - c.in) / (c.out - c.in),
@@ -295,11 +315,11 @@ async function renderProject(
             }
             filters.push(
               effect + `[effect${id}]`,
-              `[base${id}][effect${id}]overlay=${x}:${y}:shortest=1[layer${id}]`,
+              `[base${id}][effect${id}]overlay=${x}:${y}:shortest=1:format=${cfg.pixelFormat === "yuv444p" ? "auto" : "yuv420"}[layer${id}]`,
             );
           } else filters.push(chain + `[layer${id}]`);
           filters.push(
-            `[${video}][layer${id}]overlay=${m.kind === "annotation" ? 0 : Math.round((l.x / 100) * W)}:${m.kind === "annotation" ? 0 : Math.round((l.y / 100) * H)}:eof_action=pass:shortest=0:repeatlast=0[v${id}]`,
+            `[${video}][layer${id}]overlay=${m.kind === "annotation" ? 0 : Math.round((l.x / 100) * W)}:${m.kind === "annotation" ? 0 : Math.round((l.y / 100) * H)}:eof_action=pass:shortest=0:repeatlast=0:format=${cfg.pixelFormat === "yuv444p" ? "auto" : "yuv420"}[v${id}]`,
           );
           video = `v${id}`;
         }
@@ -342,7 +362,7 @@ async function renderProject(
         "-bf",
         "0",
         "-pix_fmt",
-        "yuv420p",
+        cfg.pixelFormat,
         "-c:a",
         "pcm_s16le",
         "-ar",
@@ -382,6 +402,8 @@ async function renderProject(
       String(crf),
       "-threads",
       "2",
+      "-pix_fmt",
+      cfg.pixelFormat,
       "-c:a",
       "aac",
       "-b:a",

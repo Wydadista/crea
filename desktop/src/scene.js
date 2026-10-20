@@ -124,7 +124,12 @@
     },
     draw(ctx, c, m, source, t, W, H) {
       if (m.kind === "annotation") {
+        const l = c.layout || { x: 0, y: 0, width: 100, height: 100 };
+        ctx.save();
+        ctx.translate((l.x / 100) * W, (l.y / 100) * H);
+        ctx.scale(l.width / 100, l.height / 100);
         scene.annotation(ctx, c.annotation, t, W, H);
+        ctx.restore();
         return;
       }
       const l = c.layout || { x: 0, y: 0, width: 100, height: 100 },
@@ -138,7 +143,23 @@
       const sw = source.videoWidth || source.naturalWidth || source.width || 1,
         sh = source.videoHeight || source.naturalHeight || source.height || 1,
         k = Math.min(rw / sw, rh / sh);
-      p.drawImage(source, (rw - sw * k) / 2, (rh - sh * k) / 2, sw * k, sh * k);
+      if (l.content) {
+        const b = l.content;
+        p.drawImage(
+          source,
+          (b.x / 100) * rw,
+          (b.y / 100) * rh,
+          (b.width / 100) * rw,
+          (b.height / 100) * rh,
+        );
+      } else
+        p.drawImage(
+          source,
+          (rw - sw * k) / 2,
+          (rh - sh * k) / 2,
+          sw * k,
+          sh * k,
+        );
       const z = c.zoom || { from: 1, to: 1, x: 0.5, y: 0.5 },
         v = Math.max(0, Math.min(1, (t - c.in) / (c.out - c.in))),
         zoom = z.from + (z.to - z.from) * v;
