@@ -23,6 +23,30 @@ const binaries = {
   ffprobe: unpack(require("ffprobe-static").path),
 };
 let win, chosenSource, exportController;
+let projectPath = null,
+  savedProject = null,
+  savingProject = false;
+const projectArgument = () =>
+  process.argv.find((a) => /\.(creastudio|crea\.json)$/i.test(a));
+if (!app.requestSingleInstanceLock()) app.quit();
+app.on("second-instance", (_e, argv) => {
+  const file = argv.find((a) => /\.(creastudio|crea\.json)$/i.test(a));
+  if (file) {
+    pendingProject = file;
+    win?.webContents.send("project-file", file);
+  }
+  win?.show();
+  win?.focus();
+});
+let pendingProject = projectArgument();
+async function atomic(file, data) {
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const temp = file + "." + randomUUID() + ".tmp";
+  await fs.writeFile(temp, JSON.stringify(data, null, 2));
+  await fs.rename(temp, file);
+}
+const recoveryPath = () =>
+  path.join(app.getPath("userData"), "recovery.creastudio");
 async function inspect(file) {
   const { stdout } = await promisify(execFile)(
     binaries.ffprobe,
@@ -84,6 +108,7 @@ app.whenReady().then(() => {
     minHeight: 820,
     backgroundColor: "#15191f",
     title: "Crea Studio",
+    icon: path.join(__dirname, "project-icon.ico"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -253,28 +278,13 @@ ipcMain.handle("recording-finish", async () => {
     await discardRecording();
   }
 });
-ipcMain.handle("save-project", async (_e, project) => {
-  project = Timeline.validate(project);
-  const result = await dialog.showSaveDialog(win, {
-    defaultPath: "Montaggio.crea.json",
-    filters: [{ name: "Progetto Crea", extensions: ["json"] }],
-  });
-  if (result.canceled) return false;
-  await fs.writeFile(result.filePath, JSON.stringify(project, null, 2));
-  return true;
-});
-ipcMain.handle("open-project", async () => {
-  const result = await dialog.showOpenDialog(win, {
-    properties: ["openFile"],
-    filters: [{ name: "Progetto Crea", extensions: ["json"] }],
-  });
-  if (result.canceled) return null;
+async function loadProject(file) {
   const project = Timeline.validate(
-    JSON.parse(await fs.readFile(result.filePaths[0], "utf8")),
+    JSON.parse(await fs.readFile(file, "utf8")),
   );
   const missing = [];
   for (const m of project.media) {
-    if (m.kind === "annotation") continue;
+    if (["annotation", "effect"].includes(m.kind)) continue;
     try {
       await fs.access(m.path);
     } catch {
@@ -283,12 +293,148 @@ ipcMain.handle("open-project", async () => {
     m.url = pathToFileURL(m.path).href;
   }
   if (missing.length)
-    throw Error(
-      "File originali mancanti: " +
-        missing.join(", ") +
-        ". Ripristinali nel percorso originale prima di aprire il progetto.",
-    );
+    throw Error("File originali mancanti: " + missing.join(", "));
   return project;
+}
+ipcMain.handle("save-project", async (_e, project) => {
+  if (savingProject) return false;
+  savingProject = true;
+  try {
+    project = Timeline.validate(project);
+    if (!projectPath) {
+      const result = await dialog.showSaveDialog(win, {
+        defaultPath: "Montaggio.creastudio",
+        filters: [{ name: "Progetto Crea Studio", extensions: ["creastudio"] }],
+      });
+      if (result.canceled) return false;
+      projectPath = result.filePath;
+    }
+    if (
+      project.media.some(
+        (m) =>
+          m.path &&
+          path.resolve(m.path).toLowerCase() ===
+            path.resolve(projectPath).toLowerCase(),
+      )
+    )
+      throw Error("Non sovrascrivere un file multimediale con il progetto");
+    await atomic(projectPath, project);
+    savedProject = JSON.stringify(project);
+    await fs.rm(recoveryPath(), { force: true });
+    return true;
+  } finally {
+    savingProject = false;
+  }
+});
+ipcMain.handle("open-project", async () => {
+  const result = await dialog.showOpenDialog(win, {
+    properties: ["openFile"],
+    filters: [
+      {
+        name: "Progetti Crea Studio (anche precedenti)",
+        extensions: ["creastudio", "json"],
+      },
+    ],
+  });
+  if (result.canceled) return null;
+  const data = await loadProject(result.filePaths[0]);
+  projectPath = /\.creastudio$/i.test(result.filePaths[0])
+    ? result.filePaths[0]
+    : null;
+  savedProject = JSON.stringify(data);
+  await fs.rm(recoveryPath(), { force: true });
+  return data;
+});
+ipcMain.handle("project-file", async () => {
+  if (!pendingProject) return null;
+  const file = pendingProject;
+  pendingProject = null;
+  const data = await loadProject(file);
+  projectPath = /\.creastudio$/i.test(file) ? file : null;
+  savedProject = JSON.stringify(data);
+  await fs.rm(recoveryPath(), { force: true });
+  return data;
+});
+ipcMain.handle("autosave", async (_e, project) => {
+  if (JSON.stringify(project) === savedProject) return;
+  await atomic(recoveryPath(), {
+    project: Timeline.validate(project),
+    path: projectPath,
+    savedAt: Date.now(),
+  });
+});
+ipcMain.handle("recover", async () => {
+  try {
+    const data = JSON.parse(await fs.readFile(recoveryPath(), "utf8"));
+    const result = await dialog.showMessageBox(win, {
+      type: "question",
+      buttons: ["Recupera montaggio", "Ignora"],
+      defaultId: 0,
+      message:
+        "È disponibile un salvataggio automatico del " +
+        new Date(data.savedAt).toLocaleString("it-IT") +
+        ". Recuperarlo?",
+    });
+    if (result.response !== 0) {
+      await fs.rm(recoveryPath(), { force: true });
+      return null;
+    }
+    projectPath = data.path || null;
+    const project = Timeline.validate(data.project);
+    for (const m of project.media)
+      if (m.path) m.url = pathToFileURL(m.path).href;
+    return project;
+  } catch (e) {
+    if (e.code === "ENOENT") return null;
+    throw e;
+  }
+});
+ipcMain.handle("encoders", () => require("./encoders").detect(binaries.ffmpeg));
+const processedAudio = new Map();
+ipcMain.handle("audio-preview", async (_e, clip, media) => {
+  const { audioFilters } = require("./audio");
+  const processing = await audioFilters(clip, media, binaries.ffmpeg);
+  const stat = await fs.stat(media.path);
+  const key = media.path + stat.mtimeMs + processing;
+  if (!processedAudio.has(key))
+    processedAudio.set(
+      key,
+      (async () => {
+        const dir = path.join(os.tmpdir(), "crea-audio-preview");
+        await fs.mkdir(dir, { recursive: true });
+        const file = path.join(
+          dir,
+          require("node:crypto")
+            .createHash("sha256")
+            .update(key)
+            .digest("hex") + ".wav",
+        );
+        await promisify(execFile)(
+          binaries.ffmpeg,
+          [
+            "-v",
+            "error",
+            "-y",
+            "-i",
+            media.path,
+            "-vn",
+            "-af",
+            processing || "anull",
+            "-ac",
+            "2",
+            "-ar",
+            "48000",
+            file,
+          ],
+          { windowsHide: true },
+        );
+        return pathToFileURL(file).href;
+      })().catch((e) => {
+        processedAudio.delete(key);
+        throw e;
+      }),
+    );
+  return processedAudio.get(key);
 });
 ipcMain.handle("export", async (_e, project, settings) => {
   if (exportController) throw Error("Esportazione già in corso");

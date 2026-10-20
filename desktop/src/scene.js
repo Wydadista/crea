@@ -17,6 +17,42 @@
       for (const key of buffers.keys())
         if (!ids.has(key.split(":")[0])) buffers.delete(key);
     },
+    wrap(ctx, text, width) {
+      const lines = [];
+      for (const paragraph of text.split("\n")) {
+        let line = "";
+        for (const word of paragraph.split(/(\s+)/)) {
+          if (line && ctx.measureText(line + word).width > width) {
+            lines.push(line.trimEnd());
+            line = "";
+          }
+          for (const char of word) {
+            if (line && ctx.measureText(line + char).width > width) {
+              lines.push(line);
+              line = "";
+            }
+            line += char;
+          }
+        }
+        lines.push(line);
+      }
+      return lines;
+    },
+    effect(ctx, effect, W, H, id) {
+      if (!effect || effect.type === "none") return;
+      const copy = buffer(id, "under", W, H);
+      copy.getContext("2d").clearRect(0, 0, W, H);
+      copy.getContext("2d").drawImage(ctx.canvas, 0, 0);
+      scene.draw(
+        ctx,
+        { id, in: 0, out: 1, effect },
+        { kind: "image" },
+        copy,
+        0,
+        W,
+        H,
+      );
+    },
     annotation(ctx, a, t, W, H) {
       const x = (a.x / 100) * W,
         y = (a.y / 100) * H,
@@ -31,7 +67,11 @@
         ctx.font = `${a.size * s}px "${a.font.replace(/["\\]/g, "")}"`;
         ctx.textBaseline = "middle";
         ctx.textAlign = "center";
-        const lines = a.text.split("\n"),
+        const lines = scene.wrap(
+            ctx,
+            a.text,
+            Math.max(1, ((a.width || 80) / 100) * W),
+          ),
           lh = a.size * s * 1.25,
           width = Math.max(1, ...lines.map((l) => ctx.measureText(l).width));
         if (a.backgroundEnabled) {
@@ -95,8 +135,8 @@
       p.fillStyle = "#000";
       if (m.kind === "image") p.clearRect(0, 0, rw, rh);
       else p.fillRect(0, 0, rw, rh);
-      const sw = source.videoWidth || source.naturalWidth || 1,
-        sh = source.videoHeight || source.naturalHeight || 1,
+      const sw = source.videoWidth || source.naturalWidth || source.width || 1,
+        sh = source.videoHeight || source.naturalHeight || source.height || 1,
         k = Math.min(rw / sw, rh / sh);
       p.drawImage(source, (rw - sw * k) / 2, (rh - sh * k) / 2, sw * k, sh * k);
       const z = c.zoom || { from: 1, to: 1, x: 0.5, y: 0.5 },

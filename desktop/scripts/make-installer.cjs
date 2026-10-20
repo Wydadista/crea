@@ -25,6 +25,7 @@ async function main() {
       } else throw Error("Tipo di file non supportato nel pacchetto: " + rel);
     }
   }
+  await fs.copyFile(path.join(root,"src","project-icon.ico"),path.join(appDir,"project-icon.ico"));
   await scan(appDir);
   const manifest = path.join(root, "dist", "uninstall-files.nsh");
   const win = (rel) => escape(rel.split(path.sep).join("\\"));

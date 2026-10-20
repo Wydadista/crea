@@ -1,5 +1,11 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 contextBridge.exposeInMainWorld("studio", {
+  autosave: (p) => ipcRenderer.invoke("autosave", p),
+  recover: () => ipcRenderer.invoke("recover"),
+  projectFile: () => ipcRenderer.invoke("project-file"),
+  onProjectFile: (fn) => ipcRenderer.on("project-file", () => fn()),
+  encoders: () => ipcRenderer.invoke("encoders"),
+  audioPreview: (c, m) => ipcRenderer.invoke("audio-preview", c, m),
   importMedia: () => ipcRenderer.invoke("import"),
   importPaths: (files) => ipcRenderer.invoke("import-paths", files),
   filePath: (file) => webUtils.getPathForFile(file),

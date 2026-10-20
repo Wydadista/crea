@@ -1,3 +1,5 @@
+> Aggiornamento: il checkout di partenza di queste modifiche è `0463b0f228f44b5c4c3eff706c11697996c73b28`. Le modifiche correnti sono locali: non cambiare branch o resettare il checkout senza conservarle. Consultare FEATURES.md per le nuove funzioni; le istruzioni di pubblicazione sottostanti sono storiche e non autorizzano nuove pubblicazioni.
+
 # Ripresa nella nuova sessione
 
 Repository: `Wydadista/crea`. Branch di sviluppo: `codex/crea-studio-desktop`.

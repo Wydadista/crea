@@ -23,6 +23,8 @@ function waveform(file, ffmpeg, signal) {
     );
     const peaks = [];
     let tail = Buffer.alloc(0),
+      energy = [0, 0],
+      sample = 0,
       peak = 0,
       count = 0,
       stderr = "",
@@ -31,7 +33,9 @@ function waveform(file, ffmpeg, signal) {
       data = Buffer.concat([tail, data]);
       const end = data.length - (data.length % 2);
       for (let i = 0; i < end; i += 2) {
-        peak = Math.max(peak, Math.abs(data.readInt16LE(i)) / 32768);
+        const value = data.readInt16LE(i) / 32768;
+        energy[sample++ % 2] += value * value;
+        peak = Math.max(peak, Math.abs(value));
         if (++count === 1920) {
           peaks.push(peak < 0.002 ? 0 : peak);
           peak = 0;
@@ -47,7 +51,11 @@ function waveform(file, ffmpeg, signal) {
     child.on("close", (code) => {
       if (code || error) return reject(error || Error(stderr));
       if (count) peaks.push(peak < 0.002 ? 0 : peak);
-      resolve({ rate: 50, peaks: Float32Array.from(peaks) });
+      resolve({
+        rate: 50,
+        peaks: Float32Array.from(peaks),
+        levels: energy.map((v) => Math.sqrt(v / Math.max(1, sample / 2))),
+      });
     });
   });
 }

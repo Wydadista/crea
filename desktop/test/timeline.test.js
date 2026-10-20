@@ -59,8 +59,8 @@ test("group move clamps all members together and keeps offsets", () => {
     ],
   );
   const blocks = T.groups([...clips, { ...clip("c", 8, 1), groupId: "g" }]);
-  assert.equal(blocks.length, 2);
-  assert.equal(blocks[0].members.length, 2);
+  assert.equal(blocks.length, 3);
+  assert.equal(blocks[0].members.length, 1);
 });
 test("version 1 migrates without moving original video/audio positions", () => {
   const old = {

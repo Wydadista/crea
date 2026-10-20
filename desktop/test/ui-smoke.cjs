@@ -159,15 +159,15 @@ const run = require("node:util").promisify(
     // Zoom anchors on playhead even when mouse is elsewhere.
     const before = await page.locator("#playhead").boundingBox();
     await page.mouse.move(r.x + 350, r.y + 15);
-    await page.keyboard.down("Shift");
+    await page.keyboard.down("Control");
     await page.mouse.wheel(0, -300);
-    await page.keyboard.up("Shift");
+    await page.keyboard.up("Control");
     const after = await page.locator("#playhead").boundingBox();
     assert.ok(Math.abs(before.x - after.x) < 2, "zoom stays on green playhead");
     assert.ok(Number(await page.locator("#zoom").inputValue()) > 40);
-    await page.keyboard.down("Control");
+    await page.keyboard.down("Shift");
     await page.mouse.wheel(0, 400);
-    await page.keyboard.up("Control");
+    await page.keyboard.up("Shift");
     assert.ok(
       (await page.locator("#timelineScroll").evaluate((e) => e.scrollLeft)) > 0,
     );
@@ -179,11 +179,11 @@ const run = require("node:util").promisify(
     await page.keyboard.up("Control");
     await page.locator("#track0 .clip").first().click({ button: "right" });
     await page.locator('[data-action="group"]').click();
-    assert.equal(await page.locator("#track0 .clip").count(), 1);
+    assert.equal(await page.locator("#track0 .clip").count(), 2);
     assert.ok(
       await page.locator("#track0 .clip").first().getAttribute("data-group"),
     );
-    const groupNode = await page.locator("#track0 .clip").boundingBox();
+    const groupNode = await page.locator("#track0 .clip").first().boundingBox();
     await page.mouse.move(groupNode.x + 30, groupNode.y + 20);
     await page.mouse.down();
     await page.mouse.move(
@@ -210,13 +210,13 @@ const run = require("node:util").promisify(
     await page.keyboard.press("s");
     assert.equal(
       await page.locator("#track0 .clip.group").count(),
-      2,
-      "S splits a group into two visible blocks",
+      3,
+      "S preserves individual group pieces",
     );
     await page.keyboard.press("Control+z");
-    assert.equal(await page.locator("#track0 .clip.group").count(), 1);
+    assert.equal(await page.locator("#track0 .clip.group").count(), 2);
     await page.locator("#toStart").click();
-    await page.locator("#track0 .clip").click({ button: "right" });
+    await page.locator("#track0 .clip").first().click({ button: "right" });
     await page.locator('[data-action="ungroup"]').click();
     assert.equal(await page.locator("#track0 .clip").count(), 2);
     // Batch speed/reset (1x) affects selected pieces, without closing gaps.

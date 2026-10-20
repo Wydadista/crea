@@ -58,6 +58,9 @@ function checkpoint() {
 }
 function resetPlayers() {
   for (const p of players.values()) {
+    p.audio?.pause();
+    p.meterSource?.disconnect();
+    p.analyser?.disconnect();
     p.element.pause?.();
     p.element.removeAttribute?.("src");
     p.element.load?.();
@@ -135,7 +138,9 @@ function requestWave(m) {
 function renderLibrary() {
   const list = $("mediaList");
   list.replaceChildren();
-  const actual = project.media.filter((m) => m.kind !== "annotation");
+  const actual = project.media.filter(
+    (m) => !["annotation", "effect"].includes(m.kind),
+  );
   $("mediaCount").textContent = actual.length;
   $("libraryEmpty").hidden = !!actual.length;
   for (const m of actual) {
@@ -277,13 +282,26 @@ function renderTimeline() {
     Math.max(sc.clientWidth, (Math.max(total, time) + 20) * scale) + "px";
   const ruler = $("ruler");
   ruler.replaceChildren();
-  const step = scale >= 100 ? 1 : scale >= 35 ? 5 : scale >= 15 ? 10 : 30;
+  const step =
+    scale >= 320
+      ? 0.1
+      : scale >= 100
+        ? 1
+        : scale >= 35
+          ? 5
+          : scale >= 15
+            ? 10
+            : 30;
   for (
     let t = 0;
     t < parseFloat($("timeline").style.width) / scale;
     t += step
   ) {
-    const tick = el("span", "tick", fmt(t).slice(0, 5));
+    const tick = el(
+      "span",
+      "tick",
+      step < 1 ? fmt(t).slice(0, 8) : fmt(t).slice(0, 5),
+    );
     tick.style.left = t * scale + "px";
     ruler.append(tick);
   }
@@ -300,7 +318,20 @@ function renderTimeline() {
       ends[lane] = block.end;
       rows.set(block.key, lane);
     }
-    const height = Math.max(80, ends.length * 70 + 10);
+    const height = Math.max(
+      project.trackHeights?.[track] || 80,
+      ends.length * 70 + 10,
+    );
+    const muteButton = document.querySelector(
+      '[data-choose-track="' + track + '"] .track-mute',
+    );
+    if (muteButton) {
+      muteButton.textContent = project.trackMuted?.[track] ? "🔇" : "♪";
+      muteButton.setAttribute(
+        "aria-pressed",
+        String(!!project.trackMuted?.[track]),
+      );
+    }
     $("track" + track).style.height = height + "px";
     document.querySelector('[data-choose-track="' + track + '"]').style.height =
       height + "px";
@@ -309,12 +340,26 @@ function renderTimeline() {
     const members = block.members,
       c = members[0],
       m = mediaOf(c),
-      group = !!block.groupId,
+      group = false,
       node = el(
         "div",
         `clip${group ? " group" : ""}${m.kind === "audio" ? " audio" : ""}${m.kind === "annotation" ? " annotation" : ""}${members.some((c) => selection.has(c.id)) ? " selected" : ""}`,
       );
     node.style.top = 10 + (rows.get(block.key) || 0) * 70 + "px";
+    const laneCount = Math.max(
+      1,
+      ...blocks
+        .filter((b) => b.track === block.track)
+        .map((b) => (rows.get(b.key) || 0) + 1),
+    );
+    const clipHeight = Math.max(
+      60,
+      (parseFloat($("track" + block.track).style.height) - 10) / laneCount - 10,
+    );
+    node.style.height = clipHeight + "px";
+    node.style.top = 10 + (rows.get(block.key) || 0) * (clipHeight + 10) + "px";
+    if (c.groupId) node.classList.add("group");
+    if (c.muted || project.trackMuted?.[c.track]) node.classList.add("muted");
     node.dataset.id = c.id;
     node.dataset.group = block.groupId || "";
     node.style.left = block.start * scale + "px";
@@ -372,7 +417,8 @@ function drawWave(node, block) {
   if (!width || !block.members.some((c) => waves.get(c.mediaId)?.peaks)) return;
   const cv = el("canvas", "waveform");
   cv.width = Math.ceil(width);
-  cv.height = 30;
+  cv.height = Math.max(30, parseFloat(node.style.height) - 30);
+  cv.style.height = cv.height + "px";
   cv.style.left = left + "px";
   cv.style.width = width + "px";
   const ctx = cv.getContext("2d");
@@ -398,8 +444,8 @@ function drawWave(node, block) {
         peak = Math.max(peak, (wave.peaks[i] * c.volume) / (wave.max || 1));
     }
     if (peak > 0.001) {
-      const h = Math.max(1, Math.min(28, peak * 28));
-      ctx.fillRect(x, 15 - h / 2, 1, h);
+      const h = Math.max(1, Math.min(cv.height - 2, peak * (cv.height - 2)));
+      ctx.fillRect(x, cv.height - h, 1, h);
     }
   }
   node.append(cv);
@@ -462,13 +508,16 @@ function beginClipDrag(e, block) {
         (ev.clientX - x + $("timelineScroll").scrollLeft - scroll) / scale;
       delta = Math.max(delta, -Math.min(...origin.map((o) => o.start)));
       let td =
-        (trackRects.find(
-          (r) => ev.clientY >= r.rect.top && ev.clientY < r.rect.bottom,
-        )?.track ?? block.track) - block.track;
+        Math.abs(ev.clientY - y) < 24
+          ? 0
+          : (trackRects.find(
+              (r) => ev.clientY >= r.rect.top && ev.clientY < r.rect.bottom,
+            )?.track ?? block.track) - block.track;
       td = Math.max(
         -Math.min(...origin.map((o) => o.track)),
         Math.min(2 - Math.max(...origin.map((o) => o.track)), td),
       );
+      delta = Timeline.snap(project.clips, origin, delta, td, 10 / scale);
       for (const o of origin) {
         o.c.start = Math.max(0, o.start + delta);
         o.c.track = o.track + td;
@@ -605,7 +654,7 @@ function setZoom(value) {
   const sc = $("timelineScroll"),
     oldX = time * scale - sc.scrollLeft,
     anchor = oldX >= 0 && oldX <= sc.clientWidth ? oldX : sc.clientWidth / 2;
-  scale = Math.max(8, Math.min(320, Number(value)));
+  scale = Math.max(8, Math.min(640, Number(value)));
   renderTimeline();
   sc.scrollLeft = Math.max(0, time * scale - anchor);
 }
@@ -613,10 +662,10 @@ $("timelineScroll").addEventListener(
   "wheel",
   (e) => {
     const delta = e.deltaY || e.deltaX;
-    if (e.shiftKey) {
+    if (e.ctrlKey) {
       e.preventDefault();
       setZoom(scale * Math.exp(-delta * 0.002));
-    } else if (e.ctrlKey) {
+    } else if (e.shiftKey) {
       e.preventDefault();
       $("timelineScroll").scrollLeft += delta;
     }
@@ -645,15 +694,21 @@ function properties() {
     trimOut: c.out,
     clipSpeed: c.speed || 1,
     clipVolume: c.volume * 100,
+    voiceNoise: (c.voice?.noise || 0) * 100,
+    voiceLevel: (c.voice?.level || 0) * 100,
+    textWidth: c.annotation?.width || 80,
   }))
     $(id).value =
       typeof value === "number" ? Math.round(value * 1000) / 1000 : value;
+  $("visualZoom").value = c.zoom?.from || 1;
   $("volumeValue").textContent = Math.round(c.volume * 100) + "%";
   $("trimIn").disabled = all.length > 1;
   $("trimOut").disabled = all.length > 1;
+  $("muteClip").checked = !!c.muted;
+  $("monoClip").checked = !!c.mono;
   const annotation = m.kind === "annotation";
   $("annotationPanel").hidden = !annotation;
-  $("layoutPanel").hidden = annotation || m.kind === "audio";
+  $("layoutPanel").hidden = annotation || ["audio", "effect"].includes(m.kind);
   $("effectsPanel").hidden = annotation || m.kind === "audio";
   const l = c.layout || { x: 0, y: 0, width: 100, height: 100 },
     z = c.zoom || { from: 1, to: 1, x: 0.5, y: 0.5 },
@@ -947,7 +1002,7 @@ function syncPlayers(force = false) {
           c.track === track &&
           c.start > pt &&
           c.start < pt + 0.75 &&
-          mediaOf(c).kind !== "annotation",
+          !["annotation", "effect"].includes(mediaOf(c).kind),
       )
       .sort((a, b) => a.start - b.start)[0];
     if (next) upcoming.push(next);
@@ -955,6 +1010,9 @@ function syncPlayers(force = false) {
   const keep = new Set([...ids, ...upcoming.map((c) => c.id)]);
   for (const [id, p] of players)
     if (!keep.has(id)) {
+      p.audio?.pause();
+      p.meterSource?.disconnect();
+      p.analyser?.disconnect();
       p.element.pause?.();
       p.element.removeAttribute?.("src");
       p.element.load?.();
@@ -962,7 +1020,7 @@ function syncPlayers(force = false) {
     }
   for (const c of [...active, ...upcoming]) {
     const m = mediaOf(c);
-    if (m.kind === "annotation") continue;
+    if (["annotation", "effect"].includes(m.kind)) continue;
     let p = players.get(c.id);
     if (!p) {
       const element =
@@ -971,7 +1029,13 @@ function syncPlayers(force = false) {
           : document.createElement(m.kind === "audio" ? "audio" : "video");
       element.src = m.url;
       element.preload = "auto";
-      element.onloadeddata = () => draw();
+      element.onloadeddata = () => {
+        syncPlayers(true);
+        draw();
+      };
+      element.onseeked = () => {
+        if (!playing) draw();
+      };
       element.onload = () => draw();
       element.onerror = () => {
         if (!p.error) {
@@ -987,9 +1051,51 @@ function syncPlayers(force = false) {
       players.set(c.id, p);
     }
     if (m.kind === "image") continue;
+    const processKey = JSON.stringify([!!c.mono, c.voice]);
+    if (m.hasAudio && (c.mono || c.voice?.noise || c.voice?.level)) {
+      if (p.processKey !== processKey) {
+        p.audio?.pause();
+        p.audio = null;
+        p.processKey = processKey;
+        p.processing = true;
+        studio
+          .audioPreview(c, m)
+          .then((url) => {
+            if (players.get(c.id) !== p || p.processKey !== processKey) return;
+            p.audio = new Audio(url);
+            p.audio.preload = "auto";
+            p.audio.onloadeddata = () => syncPlayers(true);
+            p.processing = false;
+            syncPlayers(true);
+          })
+          .catch((e) => {
+            if (p.processKey === processKey) {
+              p.processing = false;
+              toast("Elaborazione voce non disponibile: " + e.message);
+            }
+          });
+      }
+    } else if (p.processKey) {
+      p.audio?.pause();
+      p.audio = null;
+      p.processKey = null;
+      p.processing = false;
+    }
+
     const v = p.element,
       at = ids.has(c.id) ? Timeline.sourceTime(c, pt) : c.in;
-    v.volume = c.volume;
+    const volume = c.muted || project.trackMuted?.[c.track] ? 0 : c.volume;
+    v.volume = p.audio || p.processing ? 0 : volume;
+    if (p.audio) {
+      const a = p.audio;
+      a.volume = volume;
+      a.playbackRate = c.speed || 1;
+      a.preservesPitch = true;
+      if (force || Math.abs(a.currentTime - at) > 0.1) a.currentTime = at;
+      if (playing && ids.has(c.id)) a.play().catch(() => {});
+      else a.pause();
+    }
+    meterPlayer(p, p.audio || v);
     v.preservesPitch = true;
     try {
       v.playbackRate = c.speed || 1;
@@ -1005,6 +1111,54 @@ function syncPlayers(force = false) {
       });
   }
 }
+function previewRect() {
+  const cv = $("previewCanvas"),
+    r = cv.getBoundingClientRect(),
+    k = Math.min(r.width / cv.width, r.height / cv.height),
+    width = cv.width * k,
+    height = cv.height * k;
+  return {
+    left: r.left + (r.width - width) / 2,
+    top: r.top + (r.height - height) / 2,
+    width,
+    height,
+  };
+}
+function previewBox(c) {
+  if (c.effect && c.effect.type !== "none") {
+    const l =
+        mediaOf(c).kind === "effect"
+          ? { x: 0, y: 0, width: 100, height: 100 }
+          : c.layout || { x: 0, y: 0, width: 100, height: 100 },
+      e = c.effect;
+    return {
+      x: l.x + (e.x * l.width) / 100,
+      y: l.y + (e.y * l.height) / 100,
+      width: (e.width * l.width) / 100,
+      height: (e.height * l.height) / 100,
+      type: "effect",
+    };
+  }
+  if (c.annotation?.type === "text") {
+    const a = c.annotation;
+    const ctx = $("previewCanvas").getContext("2d");
+    ctx.font = `${a.size}px "${a.font}"`;
+    const lines = Scene.wrap(ctx, a.text, ((a.width || 80) / 100) * 1920);
+    return {
+      x: a.x - (a.width || 80) / 2,
+      y: a.y - ((lines.length * a.size * 1.25) / 1080) * 50,
+      width: a.width || 80,
+      height: ((lines.length * a.size * 1.25) / 1080) * 100,
+      type: "text",
+    };
+  }
+  if (["video", "image"].includes(mediaOf(c).kind))
+    return {
+      ...(c.layout || { x: 0, y: 0, width: 100, height: 100 }),
+      type: "zoom",
+    };
+  return null;
+}
 function draw() {
   const cv = $("previewCanvas"),
     ctx = cv.getContext("2d");
@@ -1018,6 +1172,10 @@ function draw() {
   for (const c of active) {
     const m = mediaOf(c),
       p = players.get(c.id);
+    if (m.kind === "effect") {
+      Scene.effect(ctx, c.effect, cv.width, cv.height, c.id);
+      continue;
+    }
     if (m.kind === "audio") continue;
     if (m.kind === "annotation")
       Scene.draw(
@@ -1046,6 +1204,30 @@ function draw() {
       );
   }
   const c = first();
+  if (c && time >= c.start && time < c.start + Timeline.duration(c)) {
+    const box = previewBox(c);
+    if (box) {
+      const x = (box.x * cv.width) / 100,
+        y = (box.y * cv.height) / 100,
+        w = (box.width * cv.width) / 100,
+        h = (box.height * cv.height) / 100;
+      ctx.save();
+      ctx.strokeStyle = "#b4ed70";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, w, h);
+      ctx.fillStyle = "#b4ed70";
+      ctx.fillRect(x + w - 6, y + h - 6, 12, 12);
+      if (box.type === "zoom") {
+        ctx.font = "18px sans-serif";
+        ctx.fillText(
+          Math.round((c.zoom?.from || 1) * 100) + "%",
+          x + 10,
+          y + 24,
+        );
+      }
+      ctx.restore();
+    }
+  }
   if (
     c &&
     c.effect?.type !== "none" &&
@@ -1071,7 +1253,10 @@ function draw() {
 function pause() {
   playing = false;
   cancelAnimationFrame(frame);
-  for (const p of players.values()) p.element.pause?.();
+  for (const p of players.values()) {
+    p.element.pause?.();
+    p.audio?.pause();
+  }
   $("playBtn").textContent = "▶";
 }
 function play() {
@@ -1108,11 +1293,18 @@ $("previewCanvas").onpointerdown = (e) => {
   if (!c || e.button !== 0) return;
   pause();
   const cv = $("previewCanvas"),
-    r = cv.getBoundingClientRect(),
+    r = previewRect(),
     k = Math.min(r.width / cv.width, r.height / cv.height),
     x = e.clientX,
     y = e.clientY,
     old = clone(c);
+  const box = previewBox(c),
+    clickX = ((e.clientX - r.left) / r.width) * 100,
+    clickY = ((e.clientY - r.top) / r.height) * 100,
+    resize =
+      box &&
+      Math.abs(clickX - box.x - box.width) < (14 / r.width) * 100 &&
+      Math.abs(clickY - box.y - box.height) < (14 / r.height) * 100;
   let dirty = false;
   captureMove(e, (ev) => {
     if (!dirty) {
@@ -1121,7 +1313,34 @@ $("previewCanvas").onpointerdown = (e) => {
     }
     const px = ((ev.clientX - x) / (cv.width * k)) * 100,
       py = ((ev.clientY - y) / (cv.height * k)) * 100;
-    if (c.annotation) {
+    if (resize && box?.type === "effect") {
+      const l = c.layout || { width: 100, height: 100 };
+      c.effect.width = Math.max(
+        1,
+        Math.min(100 - c.effect.x, old.effect.width + (px * 100) / l.width),
+      );
+      c.effect.height = Math.max(
+        1,
+        Math.min(100 - c.effect.y, old.effect.height + (py * 100) / l.height),
+      );
+    } else if (resize && box?.type === "text") {
+      c.annotation.width = Math.max(
+        1,
+        Math.min(100, (old.annotation.width || 80) + 2 * px),
+      );
+    } else if (resize && box?.type === "zoom") {
+      const z = old.zoom || { from: 1, to: 1, x: 0.5, y: 0.5 };
+      const value = Math.max(1, Math.min(5, z.from + (px + py) / 30));
+      c.zoom = { ...z, from: value, to: value };
+    } else if (c.zoom?.from > 1 && box?.type === "zoom") {
+      const z = old.zoom,
+        l = c.layout || { width: 100, height: 100 };
+      c.zoom = {
+        ...z,
+        x: Math.max(0, Math.min(1, z.x - px / l.width / (1 - 1 / z.from))),
+        y: Math.max(0, Math.min(1, z.y - py / l.height / (1 - 1 / z.from))),
+      };
+    } else if (c.annotation) {
       c.annotation.x = Math.max(0, Math.min(100, old.annotation.x + px));
       c.annotation.y = Math.max(0, Math.min(100, old.annotation.y + py));
     } else if (c.effect && c.effect.type !== "none") {
@@ -1208,6 +1427,12 @@ $("resetKeys").onclick = () => {
   showKeys();
 };
 document.onkeydown = (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && !exportBusy) {
+    e.preventDefault();
+    document.activeElement.blur();
+    $("saveProject").click();
+    return;
+  }
   if (
     document.querySelector("dialog[open]") ||
     ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) ||
@@ -1289,7 +1514,7 @@ $("exportQuality").oninput = () => {
 };
 studio.onProgress((p) => {
   $("exportProgress").value = p.percent;
-  $("exportStatus").textContent = p.message;
+  $("exportStatus").textContent = `${p.percent}% · ${p.message}`;
 });
 $("exportDialog").oncancel = (e) => {
   if (exportBusy) e.preventDefault();
@@ -1310,6 +1535,7 @@ $("doExport").onclick = safe(async () => {
       height: Number($("exportHeight").value),
       fps: Number($("exportFps").value),
       quality: Number($("exportQuality").value),
+      encoder: $("exportEncoder").value,
     };
     $("exportStatus").textContent = "Preparazione testi e indicatori…";
     const out = await exportProject(s);
@@ -1567,3 +1793,311 @@ studio
   })
   .catch(() => {});
 render();
+
+// Independent compositing effects have their own timeline interval and no source media.
+function addEffect(type) {
+  pause();
+  checkpoint();
+  const m = {
+    id: uid(),
+    kind: "effect",
+    name: type === "blur" ? "Sfocatura" : "Pixelizzazione",
+    duration: 5,
+    hasAudio: false,
+  };
+  project.media.push(m);
+  const c = {
+    id: uid(),
+    mediaId: m.id,
+    track: Math.min(2, (first()?.track ?? Number($("activeTrack").value)) + 1),
+    start: time,
+    in: 0,
+    out: 5,
+    speed: 1,
+    volume: 0,
+    effect: { type, strength: 20, x: 30, y: 30, width: 40, height: 40 },
+  };
+  project.clips.push(c);
+  selection = new Set([c.id]);
+  render();
+}
+$("addBlur").onclick = () => addEffect("blur");
+$("addPixel").onclick = () => addEffect("pixel");
+$("muteClip").onchange = () =>
+  edit((c) => {
+    c.muted = $("muteClip").checked;
+  });
+$("monoClip").onchange = () =>
+  edit((c) => {
+    c.mono = $("monoClip").checked;
+  });
+for (const id of ["voiceNoise", "voiceLevel"])
+  $(id).onchange = () =>
+    edit((c) => {
+      c.voice = {
+        noise: Number($("voiceNoise").value) / 100,
+        level: Number($("voiceLevel").value) / 100,
+      };
+    });
+$("textWidth").onchange = () =>
+  edit((c) => {
+    if (c.annotation) c.annotation.width = Number($("textWidth").value);
+  });
+$("visualZoom").oninput = () => {
+  const c = first();
+  if (!c || !["video", "image"].includes(mediaOf(c).kind)) return;
+  if (!$("visualZoom").dataset.editing) {
+    checkpoint();
+    $("visualZoom").dataset.editing = "1";
+  }
+  c.zoom = {
+    ...(c.zoom || { x: 0.5, y: 0.5 }),
+    from: Number($("visualZoom").value),
+    to: Number($("visualZoom").value),
+  };
+  draw();
+};
+$("visualZoom").onchange = () => {
+  delete $("visualZoom").dataset.editing;
+  changed();
+};
+$("resetFrame").onclick = () =>
+  edit((c) => {
+    delete c.zoom;
+    delete c.layout;
+  });
+$("previewQuality").onchange = () => {
+  const cv = $("previewCanvas");
+  cv.width = Number($("previewQuality").value);
+  cv.height = Math.round((cv.width * 9) / 16);
+  draw();
+  localStorage.setItem("crea-preview", String(cv.width));
+};
+$("previewQuality").value = localStorage.getItem("crea-preview") || "1280";
+$("previewQuality").onchange();
+for (const prefix of ["export", "record"]) {
+  const preset = $(prefix + "Preset"),
+    slider = $(prefix + "Quality");
+  preset.onchange = () => {
+    if (preset.value !== "custom") {
+      slider.value = preset.value;
+      slider.dispatchEvent(new Event("input"));
+    }
+  };
+  slider.addEventListener("input", () => {
+    if (preset.value !== slider.value) preset.value = "custom";
+  });
+  preset.onchange();
+}
+studio
+  .encoders()
+  .then((encoders) => {
+    for (const e of encoders) {
+      const option = new Option(e.label, e.id);
+      $("exportEncoder").add(option);
+    }
+    $("gpuStatus").textContent = encoders.length
+      ? "Encoder GPU verificati con una codifica di prova. Ripiego CPU automatico in caso di errore."
+      : "Nessun encoder GPU utilizzabile rilevato: rendering CPU disponibile.";
+  })
+  .catch((e) => {
+    $("gpuStatus").textContent = "Verifica GPU non riuscita: disponibile CPU.";
+  });
+// Per-track height and mute controls, independent of horizontal zoom.
+for (let track = 0; track < 3; track++) {
+  const label = document.querySelector('[data-choose-track="' + track + '"]');
+  const mute = el("button", "track-mute", "♪");
+  mute.title = "Silenzia traccia";
+  mute.setAttribute("aria-label", "Silenzia traccia " + (track + 1));
+  mute.onclick = (e) => {
+    e.stopPropagation();
+    checkpoint();
+    project.trackMuted ||= [false, false, false];
+    project.trackMuted[track] = !project.trackMuted[track];
+    changed();
+  };
+  label.append(mute);
+  const handle = el("div", "track-resizer");
+  handle.setAttribute("role", "separator");
+  handle.setAttribute("aria-label", "Altezza traccia " + (track + 1));
+  label.append(handle);
+  handle.onpointerdown = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    checkpoint();
+    const y = e.clientY,
+      height = label.getBoundingClientRect().height;
+    captureMove(e, (ev) => {
+      project.trackHeights ||= [80, 80, 80];
+      project.trackHeights[track] = Math.max(
+        80,
+        Math.min(600, height + ev.clientY - y),
+      );
+      renderTimeline();
+    });
+  };
+}
+// Persist workspace layout independently of project content.
+let panelLayout = { library: 265, properties: 235, timeline: 288 };
+try {
+  panelLayout = {
+    ...panelLayout,
+    ...JSON.parse(localStorage.getItem("crea-panels") || "{}"),
+  };
+} catch {}
+function applyPanels() {
+  const root = document.documentElement;
+  root.style.setProperty("--library-width", panelLayout.library + "px");
+  root.style.setProperty("--properties-width", panelLayout.properties + "px");
+  root.style.setProperty("--timeline-height", panelLayout.timeline + "px");
+}
+function panelHandle(parent, cls, key, sign, min, max) {
+  const h = el("div", "panel-resizer " + cls);
+  h.setAttribute("role", "separator");
+  h.setAttribute("aria-label", "Ridimensiona " + key);
+  parent.append(h);
+  h.onpointerdown = (e) => {
+    e.preventDefault();
+    const start = key === "timeline" ? e.clientY : e.clientX,
+      old = panelLayout[key];
+    captureMove(
+      e,
+      (ev) => {
+        panelLayout[key] = Math.max(
+          min,
+          Math.min(
+            max,
+            old +
+              sign * ((key === "timeline" ? ev.clientY : ev.clientX) - start),
+          ),
+        );
+        applyPanels();
+      },
+      () => localStorage.setItem("crea-panels", JSON.stringify(panelLayout)),
+    );
+  };
+}
+applyPanels();
+panelHandle(
+  document.querySelector(".library"),
+  "right",
+  "library",
+  1,
+  180,
+  500,
+);
+panelHandle(
+  document.querySelector(".properties"),
+  "left",
+  "properties",
+  -1,
+  200,
+  450,
+);
+panelHandle(
+  document.querySelector(".timeline-panel"),
+  "top",
+  "timeline",
+  -1,
+  200,
+  Math.max(220, innerHeight - 350),
+);
+$("resetPanels").onclick = () => {
+  panelLayout = { library: 265, properties: 235, timeline: 288 };
+  applyPanels();
+  localStorage.removeItem("crea-panels");
+};
+// Atomic recovery snapshot every minute, including edits since the last manual save.
+setInterval(() => {
+  if (project.clips.length)
+    studio
+      .autosave(project)
+      .catch((e) => toast("Salvataggio automatico non riuscito: " + e.message));
+}, 60000);
+function applyOpened(data) {
+  if (!data) return;
+  pause();
+  project = Timeline.validate(data);
+  waveEpoch++;
+  waves.clear();
+  waveQueue = Promise.resolve();
+  selection.clear();
+  time = 0;
+  history = [];
+  future = [];
+  resetPlayers();
+  render();
+  for (const m of project.media) requestWave(m);
+}
+studio.onProjectFile(() =>
+  safe(async () => {
+    if (
+      project.clips.length &&
+      !confirm("Aprire il progetto e sostituire il montaggio corrente?")
+    )
+      return;
+    applyOpened(await studio.projectFile());
+  })(),
+);
+safe(async () => {
+  const file = await studio.projectFile();
+  if (file) applyOpened(file);
+  else applyOpened(await studio.recover());
+})();
+let meterContext;
+const meterNodes = new WeakMap();
+function meterPlayer(p, element) {
+  if (playing) meterContext?.resume();
+  if (p.meterElement === element) return;
+  try {
+    meterContext ||= new AudioContext();
+    if (playing) meterContext.resume();
+    p.meterSource?.disconnect();
+    p.analyser?.disconnect();
+    p.meterSource =
+      meterNodes.get(element) || meterContext.createMediaElementSource(element);
+    meterNodes.set(element, p.meterSource);
+    p.analyser = meterContext.createAnalyser();
+    p.analyser.fftSize = 512;
+    p.meterSource.connect(p.analyser);
+    p.analyser.connect(meterContext.destination);
+    p.meterElement = element;
+  } catch {}
+}
+setInterval(() => {
+  let peak = 0;
+  const mix = new Float32Array(512);
+  for (const p of players.values())
+    if (p.analyser) {
+      const data = new Float32Array(p.analyser.fftSize);
+      p.analyser.getFloatTimeDomainData(data);
+      for (let i = 0; i < data.length; i++) mix[i] += data[i];
+    }
+  for (const v of mix) peak = Math.max(peak, Math.abs(v));
+  $("audioMeter").textContent =
+    peak >= 0.98
+      ? "⚠ Audio troppo forte"
+      : peak > 0
+        ? "Audio " + Math.round(20 * Math.log10(peak)) + " dB"
+        : "Audio: —";
+  $("audioMeter").style.color = peak >= 0.98 ? "#ff716d" : "";
+}, 100);
+
+$("playhead").onpointerdown = (e) => {
+  e.stopPropagation();
+  $("ruler").onpointerdown(e);
+};
+
+$("previewCanvas").onpointermove = (e) => {
+  const c = first(),
+    box = c && previewBox(c),
+    r = previewRect();
+  const x = ((e.clientX - r.left) / r.width) * 100,
+    y = ((e.clientY - r.top) / r.height) * 100;
+  $("previewCanvas").style.cursor =
+    box &&
+    Math.abs(x - box.x - box.width) < (14 / r.width) * 100 &&
+    Math.abs(y - box.y - box.height) < (14 / r.height) * 100
+      ? "nwse-resize"
+      : "move";
+};

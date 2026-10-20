@@ -3,6 +3,7 @@ const fs = require("node:fs/promises"),
   os = require("node:os"),
   path = require("node:path");
 const T = require("./model");
+const { audioFilters } = require("./audio");
 function encoding(s) {
   const fps = Number(s.fps),
     height = Number(s.height);
@@ -49,7 +50,13 @@ async function renderProject(
     total = T.total(p.clips);
   if (!total) throw Error("Aggiungi una clip alla timeline");
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "crea-render-"));
-  const run = (args) =>
+  let lastPercent = 0;
+  const report = (percent, message) => {
+    lastPercent = Math.max(lastPercent, Math.min(99, Math.floor(percent)));
+    progress({ percent: lastPercent, message });
+  };
+  progress({ percent: 0, message: "Preparazione esportazione" });
+  const run = (args, offset = 0, duration = 0, phase = "Composizione") =>
     new Promise((resolve, reject) => {
       const child = spawn(
         binaries.ffmpeg,
@@ -60,10 +67,30 @@ async function renderProject(
           "-nostdin",
           "-filter_complex_threads",
           "1",
+          "-progress",
+          "pipe:1",
+          "-nostats",
           ...args,
         ],
         { windowsHide: true, signal },
       );
+      let pending = "";
+      child.stdout.on("data", (data) => {
+        pending += data.toString();
+        const lines = pending.split("\n");
+        pending = lines.pop();
+        for (const line of lines)
+          if (line.startsWith("out_time_us=")) {
+            const seconds = Number(line.slice(12)) / 1e6;
+            if (Number.isFinite(seconds) && duration)
+              report(
+                ((offset + Math.min(duration, Math.max(0, seconds))) /
+                  (total * 2)) *
+                  99,
+                phase,
+              );
+          }
+      });
       let stderr = "",
         error;
       child.stderr.on("data", (d) => (stderr = (stderr + d).slice(-8000)));
@@ -156,6 +183,30 @@ async function renderProject(
         index = 2;
       const audios = ["[a0]"];
       for (const c of active) {
+        if (p.media.find((m) => m.id === c.mediaId).kind === "effect") {
+          const e = c.effect;
+          if (e?.type && e.type !== "none") {
+            const id = ++vi,
+              x = Math.round((e.x / 100) * W),
+              y = Math.round((e.y / 100) * H),
+              w = Math.min(W - x, Math.max(2, Math.round((e.width / 100) * W))),
+              h = Math.min(
+                H - y,
+                Math.max(2, Math.round((e.height / 100) * H)),
+              );
+            filters.push(`[${video}]split[eb${id}][ec${id}]`);
+            const fx =
+              e.type === "blur"
+                ? `gblur=sigma=${Math.max(0.1, (e.strength * H) / 1080)}`
+                : `scale=${Math.max(1, Math.round(w / Math.max(2, (e.strength * H) / 1080)))}:${Math.max(1, Math.round(h / Math.max(2, (e.strength * H) / 1080)))}:flags=area,scale=${w}:${h}:flags=neighbor`;
+            filters.push(
+              `[ec${id}]crop=${w}:${h}:${x}:${y},${fx}[ef${id}]`,
+              `[eb${id}][ef${id}]overlay=${x}:${y}:shortest=1[v${id}]`,
+            );
+            video = `v${id}`;
+          }
+          continue;
+        }
         const m = p.media.find((m) => m.id === c.mediaId),
           speed = c.speed || 1,
           offset = Math.max(c.in, T.sourceTime(c, start)),
@@ -252,10 +303,17 @@ async function renderProject(
           );
           video = `v${id}`;
         }
-        if (m.hasAudio && c.volume > 0 && ["video", "audio"].includes(m.kind)) {
+        if (
+          m.hasAudio &&
+          c.volume > 0 &&
+          !c.muted &&
+          !p.trackMuted?.[c.track] &&
+          ["video", "audio"].includes(m.kind)
+        ) {
           const label = `a${inputIndex}`;
+          const processing = await audioFilters(c, m, binaries.ffmpeg);
           filters.push(
-            `[${inputIndex}:a]asetpts=PTS-STARTPTS,${tempo(speed)},volume=${c.volume},apad,atrim=duration=${d}[${label}]`,
+            `[${inputIndex}:a]asetpts=PTS-STARTPTS,${tempo(speed)},${processing ? processing + "," : ""}volume=${c.volume},apad,atrim=duration=${d}[${label}]`,
           );
           audios.push(`[${label}]`);
         }
@@ -293,16 +351,16 @@ async function renderProject(
         "2",
         path.join(dir, part),
       );
-      await run(args);
+      await run(args, start, d);
       concat.push(`file '${part}'\nduration ${d}`);
-      progress({
-        percent: Math.round(((interval + 1) / bounds.length) * 95),
-        message: `Composizione ${interval + 1}/${bounds.length - 1}`,
-      });
+      report(
+        ((start + d) / (total * 2)) * 99,
+        `Composizione ${interval + 1}/${bounds.length - 1}`,
+      );
     }
     await fs.writeFile(path.join(dir, "list.txt"), concat.join("\n"));
     const result = path.join(dir, "final.mp4");
-    await run([
+    const finishArgs = [
       "-y",
       "-f",
       "concat",
@@ -331,7 +389,30 @@ async function renderProject(
       "-movflags",
       "+faststart",
       result,
-    ]);
+    ];
+    const encoder = settings.encoder || "cpu";
+    const enc = require("./encoders");
+    if (encoder !== "cpu" && !enc.candidates.some(([id]) => id === encoder))
+      throw Error("Encoder non valido");
+    if (encoder !== "cpu") {
+      const at = finishArgs.indexOf("-c:v");
+      const hardware = [
+        ...finishArgs.slice(0, at),
+        ...enc.args(encoder, crf),
+        ...finishArgs.slice(at + 6),
+      ];
+      try {
+        await run(hardware, total, total, "Codifica GPU");
+      } catch (e) {
+        if (signal?.aborted) throw e;
+        lastPercent = Math.floor(99 / 2);
+        progress({
+          percent: lastPercent,
+          message: "GPU non disponibile: riavvio la codifica finale con CPU",
+        });
+        await run(finishArgs, total, total, "Codifica CPU (ripiego GPU)");
+      }
+    } else await run(finishArgs, total, total, "Codifica MP4 finale");
     if (signal?.aborted) throw Error("Esportazione annullata");
     await fs.copyFile(result, output);
     progress({ percent: 100, message: "Esportazione completata" });

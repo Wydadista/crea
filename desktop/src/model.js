@@ -70,16 +70,35 @@
         c.track += td;
       }
     },
+    snap(clips, origins, delta, trackDelta, threshold) {
+      const ids = new Set(origins.map((o) => o.c.id));
+      let correction = threshold + 1;
+      for (const o of origins)
+        for (const other of clips) {
+          if (ids.has(other.id) || other.track !== o.track + trackDelta)
+            continue;
+          for (const [edge, target] of [
+            [o.start, other.start + api.duration(other)],
+            [o.start + api.duration(o.c), other.start],
+          ]) {
+            const d = target - edge - delta;
+            if (Math.abs(d) <= threshold && Math.abs(d) < Math.abs(correction))
+              correction = d;
+          }
+        }
+      return Math.max(
+        -Math.min(...origins.map((o) => o.start)),
+        delta + (Math.abs(correction) <= threshold ? correction : 0),
+      );
+    },
     groups(clips) {
       const out = [],
         seen = new Set();
       for (const c of clips) {
-        const key = c.groupId ? `${c.groupId}:${c.track}` : c.id;
+        const key = c.id;
         if (seen.has(key)) continue;
         seen.add(key);
-        const members = c.groupId
-          ? clips.filter((x) => x.groupId === c.groupId && x.track === c.track)
-          : [c];
+        const members = [c];
         out.push({
           key,
           groupId: c.groupId,
@@ -110,9 +129,12 @@
           typeof m.id !== "string" ||
           media.has(m.id) ||
           typeof m.name !== "string" ||
-          !["video", "audio", "image", "annotation"].includes(m.kind) ||
+          !["video", "audio", "image", "annotation", "effect"].includes(
+            m.kind,
+          ) ||
           !n(m.duration, 0.001, 86400 * 7) ||
-          (m.kind !== "annotation" && typeof m.path !== "string")
+          (!["annotation", "effect"].includes(m.kind) &&
+            typeof m.path !== "string")
         )
           throw Error("Media non valido");
         media.set(m.id, m);
@@ -132,7 +154,7 @@
           !n(
             c.out,
             c.in + 0.001,
-            ["image", "annotation"].includes(m.kind)
+            ["image", "annotation", "effect"].includes(m.kind)
               ? 86400
               : m.duration + 0.01,
           ) ||
@@ -141,6 +163,12 @@
           (c.groupId !== undefined && typeof c.groupId !== "string")
         )
           throw Error("Clip non valida");
+        if (c.muted !== undefined && typeof c.muted !== "boolean")
+          throw Error("Audio non valido");
+        if (c.mono !== undefined && typeof c.mono !== "boolean")
+          throw Error("Mono non valido");
+        if (c.voice && (!n(c.voice.noise, 0, 1) || !n(c.voice.level, 0, 1)))
+          throw Error("Voce non valida");
         if (c.layout)
           for (const [k, lo, hi] of [
             ["x", -100, 100],
@@ -189,8 +217,24 @@
           )
             throw Error("Annotazione non valida");
         }
+        if (c.annotation?.width !== undefined && !n(c.annotation.width, 1, 100))
+          throw Error("Riquadro testo non valido");
         ids.add(c.id);
       }
+      if (
+        p.trackHeights &&
+        (!Array.isArray(p.trackHeights) ||
+          p.trackHeights.length !== 3 ||
+          p.trackHeights.some((h) => !n(h, 80, 600)))
+      )
+        throw Error("Altezza tracce non valida");
+      if (
+        p.trackMuted &&
+        (!Array.isArray(p.trackMuted) ||
+          p.trackMuted.length !== 3 ||
+          p.trackMuted.some((v) => typeof v !== "boolean"))
+      )
+        throw Error("Tracce non valide");
       return p;
     },
   };

@@ -31,6 +31,11 @@ Section "Crea Studio"
   SetShellVarContext current
   SetOutPath "$INSTDIR"
   File /r "${APP_DIR}\*"
+  WriteRegStr HKCU "Software\Classes\.creastudio" "" "CreaStudio.Project"
+  WriteRegStr HKCU "Software\Classes\CreaStudio.Project" "" "Progetto Crea Studio"
+  WriteRegStr HKCU "Software\Classes\CreaStudio.Project\DefaultIcon" "" '$\"$INSTDIR\project-icon.ico$\",0'
+  WriteRegStr HKCU "Software\Classes\CreaStudio.Project\shell\open\command" "" '$\"$INSTDIR\Crea Studio.exe$\" $\"%1$\"'
+  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
   WriteUninstaller "$INSTDIR\Disinstalla.exe"
   CreateDirectory "$SMPROGRAMS\Crea Studio"
   CreateShortcut "$SMPROGRAMS\Crea Studio\Crea Studio.lnk" "$INSTDIR\Crea Studio.exe"
@@ -56,5 +61,13 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\Crea Studio\Crea Studio.lnk"
   RMDir "$SMPROGRAMS\Crea Studio"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CreaStudio"
+  ReadRegStr $0 HKCU "Software\Classes\CreaStudio.Project\shell\open\command" ""
+  StrCmp $0 '$\"$INSTDIR\Crea Studio.exe$\" $\"%1$\"' 0 association_done
+  DeleteRegKey HKCU "Software\Classes\CreaStudio.Project"
+  ReadRegStr $0 HKCU "Software\Classes\.creastudio" ""
+  StrCmp $0 "CreaStudio.Project" 0 association_done
+  DeleteRegKey HKCU "Software\Classes\.creastudio"
+  association_done:
+  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
   DeleteRegKey HKCU "Software\Crea Studio"
 SectionEnd

@@ -1176,3 +1176,120 @@ dialog .check {
   border-radius: 5px;
   color: var(--text);
 }
+/* Adjustable workspace and independent track geometry. */
+main {
+  height: calc(100vh - 74px - var(--timeline-height, 288px));
+  min-height: 260px;
+  grid-template-columns: 74px var(--library-width, 265px) minmax(
+      200px,
+      1fr
+    ) var(--properties-width, 235px);
+}
+.timeline-panel {
+  height: var(--timeline-height, 288px);
+  position: relative;
+}
+.library,
+.properties {
+  position: relative;
+  min-width: 0;
+}
+.panel-resizer {
+  position: absolute;
+  z-index: 40;
+  background: transparent;
+  touch-action: none;
+}
+.panel-resizer:hover,
+.track-resizer:hover {
+  background: #b4ed7080;
+}
+.panel-resizer.right {
+  right: -3px;
+  top: 0;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+}
+.panel-resizer.left {
+  left: -3px;
+  top: 0;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+}
+.panel-resizer.top {
+  top: -4px;
+  left: 0;
+  width: 100%;
+  height: 8px;
+  cursor: row-resize;
+}
+[data-choose-track] {
+  position: relative;
+}
+.track-resizer {
+  position: absolute;
+  bottom: 0;
+  height: 8px;
+  left: 0;
+  right: 0;
+  cursor: row-resize;
+  touch-action: none;
+  z-index: 20;
+}
+.track-mute {
+  position: absolute;
+  right: 2px;
+  top: 4px;
+  padding: 3px;
+}
+.clip.muted {
+  opacity: 0.55;
+  border-style: dashed;
+}
+.clip.muted::after {
+  content: "🔇";
+  position: absolute;
+  right: 10px;
+  top: 3px;
+}
+.waveform {
+  bottom: 2px;
+}
+.annotation-tools {
+  flex-wrap: wrap;
+}
+.viewer-head {
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.viewer-head select {
+  max-width: 100px;
+}
+#playhead {
+  pointer-events: auto;
+  cursor: ew-resize;
+}
+header {
+  padding: 0 10px;
+  gap: 5px;
+}
+header button {
+  padding: 8px;
+}
+@media (max-width: 1300px) {
+  .project-name,
+  .badge {
+    display: none;
+  }
+}
+.timeline-body {
+  height: calc(var(--timeline-height, 288px) - 80px);
+}
+.track-labels {
+  height: 100%;
+}
+.track-labels > #labelViewport {
+  height: calc(100% - 35px);
+}

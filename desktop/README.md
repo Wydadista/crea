@@ -26,11 +26,11 @@ Sono inclusi lockfile, script di preparazione Windows e cloud Linux, installer N
 
 - Importare file o trascinarli nella finestra. Trascinarli poi su **qualsiasi** traccia, nel punto desiderato; il pulsante `+` li aggiunge nel punto della linea verde sulla traccia scelta nella libreria.
 - La traccia 3 è sopra la 2, che è sopra la 1. Dimensioni e posizione della clip si regolano nelle proprietà per mostrare più video contemporaneamente, ad esempio immagine nell'immagine. Se più clip della stessa traccia si sovrappongono, la timeline le mostra su sottorighe; l'ordine di inserimento decide quale appare davanti. Tutti gli audio attivi vengono miscelati.
-- **Nessuna calamita e nessun ripple**: muovere, cancellare, tagliare, accorciare o cambiare velocità non sposta automaticamente le altre clip. I vuoti sono mantenuti; in esportazione lo sfondo è nero dove non c'è alcun contenuto visivo.
-- **Ctrl+rotellina** scorre orizzontalmente. **Shift+rotellina** e i pulsanti/slider di zoom mantengono come riferimento la **linea verde**, indipendentemente dalla posizione del mouse. Se il cursore è fuori vista, lo zoom lo riporta al centro della vista.
+- **Aggancio preciso durante il trascinamento, nessun ripple**: avvicinando due estremi sulla stessa traccia entro 10 pixel, questi combaciano esattamente. Lo spostamento verticale richiede un gesto di almeno 24 pixel.  muovere, cancellare, tagliare, accorciare o cambiare velocità non sposta automaticamente le altre clip. I vuoti sono mantenuti; in esportazione lo sfondo è nero dove non c'è alcun contenuto visivo.
+- **Shift+rotellina** scorre orizzontalmente. **Ctrl+rotellina** e i pulsanti/slider di zoom mantengono come riferimento la **linea verde**, indipendentemente dalla posizione del mouse. Se il cursore è fuori vista, lo zoom lo riporta al centro della vista.
 - Cliccare sul righello per spostare la linea verde; **S** divide le clip selezionate attraversate dalla linea. Trascinare i bordi per rifilare. I campi di inizio/fine sorgente permettono un taglio numerico preciso.
 - **Ctrl/Shift+clic**, selezione a rettangolo trascinando su uno spazio vuoto o **Ctrl+A** selezionano più clip. **Canc** elimina; **Ctrl+Z** annulla; **Ctrl+Shift+Z** ripristina.
-- Tasto destro → **Unifica in un gruppo modificabile** (o **Ctrl+G**) raccoglie anche molti frammenti in un unico blocco per traccia. Il gruppo mantiene tagli, spazi, effetti e posizioni relative. Si sposta come un insieme; **S** lo divide in due gruppi alla linea verde. **Separa gruppo** / **Ctrl+Shift+G** rende di nuovo visibili i frammenti. È un raggruppamento reversibile, non la ricodifica dei frammenti in un nuovo file sorgente.
+- Tasto destro → **Raggruppa elementi selezionati** (o **Ctrl+G**) associa video, audio, testi, indicatori ed effetti su tracce diverse mantenendo ogni clip separata e modificabile. Il gruppo mantiene tagli, spazi, effetti e posizioni relative. Si sposta come un insieme; **S** lo divide in due gruppi alla linea verde. **Separa gruppo** / **Ctrl+Shift+G** rende di nuovo visibili i frammenti. È un raggruppamento reversibile, non la ricodifica dei frammenti in un nuovo file sorgente.
 - **Comandi** personalizza i tasti singoli per divisione, riproduzione e cancellazione. Le scorciatoie non intervengono mentre si scrive nei campi.
 
 ## Forma d'onda e velocità
@@ -43,9 +43,9 @@ La forma d'onda di video e audio proviene dai campioni reali del file: picchi de
 
 Selezionare una clip video/immagine e aprire le proprietà:
 
-- **Sfocatura e pixelatura**: tipo, intensità e area X/Y/larghezza/altezza in percentuale della clip. Si può trascinare l'area tratteggiata nell'anteprima. Per applicare l'effetto soltanto a una parte del video, dividere il segmento con S e applicarlo al pezzo selezionato. La cornice è un aiuto di modifica e non viene esportata.
-- **Posizione, dimensioni e zoom**: X/Y e dimensioni del riquadro, zoom iniziale/finale da 1× a 5× e centro X/Y. Valori diversi fra inizio e fine producono uno zoom in/out lineare lungo la clip. Si può spostare il riquadro anche trascinandolo nell'anteprima quando non è attiva un'area effetto.
-- **Testo**: testo su più righe, carattere fra quelli installati sul PC, dimensione, colore, sfondo opzionale e suo colore. I font non vengono incorporati nei progetti; su un altro PC devono essere installati per mantenere lo stesso aspetto.
+- **Sfocatura e pixelatura**: pulsanti diretti vicino a Testo e Freccia creano elementi indipendenti sulla traccia superiore (scegliere una traccia sopra i video da elaborare). Spostare/rifilare l’elemento per scegliere il suo intervallo. L’area è trascinabile e ridimensionabile con la maniglia nell’anteprima; le proprietà permettono una regolazione precisa. Gli effetti precedenti applicati direttamente alle clip restano supportati. La cornice è un aiuto di modifica e non viene esportata.
+- **Posizione, dimensioni e zoom**: slider visivo 1–5×, maniglia in basso a destra e trascinamento per scegliere l’inquadratura. **Ripristina inquadratura** azzera zoom e posizione. Controlli numerici secondari: X/Y e dimensioni del riquadro, zoom iniziale/finale da 1× a 5× e centro X/Y. Valori diversi fra inizio e fine producono uno zoom in/out lineare lungo la clip. Si può spostare il riquadro anche trascinandolo nell'anteprima quando non è attiva un'area effetto.
+- **Testo**: riquadro ridimensionabile, ritorno a capo automatico e manuale, carattere fra quelli installati sul PC, dimensione, colore, sfondo opzionale e suo colore. I font non vengono incorporati nei progetti; su un altro PC devono essere installati per mantenere lo stesso aspetto.
 - **Freccia**: colore (rosso iniziale), posizione, lunghezza, angolo e spessore.
 - **Cerchio**: colore, posizione, diametro e spessore; il tempo di chiusura 0–2 secondi disegna progressivamente il cerchio. `0` lo rende fisso.
 
@@ -70,7 +70,7 @@ Testi e indicatori sono clip con posizione, durata e traccia proprie. Possono es
 
 Il motore renderizza intervalli definiti dagli inizi/fini delle clip, con un massimo di due thread per encoder e un thread di filtri, poi ricostruisce il flusso finale a FPS costanti. Usa file temporanei: durata, numero di clip, risoluzione e sovrapposizioni influenzano tempi e spazio disco. I tagli vengono adattati ai fotogrammi disponibili nel frame rate scelto. L'esportazione è annullabile.
 
-**Salva progetto** conserva il montaggio JSON e i riferimenti ai media; i file originali devono restare nei loro percorsi. I progetti 0.1 vengono migrati automaticamente mantenendo la posizione originale della sequenza e della musica; il salvataggio usa il formato 2.
+**Salva progetto** usa l’estensione `.creastudio` e conserva il montaggio strutturato e i riferimenti ai media; i file originali devono restare nei loro percorsi. I progetti 0.1 vengono migrati automaticamente mantenendo la posizione originale della sequenza e della musica; il salvataggio usa il formato 2.
 
 ```powershell
 npm test
@@ -79,4 +79,8 @@ npm run test:ui
 
 I test verificano posizioni senza ripple, gruppi e tagli a velocità variabile, migrazione, tre livelli realmente composti, audio sulle tracce video, spazi vuoti, export a 12 FPS, pixelatura/sfocatura/zoom nel video finale e silenzi reali nella forma d'onda. Il test Electron esercita selezione, trascinamento, gruppi, zoom sulla linea verde, proprietà, testi e indicatori, export, salvataggio/riapertura e una registrazione sintetica MP4 con microfono selezionato.
 
-**Installazione, cattura reale dello schermo e loopback audio restano da verificare su Windows reale.** La prova automatica di registrazione usa sorgenti sintetiche e non prova i driver del PC. L'app non comprende ancora transizioni, webcam, animazioni a keyframe arbitrarie o recupero automatico dopo crash. Licenze e riferimenti: [THIRD_PARTY.md](THIRD_PARTY.md).
+**Installazione, cattura reale dello schermo e loopback audio restano da verificare su Windows reale.** La prova automatica di registrazione usa sorgenti sintetiche e non prova i driver del PC. L'app non comprende ancora transizioni, webcam, animazioni a keyframe arbitrarie o transizioni avanzate. Licenze e riferimenti: [THIRD_PARTY.md](THIRD_PARTY.md).
+
+## Nuovi controlli e verifiche
+
+Vedere [FEATURES.md](FEATURES.md) per progressione export, qualità, audio, recupero, pannelli e limiti della verifica Windows/GPU.
