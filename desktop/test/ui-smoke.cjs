@@ -91,6 +91,8 @@ const run = require("node:util").promisify(
     await page.waitForFunction(() =>
       document.querySelector("#track0 canvas.waveform"),
     );
+    await page.locator("#addTrack").click();
+    await page.locator("#addTrack").click();
     // Any media on any track: audio on top, video in middle, image/text overlays later.
     await page.locator("#activeTrack").selectOption("2");
     await page.locator(".media-card").nth(1).locator("button").click();
@@ -220,13 +222,11 @@ const run = require("node:util").promisify(
     await page.locator('[data-action="ungroup"]').click();
     assert.equal(await page.locator("#track0 .clip").count(), 2);
     // Batch speed/reset (1x) affects selected pieces, without closing gaps.
-    await page.locator("#clipSpeed").fill("0.5");
+    await page.locator("#clipSpeed").fill("2");
     await page.locator("#clipSpeed").press("Tab");
     assert.ok(
       await page.evaluate(() =>
-        project.clips
-          .filter((c) => c.track === 0)
-          .every((c) => c.speed === 0.5),
+        project.clips.filter((c) => c.track === 0).every((c) => c.speed === 2),
       ),
     );
     await page.locator("#resetSpeed").click();
@@ -237,12 +237,15 @@ const run = require("node:util").promisify(
     );
     // Text with chosen font/color/background; red arrow and animated circle on any track.
     await page.locator("#activeTrack").selectOption("2");
+    await page.locator("#addTrack").click();
     await page.locator("#addText").click();
     await page.locator("#annotationText").fill("Prova testo");
     await page.locator("#annotationText").press("Tab");
     await page.locator("#annotationBgEnabled").check();
     await page.locator("#annotationFont").selectOption({ index: 1 });
+    await page.locator("#addTrack").click();
     await page.locator("#addArrow").click();
+    await page.locator("#addTrack").click();
     await page.locator("#addCircle").click();
     assert.equal(
       await page.evaluate(

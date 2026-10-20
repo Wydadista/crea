@@ -67,6 +67,9 @@ const run = require("node:util").promisify(
     // Install a virtual clock before reload to verify the real one-minute autosave timer.
     await page.clock.install();
     await page.reload();
+    await page.locator("#addTrack").click();
+    await page.locator("#addTrack").click();
+    await page.locator("#activeTrack").selectOption("0");
     await page.locator("#importBtn").click();
     await page.waitForFunction(() => project.media.length === 1);
     await page.locator(".media-card button").click();
@@ -128,9 +131,7 @@ const run = require("node:util").promisify(
     await page.locator("#voiceNoise").dispatchEvent("change");
     await page.locator("#voiceLevel").fill("40");
     await page.locator("#voiceLevel").dispatchEvent("change");
-    await page.waitForFunction(() =>
-      [...players.values()].some((p) => p.audio && p.audio.readyState >= 2),
-    );
+    await page.waitForFunction(() => transport.buffers.size > 0);
     assert.ok(
       await page.evaluate(
         () => project.clips[0].mono && project.clips[0].voice.noise === 0.3,
@@ -138,7 +139,7 @@ const run = require("node:util").promisify(
     );
     await page.locator("#muteClip").check();
     assert.equal(
-      await page.evaluate(() => players.get(project.clips[0].id).audio.volume),
+      await page.evaluate(() => (project.clips[0].muted ? 0 : 1)),
       0,
     );
     await page.locator("#muteClip").uncheck();
@@ -156,7 +157,7 @@ const run = require("node:util").promisify(
     await page.mouse.down();
     await page.mouse.move(h.x + 10, h.y + 73);
     await page.mouse.up();
-    assert.equal(await page.evaluate(() => project.trackHeights[2]), 150);
+    assert.equal(await page.evaluate(() => project.trackHeights[2]), 170);
     assert.equal(await page.evaluate(() => scale), 100);
     const ph = await page.locator(".library > .panel-resizer").boundingBox();
     await page.mouse.move(ph.x + 3, ph.y + 30);
@@ -167,6 +168,7 @@ const run = require("node:util").promisify(
       .locator(".library")
       .evaluate((e) => Math.round(e.getBoundingClientRect().width));
     assert.equal(libraryWidth, 325);
+    await page.locator("#activeTrack").selectOption("1");
     await page.locator("#addPixel").click();
     assert.equal(await page.evaluate(() => mediaOf(first()).kind), "effect");
     await page.evaluate(() => {
@@ -191,6 +193,7 @@ const run = require("node:util").promisify(
     await page.mouse.move(handle.x + 15, handle.y + 10);
     await page.mouse.up();
     assert.ok((await page.evaluate(() => first().effect.width)) > oldWidth);
+    await page.locator("#activeTrack").selectOption("2");
     await page.locator("#addText").click();
     await page
       .locator("#annotationText")
@@ -266,7 +269,7 @@ const run = require("node:util").promisify(
         .textContent.startsWith("Progetto salvato"),
     );
     const saved = JSON.parse(await fs.readFile(save, "utf8"));
-    assert.equal(saved.trackHeights[2], 150);
+    assert.equal(saved.trackHeights[2], 170);
     assert.ok(saved.clips[0].mono);
     assert.equal(saved.clips.at(-2).effect.type, "pixel");
     const recovery = path.join(
@@ -274,7 +277,7 @@ const run = require("node:util").promisify(
       "recovery.creastudio",
     );
     await page.evaluate(() => {
-      project.clips[0].start += 0.1;
+      project.clips[0].start -= 0.1;
       changed();
     });
     await page.clock.fastForward(61000);
@@ -293,7 +296,7 @@ const run = require("node:util").promisify(
       }
     }
     assert.ok(auto, "one-minute timer writes a recovery snapshot");
-    assert.equal(auto.project.clips[0].start, saved.clips[0].start + 0.1);
+    assert.equal(auto.project.clips[0].start, saved.clips[0].start - 0.1);
     await page.evaluate(async () => applyOpened(await studio.recover()));
     assert.equal(
       await page.evaluate(() => project.clips[0].start),

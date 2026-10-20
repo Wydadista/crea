@@ -1,8 +1,61 @@
-/* Absolute time, independent layers, no magnetic/ripple editing. */
+/* Absolute time, exclusive tracks, explicit snapping and no ripple editing. */
 (function (root) {
   const n = (v, min, max) => Number.isFinite(v) && v >= min && v <= max;
   const api = {
-    empty: () => ({ version: 2, media: [], clips: [] }),
+    MAX_TRACKS: 128,
+    empty: () => ({
+      version: 2,
+      trackCount: 1,
+      trackHeights: [100],
+      trackMuted: [false],
+      media: [],
+      clips: [],
+    }),
+    trackCount: (p) =>
+      p.trackCount ??
+      Math.max(
+        1,
+        ...p.clips.map((c) => c.track + 1),
+        p.trackHeights?.length || 0,
+        p.trackMuted?.length || 0,
+      ),
+    addTrack(p) {
+      if (api.trackCount(p) >= api.MAX_TRACKS)
+        throw Error("Limite di 128 tracce raggiunto");
+      p.trackCount = api.trackCount(p) + 1;
+      p.trackHeights ||= Array(p.trackCount - 1).fill(100);
+      p.trackMuted ||= Array(p.trackCount - 1).fill(false);
+      p.trackHeights.push(100);
+      p.trackMuted.push(false);
+      return p.trackCount - 1;
+    },
+    overlaps(clips) {
+      const tracks = new Map();
+      for (const c of clips) {
+        if (!tracks.has(c.track)) tracks.set(c.track, []);
+        tracks.get(c.track).push(c);
+      }
+      for (const row of tracks.values()) {
+        row.sort((a, b) => a.start - b.start);
+        for (let i = 1; i < row.length; i++)
+          if (row[i].start < row[i - 1].start + api.duration(row[i - 1]) - 1e-8)
+            return true;
+      }
+      return false;
+    },
+    canPlace(clips, candidates) {
+      const ids = new Set(candidates.map((c) => c.id));
+      return (
+        candidates.every(
+          (c) =>
+            c.start >= 0 &&
+            Number.isInteger(c.track) &&
+            c.track >= 0 &&
+            c.track < api.MAX_TRACKS,
+        ) &&
+        !api.overlaps([...clips.filter((c) => !ids.has(c.id)), ...candidates])
+      );
+    },
     parseSpeed(value) {
       const text = String(value).trim().replace(",", ".");
       if (!/^[0-9]+(?:\.[0-9]+)?$/.test(text))
@@ -57,18 +110,31 @@
       }
       return count;
     },
-    move(clips, ids, delta, td = 0) {
+    move(
+      clips,
+      ids,
+      delta,
+      td = 0,
+      trackCount = Math.max(1, ...clips.map((c) => c.track + 1)),
+    ) {
       const chosen = clips.filter((c) => ids.includes(c.id));
       if (!chosen.length) return;
       delta = Math.max(delta, -Math.min(...chosen.map((c) => c.start)));
       td = Math.max(
         -Math.min(...chosen.map((c) => c.track)),
-        Math.min(2 - Math.max(...chosen.map((c) => c.track)), td),
+        Math.min(trackCount - 1 - Math.max(...chosen.map((c) => c.track)), td),
       );
+      const proposals = chosen.map((c) => ({
+        ...c,
+        start: c.start + delta,
+        track: c.track + td,
+      }));
+      if (!api.canPlace(clips, proposals)) return false;
       for (const c of chosen) {
         c.start += delta;
         c.track += td;
       }
+      return true;
     },
     snap(clips, origins, delta, trackDelta, threshold) {
       const ids = new Set(origins.map((o) => o.c.id));
@@ -121,6 +187,46 @@
         p.clips.length > 1000
       )
         throw Error("Progetto non valido");
+      // Legacy projects had implicit tracks and allowed overlaps. Keep every cut and
+      // source time, allocating separate lanes only when those old tracks overlap.
+      if (p.trackCount === undefined) {
+        let count = api.trackCount(p);
+        if (api.overlaps(p.clips)) {
+          const oldHeights = p.trackHeights,
+            oldMuted = p.trackMuted,
+            heights = [],
+            muted = [];
+          let next = 0;
+          const originalRows = Array.from({ length: count }, (_, track) =>
+            p.clips.filter((c) => c.track === track),
+          );
+          for (let track = 0; track < count; track++) {
+            const row = originalRows[track];
+            const split = api.overlaps(row);
+            const slots = split ? Math.max(1, row.length) : 1;
+            row.forEach((c, i) => {
+              c.track = next + (split ? i : 0);
+            });
+            for (let i = 0; i < slots; i++) {
+              heights.push(oldHeights?.[track] || 100);
+              muted.push(oldMuted?.[track] || false);
+            }
+            next += slots;
+          }
+          count = next;
+          p.trackHeights = heights;
+          p.trackMuted = muted;
+        }
+        p.trackCount = count;
+      }
+      if (
+        !Number.isInteger(p.trackCount) ||
+        p.trackCount < 1 ||
+        p.trackCount > api.MAX_TRACKS
+      )
+        throw Error("Numero tracce non valido (1–128)");
+      p.trackHeights ||= Array(p.trackCount).fill(100);
+      p.trackMuted ||= Array(p.trackCount).fill(false);
       const media = new Map(),
         ids = new Set();
       for (const m of p.media) {
@@ -149,7 +255,7 @@
           !n(c.start, 0, 86400 * 7) ||
           !Number.isInteger(c.track) ||
           c.track < 0 ||
-          c.track > 2 ||
+          c.track >= p.trackCount ||
           !n(c.in, 0, 86400 * 7) ||
           !n(
             c.out,
@@ -224,17 +330,21 @@
       if (
         p.trackHeights &&
         (!Array.isArray(p.trackHeights) ||
-          p.trackHeights.length !== 3 ||
+          p.trackHeights.length !== p.trackCount ||
           p.trackHeights.some((h) => !n(h, 80, 600)))
       )
         throw Error("Altezza tracce non valida");
       if (
         p.trackMuted &&
         (!Array.isArray(p.trackMuted) ||
-          p.trackMuted.length !== 3 ||
+          p.trackMuted.length !== p.trackCount ||
           p.trackMuted.some((v) => typeof v !== "boolean"))
       )
         throw Error("Tracce non valide");
+      if (api.overlaps(p.clips))
+        throw Error(
+          "Intervallo occupato: usa uno spazio libero o un’altra traccia.",
+        );
       return p;
     },
   };

@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld("studio", {
   projectFile: () => ipcRenderer.invoke("project-file"),
   onProjectFile: (fn) => ipcRenderer.on("project-file", () => fn()),
   encoders: () => ipcRenderer.invoke("encoders"),
+  audioData: (c, m, page) => ipcRenderer.invoke("audio-data", c, m, page),
   audioPreview: (c, m) => ipcRenderer.invoke("audio-preview", c, m),
   importMedia: () => ipcRenderer.invoke("import"),
   importPaths: (files) => ipcRenderer.invoke("import-paths", files),

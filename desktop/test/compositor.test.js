@@ -189,9 +189,13 @@ test(
         file,
       ]);
       const wave = await waveform(file, b.ffmpeg);
-      assert.equal(wave.rate, 50);
-      assert.ok(wave.peaks.slice(0, 20).every((v) => v > 0.3));
-      assert.ok(wave.peaks.slice(35, 45).every((v) => v === 0));
+      assert.equal(wave.rate, 2000);
+      assert.ok(wave.peaks.slice(200, 800).some((v) => v > 0.3));
+      assert.ok(wave.peaks.slice(200, 800).some((v) => v < 0.25));
+      assert.ok(
+        wave.levelsOfDetail[1].peaks.slice(12, 48).every((v) => v > 0.3),
+      );
+      assert.ok(wave.peaks.slice(1400, 1800).every((v) => v === 0));
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }

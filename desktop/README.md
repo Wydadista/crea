@@ -1,6 +1,6 @@
-# Crea Studio 0.2 — editor desktop a tre tracce libere
+# Crea Studio — editor desktop con tracce progressive
 
-Editor video indipendente per Windows 10/11 x64. La versione 0.2 sostituisce la timeline magnetica con tre tracce universali: video, immagini, audio e annotazioni possono occupare qualsiasi traccia, sovrapporsi e lasciare spazi vuoti. Il vecchio editor di immagini `../creapost.html` rimane invariato.
+Editor video indipendente per Windows 10/11 x64. I nuovi progetti iniziano con **una traccia**. **Aggiungi traccia**, oppure l’area di rilascio sopra la timeline, aggiunge tracce fino a 128. Ogni traccia accetta video, immagini, audio, testi ed effetti, con un solo elemento per istante. Le sovrapposizioni si costruiscono su tracce diverse. Il vecchio editor di immagini `../creapost.html` rimane invariato.
 
 ## Installazione e ricostruzione
 
@@ -25,8 +25,9 @@ Sono inclusi lockfile, script di preparazione Windows e cloud Linux, installer N
 ## Timeline, zoom, tagli e gruppi
 
 - Importare file o trascinarli nella finestra. Trascinarli poi su **qualsiasi** traccia, nel punto desiderato; il pulsante `+` li aggiunge nel punto della linea verde sulla traccia scelta nella libreria.
-- La traccia 3 è sopra la 2, che è sopra la 1. Dimensioni e posizione della clip si regolano nelle proprietà per mostrare più video contemporaneamente, ad esempio immagine nell'immagine. Se più clip della stessa traccia si sovrappongono, la timeline le mostra su sottorighe; l'ordine di inserimento decide quale appare davanti. Tutti gli audio attivi vengono miscelati.
-- **Aggancio preciso durante il trascinamento, nessun ripple**: avvicinando due estremi sulla stessa traccia entro 10 pixel, questi combaciano esattamente. Lo spostamento verticale richiede un gesto di almeno 24 pixel.  muovere, cancellare, tagliare, accorciare o cambiare velocità non sposta automaticamente le altre clip. I vuoti sono mantenuti; in esportazione lo sfondo è nero dove non c'è alcun contenuto visivo.
+- Le tracce con numero maggiore sono sopra quelle con numero minore. Dimensioni e posizione della clip permettono l’immagine nell’immagine. Una sagoma verde/rossa mostra la destinazione durante il trascinamento; una posizione occupata viene rifiutata senza spostare o sovrascrivere altre clip. Lo stesso controllo protegge inserimento, proprietà, cambio velocità e rifilatura. Gli audio attivi di tracce diverse vengono miscelati.
+- **Aggiungi traccia** crea solo la traccia richiesta. L’area dedicata sopra le tracce permette di crearne una trascinando una clip o un elemento della libreria. Le tracce e i controlli sono raggiungibili con lo scorrimento verticale. Trascinare il bordo inferiore dell’etichetta ridimensiona anche clip e forma d’onda, senza cambiare tempi o volume.
+- **Aggancio preciso durante il trascinamento, nessun ripple**: avvicinando due estremi sulla stessa traccia entro 10 pixel, questi combaciano esattamente. Lo spostamento verticale richiede un gesto di almeno 24 pixel. Muovere, cancellare, tagliare, accorciare o cambiare velocità non sposta automaticamente le altre clip. I vuoti sono mantenuti; in esportazione lo sfondo è nero dove non c'è alcun contenuto visivo.
 - **Shift+rotellina** scorre orizzontalmente. **Ctrl+rotellina** e i pulsanti/slider di zoom mantengono come riferimento la **linea verde**, indipendentemente dalla posizione del mouse. Se il cursore è fuori vista, lo zoom lo riporta al centro della vista.
 - Cliccare sul righello per spostare la linea verde; **S** divide le clip selezionate attraversate dalla linea. Trascinare i bordi per rifilare. I campi di inizio/fine sorgente permettono un taglio numerico preciso.
 - **Ctrl/Shift+clic**, selezione a rettangolo trascinando su uno spazio vuoto o **Ctrl+A** selezionano più clip. **Canc** elimina; **Ctrl+Z** annulla; **Ctrl+Shift+Z** ripristina.
@@ -35,7 +36,9 @@ Sono inclusi lockfile, script di preparazione Windows e cloud Linux, installer N
 
 ## Forma d'onda e velocità
 
-La forma d'onda di video e audio proviene dai campioni reali del file: picchi del PCM stereo a banda intera, 50 punti al secondo, massimo fra i canali per evitare cancellazioni di fase. Non è un disegno decorativo. I silenzi non hanno picchi; i livelli molto bassi sotto circa −54 dB vengono omessi. L'altezza è normalizzata per file per rendere leggibili anche voci poco forti. Rifilatura, volume e velocità cambiano la rappresentazione. L'analisi viene eseguita in coda senza bloccare l'importazione; i file lunghi possono richiedere tempo.
+La forma d’onda usa picchi reali del PCM stereo a banda intera, **2.000 punti al secondo (0,5 ms)**, con una piramide di massimi per lo zoom più distante. Il dettaglio viene scelto in base ai pixel fisici, allo zoom, alla velocità e all’altezza della traccia. Il canvas rispetta la densità del display: non si limita a ingrandire un’immagine. Picchi e silenzi restano su un solo lato della base. Il massimo fra i canali evita cancellazioni di fase; il volume della clip viene applicato al disegno, la normalizzazione è costante per file. L’analisi è eseguita in coda.
+
+L’anteprima audio usa un clock Web Audio e pianifica i segmenti in anticipo. I tagli condividono le pagine PCM della sorgente, con cache di 12 pagine da 30 secondi; i filtri e il mantenimento dell’intonazione sono preparati con FFmpeg. Il clock parte soltanto dopo la preparazione audio e il seek video: un decoder non pronto non consuma l’inizio di una clip. Tagli consecutivi della stessa sorgente riutilizzano un decoder video. Durante la preparazione il pulsante mostra `…`; una pausa o un nuovo seek annulla l’avvio in attesa. Un blocco della macchina oltre la finestra di anticipo comporta una ripresa dal confine interessato, invece di saltare silenziosamente l’audio.
 
 **Velocità ×** accetta valori numerici da `0,1` a `16`, compresi `0,5`, `2` o `2,4`; sono accettati sia la virgola sia il punto decimale. Su più clip selezionate applica il valore a tutte. **Ripristina selezione a 1×** ripristina la velocità originale; anche il valore `0` nel campo è interpretato come ripristino a `1×`. La durata sulla timeline è `(fine − inizio sorgente) / velocità`. Le posizioni delle altre clip restano invariate. L'export adatta l'audio con mantenimento dell'intonazione; l'anteprima a velocità estreme dipende anche dai limiti di Chromium.
 
@@ -43,7 +46,7 @@ La forma d'onda di video e audio proviene dai campioni reali del file: picchi de
 
 Selezionare una clip video/immagine e aprire le proprietà:
 
-- **Sfocatura e pixelatura**: pulsanti diretti vicino a Testo e Freccia creano elementi indipendenti sulla traccia superiore (scegliere una traccia sopra i video da elaborare). Spostare/rifilare l’elemento per scegliere il suo intervallo. L’area è trascinabile e ridimensionabile con la maniglia nell’anteprima; le proprietà permettono una regolazione precisa. Gli effetti precedenti applicati direttamente alle clip restano supportati. La cornice è un aiuto di modifica e non viene esportata.
+- **Sfocatura e pixelatura**: pulsanti diretti vicino a Testo e Freccia creano elementi indipendenti sulla traccia scelta nella libreria (aggiungere e scegliere una traccia sopra i video da elaborare). Spostare/rifilare l’elemento per scegliere il suo intervallo. L’area è trascinabile e ridimensionabile con la maniglia nell’anteprima; le proprietà permettono una regolazione precisa. Gli effetti precedenti applicati direttamente alle clip restano supportati. La cornice è un aiuto di modifica e non viene esportata.
 - **Posizione, dimensioni e zoom**: slider visivo 1–5×, maniglia in basso a destra e trascinamento per scegliere l’inquadratura. **Ripristina inquadratura** azzera zoom e posizione. Controlli numerici secondari: X/Y e dimensioni del riquadro, zoom iniziale/finale da 1× a 5× e centro X/Y. Valori diversi fra inizio e fine producono uno zoom in/out lineare lungo la clip. Si può spostare il riquadro anche trascinandolo nell'anteprima quando non è attiva un'area effetto.
 - **Testo**: riquadro ridimensionabile, ritorno a capo automatico e manuale, carattere fra quelli installati sul PC, dimensione, colore, sfondo opzionale e suo colore. I font non vengono incorporati nei progetti; su un altro PC devono essere installati per mantenere lo stesso aspetto.
 - **Freccia**: colore (rosso iniziale), posizione, lunghezza, angolo e spessore.
@@ -69,6 +72,8 @@ Testi e indicatori sono clip con posizione, durata e traccia proprie. Possono es
 **Esporta** produce MP4 H.264/AAC a 720p / 1080p / 1440p / 2160p, **FPS interi personalizzati 1–120** e qualità 1–100% (70% consigliata). La qualità video corrisponde a CRF 40–14; non è una percentuale di compressione o una garanzia sul peso finale. Il file ha proporzioni 16:9. Le tracce sono composte con le posizioni e i riquadri impostati; l'audio è miscelato con limitazione dei picchi. Anche progetti con solo audio sono esportabili su sfondo nero.
 
 Il motore renderizza intervalli definiti dagli inizi/fini delle clip, con un massimo di due thread per encoder e un thread di filtri, poi ricostruisce il flusso finale a FPS costanti. Usa file temporanei: durata, numero di clip, risoluzione e sovrapposizioni influenzano tempi e spazio disco. I tagli vengono adattati ai fotogrammi disponibili nel frame rate scelto. L'esportazione è annullabile.
+
+I vecchi progetti con clip sovrapposte sulla stessa traccia vengono aperti distribuendo gli elementi su tracce separate, senza cambiare tagli, durata o posizioni temporali.
 
 **Salva progetto** usa l’estensione `.creastudio` e conserva il montaggio strutturato e i riferimenti ai media; i file originali devono restare nei loro percorsi. I progetti 0.1 vengono migrati automaticamente mantenendo la posizione originale della sequenza e della musica; il salvataggio usa il formato 2.
 

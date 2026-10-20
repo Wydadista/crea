@@ -1,5 +1,5 @@
 const { spawn } = require("node:child_process");
-// Full-band stereo PCM peaks: 50 bins/s, max across channels. Empty speech produces an empty baseline.
+// Full-band stereo PCM, 2000 independent peak bins/s (0.5 ms), plus a max pyramid.
 function waveform(file, ffmpeg, signal) {
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -36,8 +36,8 @@ function waveform(file, ffmpeg, signal) {
         const value = data.readInt16LE(i) / 32768;
         energy[sample++ % 2] += value * value;
         peak = Math.max(peak, Math.abs(value));
-        if (++count === 1920) {
-          peaks.push(peak < 0.002 ? 0 : peak);
+        if (++count === 48) {
+          peaks.push(peak < 1 / 32768 ? 0 : peak);
           peak = 0;
           count = 0;
         }
@@ -50,9 +50,24 @@ function waveform(file, ffmpeg, signal) {
     });
     child.on("close", (code) => {
       if (code || error) return reject(error || Error(stderr));
-      if (count) peaks.push(peak < 0.002 ? 0 : peak);
+      if (count) peaks.push(peak < 1 / 32768 ? 0 : peak);
+      const levelsOfDetail = [];
+      let current = Float32Array.from(peaks),
+        rate = 2000;
+      while (current.length > 4) {
+        const next = new Float32Array(Math.ceil(current.length / 4));
+        for (let i = 0; i < current.length; i++)
+          next[Math.floor(i / 4)] = Math.max(
+            next[Math.floor(i / 4)],
+            current[i],
+          );
+        rate /= 4;
+        levelsOfDetail.push({ rate, peaks: next });
+        current = next;
+      }
       resolve({
-        rate: 50,
+        rate: 2000,
+        levelsOfDetail,
         peaks: Float32Array.from(peaks),
         levels: energy.map((v) => Math.sqrt(v / Math.max(1, sample / 2))),
       });

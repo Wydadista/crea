@@ -391,9 +391,14 @@ ipcMain.handle("recover", async () => {
 });
 ipcMain.handle("encoders", () => require("./encoders").detect(binaries.ffmpeg));
 const processedAudio = new Map();
-ipcMain.handle("audio-preview", async (_e, clip, media) => {
+const previewAudioController = new AbortController();
+app.on("before-quit", () => previewAudioController.abort());
+async function previewAudio(clip, media) {
   const { audioFilters } = require("./audio");
-  const processing = await audioFilters(clip, media, binaries.ffmpeg);
+  const effects = await audioFilters(clip, media, binaries.ffmpeg);
+  const processing = [effects, require("./render").tempo(clip.speed || 1)]
+    .filter(Boolean)
+    .join(",");
   const stat = await fs.stat(media.path);
   const key = media.path + stat.mtimeMs + processing;
   if (!processedAudio.has(key))
@@ -420,13 +425,15 @@ ipcMain.handle("audio-preview", async (_e, clip, media) => {
             "-vn",
             "-af",
             processing || "anull",
+            "-rf64",
+            "auto",
             "-ac",
             "2",
             "-ar",
             "48000",
             file,
           ],
-          { windowsHide: true },
+          { windowsHide: true, signal: previewAudioController.signal },
         );
         return pathToFileURL(file).href;
       })().catch((e) => {
@@ -435,6 +442,64 @@ ipcMain.handle("audio-preview", async (_e, clip, media) => {
       }),
     );
   return processedAudio.get(key);
+}
+ipcMain.handle("audio-preview", (_e, c, m) => previewAudio(c, m));
+ipcMain.handle("audio-data", async (_e, c, m, page = 0) => {
+  if (!Number.isInteger(page) || page < 0 || page > 201600)
+    throw Error("Pagina audio non valida");
+  const url = await previewAudio(c, m),
+    file = require("node:url").fileURLToPath(url),
+    handle = await fs.open(file, "r");
+  try {
+    const header = Buffer.alloc(65536);
+    const read = await handle.read(header, 0, header.length, 0);
+    let at = 12,
+      dataOffset;
+    while (at + 8 <= read.bytesRead) {
+      const kind = header.toString("ascii", at, at + 4),
+        size = header.readUInt32LE(at + 4);
+      if (kind === "data") {
+        dataOffset = at + 8;
+        break;
+      }
+      at += 8 + size + (size % 2);
+    }
+    if (dataOffset === undefined) throw Error("PCM anteprima non riconosciuto");
+    const byteOffset = dataOffset + page * 30 * 48000 * 4,
+      stat = await handle.stat(),
+      length = Math.max(0, Math.min(30 * 48000 * 4, stat.size - byteOffset));
+    if (!length)
+      throw Error("Audio sorgente non disponibile in questo intervallo");
+    const pcm = Buffer.alloc(length);
+    let count = 0;
+    while (count < length) {
+      const r = await handle.read(
+        pcm,
+        count,
+        length - count,
+        byteOffset + count,
+      );
+      if (!r.bytesRead) break;
+      count += r.bytesRead;
+    }
+    const wav = Buffer.alloc(44 + count);
+    wav.write("RIFF");
+    wav.writeUInt32LE(wav.length - 8, 4);
+    wav.write("WAVEfmt ", 8);
+    wav.writeUInt32LE(16, 16);
+    wav.writeUInt16LE(1, 20);
+    wav.writeUInt16LE(2, 22);
+    wav.writeUInt32LE(48000, 24);
+    wav.writeUInt32LE(192000, 28);
+    wav.writeUInt16LE(4, 32);
+    wav.writeUInt16LE(16, 34);
+    wav.write("data", 36);
+    wav.writeUInt32LE(count, 40);
+    pcm.copy(wav, 44, 0, count);
+    return wav;
+  } finally {
+    await handle.close();
+  }
 });
 ipcMain.handle("export", async (_e, project, settings) => {
   if (exportController) throw Error("Esportazione già in corso");

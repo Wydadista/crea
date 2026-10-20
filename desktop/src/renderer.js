@@ -7,14 +7,19 @@ let project = Timeline.empty(),
   time = 0,
   scale = 40,
   playing = false,
-  lastTick = 0,
+  preparing = false,
   frame,
   history = [],
   future = [],
   exportBusy = false,
   exportCancelled = false;
+const videoPool = new Map();
+const transport = new AudioTransport((c, m, page) =>
+  studio.audioData(c, m, page),
+);
 const players = new Map(),
   waves = new Map();
+let draggedMedia = null;
 let waveQueue = Promise.resolve(),
   toastTimer,
   waveEpoch = 0;
@@ -57,15 +62,13 @@ function checkpoint() {
   future = [];
 }
 function resetPlayers() {
-  for (const p of players.values()) {
-    p.audio?.pause();
-    p.meterSource?.disconnect();
-    p.analyser?.disconnect();
+  for (const p of videoPool.values()) {
     p.element.pause?.();
-    p.element.removeAttribute?.("src");
+    p.element.removeAttribute("src");
     p.element.load?.();
   }
   players.clear();
+  videoPool.clear();
 }
 function undo(from, to) {
   if (!from.length) return;
@@ -81,6 +84,7 @@ function render() {
   renderLibrary();
   renderTimeline();
   properties();
+  warmAudio();
   syncPlayers(true);
   draw();
   $("undoBtn").disabled = !history.length;
@@ -90,6 +94,7 @@ function changed() {
   time = Math.min(time, Timeline.total(project.clips));
   renderTimeline();
   properties();
+  warmAudio();
   syncPlayers(true);
   draw();
   $("undoBtn").disabled = !history.length;
@@ -114,6 +119,11 @@ function selectIds(ids, add = false, toggle = false) {
   renderTimeline();
   properties();
   draw();
+}
+function warmAudio() {
+  transport
+    .prepare(project, time)
+    .catch((e) => toast("Preparazione audio: " + e.message));
 }
 function requestWave(m) {
   if (!m.hasAudio || waves.has(m.id)) return;
@@ -163,7 +173,12 @@ function renderLibrary() {
     add.title = "Aggiungi al cursore, sulla traccia scelta";
     add.onclick = () => addMedia(m.id, time, Number($("activeTrack").value));
     card.append(add);
+    card.ondragend = () => {
+      draggedMedia = null;
+      document.querySelectorAll(".drop-ghost").forEach((n) => n.remove());
+    };
     card.ondragstart = (e) => {
+      draggedMedia = m.id;
       e.dataTransfer.setData("application/crea-media", m.id);
     };
     card.ondblclick = () =>
@@ -205,6 +220,12 @@ function addMedia(id, start, track) {
     speed: 1,
     volume: 1,
   };
+  if (!Timeline.canPlace(project.clips, [c])) {
+    toast("Intervallo occupato: scegli uno spazio libero o un’altra traccia.");
+    return;
+  }
+  if (!project.media.some((existing) => existing.id === m.id))
+    project.media.push(m);
   project.clips.push(c);
   selection = new Set([c.id]);
   changed();
@@ -241,7 +262,6 @@ function annotation(type) {
     duration: 5,
     hasAudio: false,
   };
-  project.media.push(m);
   const c = {
     id: uid(),
     mediaId: m.id,
@@ -267,6 +287,12 @@ function annotation(type) {
       animate: type === "circle" ? 0.8 : 0,
     },
   };
+  if (!Timeline.canPlace(project.clips, [c])) {
+    toast("Intervallo occupato: scegli uno spazio libero o un’altra traccia.");
+    return;
+  }
+  if (!project.media.some((existing) => existing.id === m.id))
+    project.media.push(m);
   project.clips.push(c);
   selection = new Set([c.id]);
   changed();
@@ -305,36 +331,17 @@ function renderTimeline() {
     tick.style.left = t * scale + "px";
     ruler.append(tick);
   }
-  for (let track = 0; track < 3; track++) $("track" + track).replaceChildren();
-  const blocks = Timeline.groups(project.clips),
-    rows = new Map();
-  for (let track = 0; track < 3; track++) {
-    const ends = [];
-    for (const block of blocks
-      .filter((b) => b.track === track)
-      .sort((a, b) => a.start - b.start)) {
-      let lane = ends.findIndex((t) => t <= block.start + 0.00001);
-      if (lane < 0) lane = ends.length;
-      ends[lane] = block.end;
-      rows.set(block.key, lane);
-    }
-    const height = Math.max(
-      project.trackHeights?.[track] || 80,
-      ends.length * 70 + 10,
-    );
-    const muteButton = document.querySelector(
-      '[data-choose-track="' + track + '"] .track-mute',
-    );
-    if (muteButton) {
-      muteButton.textContent = project.trackMuted?.[track] ? "🔇" : "♪";
-      muteButton.setAttribute(
-        "aria-pressed",
-        String(!!project.trackMuted?.[track]),
-      );
-    }
+  ensureTrackRows();
+  const blocks = Timeline.groups(project.clips);
+  for (let track = 0; track < Timeline.trackCount(project); track++) {
+    $("track" + track).replaceChildren();
+    const height = project.trackHeights?.[track] || 100;
     $("track" + track).style.height = height + "px";
-    document.querySelector('[data-choose-track="' + track + '"]').style.height =
-      height + "px";
+    const label = document.querySelector('[data-choose-track="' + track + '"]');
+    label.style.height = height + "px";
+    const button = label.querySelector(".track-mute");
+    button.textContent = project.trackMuted?.[track] ? "🔇" : "♪";
+    button.setAttribute("aria-pressed", String(!!project.trackMuted?.[track]));
   }
   for (const block of blocks) {
     const members = block.members,
@@ -345,19 +352,9 @@ function renderTimeline() {
         "div",
         `clip${group ? " group" : ""}${m.kind === "audio" ? " audio" : ""}${m.kind === "annotation" ? " annotation" : ""}${members.some((c) => selection.has(c.id)) ? " selected" : ""}`,
       );
-    node.style.top = 10 + (rows.get(block.key) || 0) * 70 + "px";
-    const laneCount = Math.max(
-      1,
-      ...blocks
-        .filter((b) => b.track === block.track)
-        .map((b) => (rows.get(b.key) || 0) + 1),
-    );
-    const clipHeight = Math.max(
-      60,
-      (parseFloat($("track" + block.track).style.height) - 10) / laneCount - 10,
-    );
+    const clipHeight = (project.trackHeights?.[block.track] || 100) - 16;
     node.style.height = clipHeight + "px";
-    node.style.top = 10 + (rows.get(block.key) || 0) * (clipHeight + 10) + "px";
+    node.style.top = "8px";
     if (c.groupId) node.classList.add("group");
     if (c.muted || project.trackMuted?.[c.track]) node.classList.add("muted");
     node.dataset.id = c.id;
@@ -415,39 +412,49 @@ function drawWave(node, block) {
       Math.min((block.end - block.start) * scale - left, sc.clientWidth + 20),
     );
   if (!width || !block.members.some((c) => waves.get(c.mediaId)?.peaks)) return;
-  const cv = el("canvas", "waveform");
-  cv.width = Math.ceil(width);
-  cv.height = Math.max(30, parseFloat(node.style.height) - 30);
-  cv.style.height = cv.height + "px";
+  const cv = el("canvas", "waveform"),
+    dpr = window.devicePixelRatio || 1;
+  const height = Math.max(20, parseFloat(node.style.height) - 26);
+  cv.width = Math.ceil(width * dpr);
+  cv.height = Math.ceil(height * dpr);
+  cv.style.height = height + "px";
   cv.style.left = left + "px";
   cv.style.width = width + "px";
   const ctx = cv.getContext("2d");
-  ctx.fillStyle = "#adddd2";
+  ctx.fillStyle = "#b8e6db";
+  ctx.beginPath();
+  ctx.moveTo(0, cv.height);
   for (let x = 0; x < cv.width; x++) {
-    const t = block.start + (left + x) / scale;
+    const t = block.start + (left + x / dpr) / scale;
     let peak = 0;
     for (const c of block.members) {
-      if (t < c.start || t >= c.start + Timeline.duration(c)) continue;
       const wave = waves.get(c.mediaId);
       if (!wave?.peaks) continue;
-      const a = Math.floor(Timeline.sourceTime(c, t) * wave.rate),
-        b = Math.min(
-          wave.peaks.length,
-          Math.max(
-            a + 1,
-            Math.ceil(
-              (Timeline.sourceTime(c, t) + (c.speed || 1) / scale) * wave.rate,
-            ),
-          ),
-        );
-      for (let i = Math.max(0, a); i < b; i++)
-        peak = Math.max(peak, (wave.peaks[i] * c.volume) / (wave.max || 1));
+      // Select the finest level appropriate to this physical pixel: never stretch 50-Hz bins.
+      const perPixel = (c.speed || 1) / scale / dpr;
+      let level = { rate: wave.rate, peaks: wave.peaks };
+      for (const l of wave.levelsOfDetail || [])
+        if (l.rate >= 1 / perPixel) level = l;
+      const from = Timeline.sourceTime(c, t),
+        a = Math.max(0, Math.floor(from * level.rate));
+      const b = Math.min(
+        level.peaks.length,
+        Math.max(a + 1, Math.ceil((from + perPixel) * level.rate)),
+      );
+      for (let i = a; i < b; i++)
+        peak = Math.max(peak, (level.peaks[i] * c.volume) / (wave.max || 1));
     }
-    if (peak > 0.001) {
-      const h = Math.max(1, Math.min(cv.height - 2, peak * (cv.height - 2)));
-      ctx.fillRect(x, cv.height - h, 1, h);
-    }
+    ctx.lineTo(x, cv.height - 1 - Math.min(1, peak) * (cv.height - 2));
   }
+  ctx.lineTo(cv.width, cv.height);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "#70ac9e";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, cv.height - 0.5);
+  ctx.lineTo(cv.width, cv.height - 0.5);
+  ctx.stroke();
   node.append(cv);
 }
 $("timelineScroll").onscroll = () => {
@@ -490,42 +497,100 @@ function beginClipDrag(e, block) {
   const origin = selected().map((c) => ({ c, start: c.start, track: c.track })),
     x = e.clientX,
     y = e.clientY,
-    scroll = $("timelineScroll").scrollLeft,
-    trackRects = [0, 1, 2].map((track) => ({
-      track,
-      rect: $("track" + track).getBoundingClientRect(),
-    }));
-  let moved = false;
+    scroll = $("timelineScroll").scrollLeft;
+  let moved = false,
+    proposals = [],
+    valid = false,
+    add = 0;
+  const ghosts = origin.map(() => {
+    const n = el("div", "drop-ghost");
+    document.body.append(n);
+    return n;
+  });
+  const cleanup = () => {
+    ghosts.forEach((n) => n.remove());
+    $("newTrackDrop").classList.remove("dragover");
+  };
   captureMove(
     e,
     (ev) => {
       if (!moved && Math.hypot(ev.clientX - x, ev.clientY - y) < 4) return;
-      if (!moved) {
-        checkpoint();
-        moved = true;
-      }
-      let delta =
-        (ev.clientX - x + $("timelineScroll").scrollLeft - scroll) / scale;
-      delta = Math.max(delta, -Math.min(...origin.map((o) => o.start)));
-      let td =
-        Math.abs(ev.clientY - y) < 24
+      moved = true;
+      const zone = $("newTrackDrop").getBoundingClientRect(),
+        newTrack = ev.clientY >= zone.top && ev.clientY <= zone.bottom;
+      const target = [...document.querySelectorAll(".track")].find((n) => {
+        const r = n.getBoundingClientRect();
+        return ev.clientY >= r.top && ev.clientY < r.bottom;
+      });
+      let td = newTrack
+        ? Timeline.trackCount(project) - Math.min(...origin.map((o) => o.track))
+        : Math.abs(ev.clientY - y) < 24
           ? 0
-          : (trackRects.find(
-              (r) => ev.clientY >= r.rect.top && ev.clientY < r.rect.bottom,
-            )?.track ?? block.track) - block.track;
-      td = Math.max(
-        -Math.min(...origin.map((o) => o.track)),
-        Math.min(2 - Math.max(...origin.map((o) => o.track)), td),
+          : Number(target?.dataset.track ?? block.track) - block.track;
+      if (!newTrack)
+        td = Math.max(
+          -Math.min(...origin.map((o) => o.track)),
+          Math.min(
+            Timeline.trackCount(project) -
+              1 -
+              Math.max(...origin.map((o) => o.track)),
+            td,
+          ),
+        );
+      let delta = Math.max(
+        -Math.min(...origin.map((o) => o.start)),
+        (ev.clientX - x + $("timelineScroll").scrollLeft - scroll) / scale,
       );
       delta = Timeline.snap(project.clips, origin, delta, td, 10 / scale);
-      for (const o of origin) {
-        o.c.start = Math.max(0, o.start + delta);
-        o.c.track = o.track + td;
-      }
-      changed();
+      proposals = origin.map((o) => ({
+        ...o.c,
+        start: o.start + delta,
+        track: o.track + td,
+      }));
+      add = Math.max(
+        0,
+        ...proposals.map((c) => c.track + 1 - Timeline.trackCount(project)),
+      );
+      valid =
+        !!(target || newTrack || Math.abs(ev.clientY - y) < 24) &&
+        Timeline.canPlace(project.clips, proposals) &&
+        Timeline.trackCount(project) + add <= Timeline.MAX_TRACKS;
+      $("newTrackDrop").classList.toggle("dragover", newTrack);
+      proposals.forEach((c, i) => {
+        const r = newTrack
+          ? zone
+          : $("track" + c.track)?.getBoundingClientRect();
+        const ghost = ghosts[i];
+        ghost.classList.toggle("invalid", !valid);
+        if (r)
+          Object.assign(ghost.style, {
+            left:
+              $("ruler").getBoundingClientRect().left + c.start * scale + "px",
+            top: r.top + 4 + "px",
+            width: Math.max(5, Timeline.duration(c) * scale) + "px",
+            height: (newTrack ? zone.height - 8 : r.height - 8) + "px",
+          });
+        ghost.textContent = valid ? "Rilascia qui" : "Intervallo occupato";
+      });
     },
-    () => {
-      if (!moved && !e.ctrlKey && !e.shiftKey) selectIds(ids);
+    (ev) => {
+      cleanup();
+      if (ev.type === "pointercancel") return;
+      if (!moved) {
+        if (!e.ctrlKey && !e.shiftKey) selectIds(ids);
+        return;
+      }
+      if (!valid)
+        return toast("Posizione non disponibile: le clip sono rimaste ferme.");
+      checkpoint();
+      for (let i = 0; i < add; i++) Timeline.addTrack(project);
+      proposals.forEach((c) =>
+        Object.assign(
+          project.clips.find((o) => o.id === c.id),
+          c,
+        ),
+      );
+      changed();
     },
   );
 }
@@ -561,31 +626,84 @@ function trimDrag(e, c, side) {
       c.out = Math.max(
         c.in + 0.02 * rate,
         Math.min(
-          ["image", "annotation"].includes(m.kind) ? 86400 : m.duration,
+          ["image", "annotation", "effect"].includes(m.kind)
+            ? 86400
+            : m.duration,
           old.out + delta * rate,
         ),
       );
+    if (!Timeline.canPlace(project.clips, [c])) {
+      Object.assign(c, old);
+      toast("Intervallo occupato: rifilatura non applicata.");
+    }
     changed();
   });
 }
-for (let track = 0; track < 3; track++) {
+function bindTrack(track) {
   const target = $("track" + track);
+  let ghost;
+  const clear = () => {
+    ghost?.remove();
+    ghost = null;
+    target.classList.remove("dragover");
+  };
   target.ondragover = (e) => {
     e.preventDefault();
+    clear();
     target.classList.add("dragover");
+    const m = project.media.find((m) => m.id === draggedMedia);
+    if (!m) return;
+    const start = Math.max(
+      0,
+      (e.clientX - target.getBoundingClientRect().left) / scale,
+    );
+    const c = {
+      id: "drop-preview",
+      start,
+      track,
+      in: 0,
+      out: m.duration,
+      speed: 1,
+    };
+    c.start += Timeline.snap(
+      project.clips,
+      [{ c, start, track }],
+      0,
+      0,
+      10 / scale,
+    );
+    ghost = el("div", "drop-ghost");
+    const r = target.getBoundingClientRect();
+    Object.assign(ghost.style, {
+      left: r.left + c.start * scale + "px",
+      top: r.top + 4 + "px",
+      width: Timeline.duration(c) * scale + "px",
+      height: r.height - 8 + "px",
+    });
+    ghost.classList.toggle("invalid", !Timeline.canPlace(project.clips, [c]));
+    document.body.append(ghost);
   };
-  target.ondragleave = () => target.classList.remove("dragover");
+  target.ondragleave = clear;
   target.ondrop = (e) => {
     e.preventDefault();
-    target.classList.remove("dragover");
+    clear();
     const id = e.dataTransfer.getData("application/crea-media");
     if (id) {
       e.stopPropagation();
-      addMedia(
-        id,
+      const start = Math.max(
+        0,
         (e.clientX - target.getBoundingClientRect().left) / scale,
-        track,
       );
+      const m = project.media.find((m) => m.id === id);
+      const fake = { id: "drop", start, track, in: 0, out: m.duration };
+      const delta = Timeline.snap(
+        project.clips,
+        [{ c: fake, start, track }],
+        0,
+        0,
+        10 / scale,
+      );
+      addMedia(id, start + delta, track);
     }
   };
   target.onpointerdown = (e) => {
@@ -638,10 +756,6 @@ for (let track = 0; track < 3; track++) {
     );
   };
 }
-for (const n of document.querySelectorAll("[data-choose-track]"))
-  n.onclick = () => {
-    $("activeTrack").value = n.dataset.chooseTrack;
-  };
 $("ruler").onpointerdown = (e) => {
   if (e.button !== 0) return;
   pause();
@@ -989,127 +1103,124 @@ function previewTime() {
   const end = Timeline.total(project.clips);
   return end > 0 && time >= end ? end - 0.0001 : time;
 }
+function videoKey(c, m) {
+  return JSON.stringify([
+    m.id,
+    c.track,
+    c.speed || 1,
+    Math.round((c.in - c.start * (c.speed || 1)) * 1e8) / 1e8,
+  ]);
+}
 function syncPlayers(force = false) {
   const pt = previewTime(),
     active = Timeline.active(project.clips, pt),
-    ids = new Set(active.map((c) => c.id));
-  // Preload only the next media clip per track; keep decoder/memory usage bounded.
-  const upcoming = [];
-  for (let track = 0; track < 3; track++) {
-    const next = project.clips
-      .filter(
-        (c) =>
-          c.track === track &&
-          c.start > pt &&
-          c.start < pt + 0.75 &&
-          !["annotation", "effect"].includes(mediaOf(c).kind),
-      )
-      .sort((a, b) => a.start - b.start)[0];
-    if (next) upcoming.push(next);
-  }
-  const keep = new Set([...ids, ...upcoming.map((c) => c.id)]);
-  for (const [id, p] of players)
-    if (!keep.has(id)) {
-      p.audio?.pause();
-      p.meterSource?.disconnect();
-      p.analyser?.disconnect();
-      p.element.pause?.();
-      p.element.removeAttribute?.("src");
-      p.element.load?.();
-      players.delete(id);
-    }
-  for (const c of [...active, ...upcoming]) {
+    activeIds = new Set(active.map((c) => c.id));
+  const upcoming = project.clips.filter(
+    (c) => c.start > pt && c.start < pt + 2 && mediaOf(c).kind === "video",
+  );
+  const wanted = [...active, ...upcoming],
+    used = new Set();
+  players.clear();
+  for (const c of wanted) {
     const m = mediaOf(c);
-    if (["annotation", "effect"].includes(m.kind)) continue;
-    let p = players.get(c.id);
+    if (!["video", "image"].includes(m.kind)) continue;
+    const key = videoKey(c, m);
+    let p = videoPool.get(key);
     if (!p) {
       const element =
-        m.kind === "image"
-          ? new Image()
-          : document.createElement(m.kind === "audio" ? "audio" : "video");
-      element.src = m.url;
+        m.kind === "image" ? new Image() : document.createElement("video");
       element.preload = "auto";
+      element.muted = true;
+      element.src = m.url;
+      p = { element, kind: m.kind, error: false, key };
+      videoPool.set(key, p);
       element.onloadeddata = () => {
-        syncPlayers(true);
+        if (!playing) syncPlayers();
         draw();
       };
       element.onseeked = () => {
-        if (!playing) draw();
+        if (!playing) syncPlayers();
+        draw();
       };
       element.onload = () => draw();
       element.onerror = () => {
-        if (!p.error) {
-          p.error = true;
-          toast(
-            "Anteprima non disponibile per " +
-              m.name +
-              ". Verifica il codec del file.",
-          );
-        }
+        p.error = true;
+        toast("Anteprima non disponibile: " + m.name);
       };
-      p = { element, kind: m.kind, error: false };
-      players.set(c.id, p);
     }
+    p.used = performance.now();
+    players.set(c.id, p);
+    if (used.has(key)) continue;
+    used.add(key);
     if (m.kind === "image") continue;
-    const processKey = JSON.stringify([!!c.mono, c.voice]);
-    if (m.hasAudio && (c.mono || c.voice?.noise || c.voice?.level)) {
-      if (p.processKey !== processKey) {
-        p.audio?.pause();
-        p.audio = null;
-        p.processKey = processKey;
-        p.processing = true;
-        studio
-          .audioPreview(c, m)
-          .then((url) => {
-            if (players.get(c.id) !== p || p.processKey !== processKey) return;
-            p.audio = new Audio(url);
-            p.audio.preload = "auto";
-            p.audio.onloadeddata = () => syncPlayers(true);
-            p.processing = false;
-            syncPlayers(true);
-          })
-          .catch((e) => {
-            if (p.processKey === processKey) {
-              p.processing = false;
-              toast("Elaborazione voce non disponibile: " + e.message);
-            }
-          });
-      }
-    } else if (p.processKey) {
-      p.audio?.pause();
-      p.audio = null;
-      p.processKey = null;
-      p.processing = false;
-    }
-
     const v = p.element,
-      at = ids.has(c.id) ? Timeline.sourceTime(c, pt) : c.in;
-    const volume = c.muted || project.trackMuted?.[c.track] ? 0 : c.volume;
-    v.volume = p.audio || p.processing ? 0 : volume;
-    if (p.audio) {
-      const a = p.audio;
-      a.volume = volume;
-      a.playbackRate = c.speed || 1;
-      a.preservesPitch = true;
-      if (force || Math.abs(a.currentTime - at) > 0.1) a.currentTime = at;
-      if (playing && ids.has(c.id)) a.play().catch(() => {});
-      else a.pause();
-    }
-    meterPlayer(p, p.audio || v);
-    v.preservesPitch = true;
-    try {
-      v.playbackRate = c.speed || 1;
-      if (force || Math.abs(v.currentTime - at) > 0.25) v.currentTime = at;
-    } catch {}
-    if (!ids.has(c.id)) v.pause();
-    if (playing && ids.has(c.id) && v.paused && !p.error)
+      at = activeIds.has(c.id) ? Timeline.sourceTime(c, pt) : c.in;
+    v.muted = true;
+    v.volume = 0;
+    v.playbackRate = c.speed || 1;
+    if (
+      (force || Math.abs(v.currentTime - at) > (playing ? 0.08 : 0.002)) &&
+      !v.seeking
+    )
+      try {
+        v.currentTime = at;
+      } catch {}
+    if (playing && activeIds.has(c.id) && v.paused && !p.error)
       v.play().catch((e) => {
-        if (!["AbortError"].includes(e.name) && !p.error) {
-          p.error = true;
-          toast("Anteprima: " + e.message);
-        }
+        if (e.name !== "AbortError") toast("Video: " + e.message);
       });
+    if (!playing || !activeIds.has(c.id)) v.pause();
   }
+  for (const [key, p] of videoPool) {
+    if (!used.has(key)) {
+      p.element.pause?.();
+      if (videoPool.size > 64) {
+        p.element.removeAttribute("src");
+        p.element.load?.();
+        videoPool.delete(key);
+      }
+    }
+  }
+}
+async function readyVideos() {
+  syncPlayers(true);
+  const needed = [
+    ...new Set(
+      Timeline.active(project.clips, previewTime())
+        .map((c) => players.get(c.id))
+        .filter((p) => p?.kind === "video"),
+    ),
+  ];
+  await Promise.all(
+    needed.map(
+      (p) =>
+        new Promise((resolve, reject) => {
+          const v = p.element;
+          let timer;
+          const cleanup = () => {
+            clearTimeout(timer);
+            v.removeEventListener("seeked", check);
+            v.removeEventListener("loadeddata", check);
+            v.removeEventListener("error", fail);
+          };
+          const check = () => {
+            if (v.readyState >= 2 && !v.seeking) {
+              cleanup();
+              resolve();
+            }
+          };
+          const fail = () => {
+            cleanup();
+            reject(Error("Il video non è pronto: controlla il file sorgente."));
+          };
+          v.addEventListener("seeked", check);
+          v.addEventListener("loadeddata", check);
+          v.addEventListener("error", fail);
+          timer = setTimeout(fail, 15000);
+          check();
+        }),
+    ),
+  );
 }
 function previewRect() {
   const cv = $("previewCanvas"),
@@ -1251,28 +1362,36 @@ function draw() {
   }
 }
 function pause() {
+  if (playing) time = transport.time();
+  transport.stop();
   playing = false;
+  preparing = false;
   cancelAnimationFrame(frame);
-  for (const p of players.values()) {
-    p.element.pause?.();
-    p.audio?.pause();
-  }
+  for (const p of videoPool.values()) p.element.pause?.();
   $("playBtn").textContent = "▶";
 }
-function play() {
+async function play() {
   if (!project.clips.length) return;
   if (time >= Timeline.total(project.clips)) time = 0;
-  playing = true;
-  lastTick = performance.now();
-  $("playBtn").textContent = "Ⅱ";
-  syncPlayers(true);
-  cancelAnimationFrame(frame);
-  frame = requestAnimationFrame(tick);
+  if (preparing) return;
+  preparing = true;
+  $("playBtn").textContent = "…";
+  try {
+    const started = await transport.start(project, time, readyVideos);
+    if (!started) return;
+    preparing = false;
+    playing = true;
+    $("playBtn").textContent = "Ⅱ";
+    syncPlayers();
+    frame = requestAnimationFrame(tick);
+  } catch (e) {
+    pause();
+    toast("Riproduzione non avviata: " + e.message);
+  }
 }
-function tick(now) {
+function tick() {
   if (!playing) return;
-  time += (now - lastTick) / 1000;
-  lastTick = now;
+  time = transport.time();
   if (time >= Timeline.total(project.clips)) {
     time = Timeline.total(project.clips);
     pause();
@@ -1285,7 +1404,7 @@ function tick(now) {
     frame = requestAnimationFrame(tick);
   }
 }
-$("playBtn").onclick = () => (playing ? pause() : play());
+$("playBtn").onclick = () => (playing || preparing ? pause() : play());
 $("toStart").onclick = () => seek(0);
 $("toEnd").onclick = () => seek(Timeline.total(project.clips));
 $("previewCanvas").onpointerdown = (e) => {
@@ -1468,7 +1587,7 @@ document.onkeydown = (e) => {
   }
   if (k === keys.play) {
     e.preventDefault();
-    playing ? pause() : play();
+    playing || preparing ? pause() : play();
   }
   if (k === keys.delete) {
     e.preventDefault();
@@ -1805,11 +1924,10 @@ function addEffect(type) {
     duration: 5,
     hasAudio: false,
   };
-  project.media.push(m);
   const c = {
     id: uid(),
     mediaId: m.id,
-    track: Math.min(2, (first()?.track ?? Number($("activeTrack").value)) + 1),
+    track: Number($("activeTrack").value),
     start: time,
     in: 0,
     out: 5,
@@ -1817,6 +1935,12 @@ function addEffect(type) {
     volume: 0,
     effect: { type, strength: 20, x: 30, y: 30, width: 40, height: 40 },
   };
+  if (!Timeline.canPlace(project.clips, [c])) {
+    toast("Intervallo occupato: scegli uno spazio libero o un’altra traccia.");
+    return;
+  }
+  if (!project.media.some((existing) => existing.id === m.id))
+    project.media.push(m);
   project.clips.push(c);
   selection = new Set([c.id]);
   render();
@@ -1903,40 +2027,114 @@ studio
   .catch((e) => {
     $("gpuStatus").textContent = "Verifica GPU non riuscita: disponibile CPU.";
   });
-// Per-track height and mute controls, independent of horizontal zoom.
-for (let track = 0; track < 3; track++) {
-  const label = document.querySelector('[data-choose-track="' + track + '"]');
-  const mute = el("button", "track-mute", "♪");
-  mute.title = "Silenzia traccia";
-  mute.setAttribute("aria-label", "Silenzia traccia " + (track + 1));
-  mute.onclick = (e) => {
-    e.stopPropagation();
-    checkpoint();
-    project.trackMuted ||= [false, false, false];
-    project.trackMuted[track] = !project.trackMuted[track];
-    changed();
-  };
-  label.append(mute);
-  const handle = el("div", "track-resizer");
-  handle.setAttribute("role", "separator");
-  handle.setAttribute("aria-label", "Altezza traccia " + (track + 1));
-  label.append(handle);
-  handle.onpointerdown = (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    checkpoint();
-    const y = e.clientY,
-      height = label.getBoundingClientRect().height;
-    captureMove(e, (ev) => {
-      project.trackHeights ||= [80, 80, 80];
-      project.trackHeights[track] = Math.max(
-        80,
-        Math.min(600, height + ev.clientY - y),
+function ensureTrackRows() {
+  const count = Timeline.trackCount(project);
+  if ($("labelRows").children.length !== count) {
+    document.querySelectorAll(".track").forEach((n) => n.remove());
+    $("labelRows").replaceChildren();
+    const active = Number($("activeTrack").value) || 0;
+    for (const id of ["activeTrack", "clipTrack"]) {
+      $(id).replaceChildren();
+      for (let t = 0; t < count; t++)
+        $(id).add(new Option("Traccia " + (t + 1), t));
+    }
+    $("activeTrack").value = Math.min(active, count - 1);
+    for (let t = count - 1; t >= 0; t--) {
+      const row = el("div", "track");
+      row.id = "track" + t;
+      row.dataset.track = t;
+      $("timeline").insertBefore(row, $("playhead"));
+      const label = el("div");
+      label.dataset.chooseTrack = t;
+      label.append(
+        el("span", "", String(t + 1)),
+        el("b", "", "Traccia " + (t + 1)),
+        el("small", "", "Video · immagini · audio · testi · effetti"),
       );
-      renderTimeline();
-    });
-  };
+      label.onclick = () => ($("activeTrack").value = t);
+      const mute = el("button", "track-mute", "♪");
+      mute.title = "Silenzia traccia";
+      mute.setAttribute("aria-label", "Silenzia traccia " + (t + 1));
+      mute.onclick = (e) => {
+        e.stopPropagation();
+        pause();
+        checkpoint();
+        project.trackMuted[t] = !project.trackMuted[t];
+        changed();
+      };
+      label.append(mute);
+      const handle = el("div", "track-resizer");
+      handle.setAttribute("role", "separator");
+      handle.setAttribute("aria-label", "Altezza traccia " + (t + 1));
+      label.append(handle);
+      handle.onpointerdown = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        checkpoint();
+        const y = e.clientY,
+          height = label.getBoundingClientRect().height;
+        captureMove(e, (ev) => {
+          project.trackHeights[t] = Math.max(
+            80,
+            Math.min(600, height + ev.clientY - y),
+          );
+          const h = project.trackHeights[t];
+          label.style.height = h + "px";
+          row.style.height = h + "px";
+          for (const block of Timeline.groups(project.clips).filter(
+            (b) => b.track === t,
+          )) {
+            const node = [...row.children].find(
+              (n) => n.dataset.id === block.members[0].id,
+            );
+            if (!node) continue;
+            node.style.height = h - 16 + "px";
+            node.querySelector("canvas")?.remove();
+            drawWave(node, block);
+          }
+        });
+      };
+      $("labelRows").append(label);
+      bindTrack(t);
+    }
+  }
+  $("addTrack").disabled = count >= Timeline.MAX_TRACKS;
 }
+$("addTrack").onclick = () => {
+  pause();
+  checkpoint();
+  try {
+    const t = Timeline.addTrack(project);
+    renderTimeline();
+    $("activeTrack").value = t;
+    $("timelineScroll").scrollTop = 0;
+  } catch (e) {
+    toast(e.message);
+  }
+};
+$("newTrackDrop").ondragover = (e) => {
+  e.preventDefault();
+  $("newTrackDrop").classList.add("dragover");
+};
+$("newTrackDrop").ondragleave = () =>
+  $("newTrackDrop").classList.remove("dragover");
+$("newTrackDrop").ondrop = (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  $("newTrackDrop").classList.remove("dragover");
+  const id = e.dataTransfer.getData("application/crea-media");
+  if (!id) return;
+  if (Timeline.trackCount(project) >= Timeline.MAX_TRACKS)
+    return toast("Limite tracce raggiunto.");
+  checkpoint();
+  const track = Timeline.addTrack(project);
+  renderTimeline();
+  addMedia(
+    id,
+    Math.max(0, (e.clientX - $("ruler").getBoundingClientRect().left) / scale),
+    track,
+  );
+};
 // Persist workspace layout independently of project content.
 let panelLayout = { library: 265, properties: 235, timeline: 288 };
 try {
@@ -2044,36 +2242,14 @@ safe(async () => {
   if (file) applyOpened(file);
   else applyOpened(await studio.recover());
 })();
-let meterContext;
-const meterNodes = new WeakMap();
-function meterPlayer(p, element) {
-  if (playing) meterContext?.resume();
-  if (p.meterElement === element) return;
-  try {
-    meterContext ||= new AudioContext();
-    if (playing) meterContext.resume();
-    p.meterSource?.disconnect();
-    p.analyser?.disconnect();
-    p.meterSource =
-      meterNodes.get(element) || meterContext.createMediaElementSource(element);
-    meterNodes.set(element, p.meterSource);
-    p.analyser = meterContext.createAnalyser();
-    p.analyser.fftSize = 512;
-    p.meterSource.connect(p.analyser);
-    p.analyser.connect(meterContext.destination);
-    p.meterElement = element;
-  } catch {}
-}
 setInterval(() => {
   let peak = 0;
-  const mix = new Float32Array(512);
-  for (const p of players.values())
-    if (p.analyser) {
-      const data = new Float32Array(p.analyser.fftSize);
-      p.analyser.getFloatTimeDomainData(data);
-      for (let i = 0; i < data.length; i++) mix[i] += data[i];
-    }
-  for (const v of mix) peak = Math.max(peak, Math.abs(v));
+  const a = transport.analyser;
+  if (a) {
+    const samples = new Float32Array(a.fftSize);
+    a.getFloatTimeDomainData(samples);
+    for (const v of samples) peak = Math.max(peak, Math.abs(v));
+  }
   $("audioMeter").textContent =
     peak >= 0.98
       ? "⚠ Audio troppo forte"
@@ -2100,4 +2276,17 @@ $("previewCanvas").onpointermove = (e) => {
     Math.abs(y - box.y - box.height) < (14 / r.height) * 100
       ? "nwse-resize"
       : "move";
+};
+
+transport.onbuffering = (at) => {
+  pause();
+  time = at;
+  syncPlayers(true);
+  updateHead();
+  toast("Audio pronto: riprendo dal segmento senza saltarne l’inizio.");
+  play();
+};
+transport.onerror = (e) => {
+  pause();
+  toast("Audio non disponibile: " + e.message);
 };

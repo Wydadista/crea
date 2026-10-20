@@ -17,7 +17,7 @@
         ><span class="badge">DESKTOP · 0.2</span>
       </div>
       <div class="project-name">
-        Monta a modo tuo<span>Tre tracce libere · Aggancio preciso</span>
+        Monta a modo tuo<span>Tracce progressive · Aggancio preciso</span>
       </div>
       <button id="openProject">Apri</button
       ><button id="saveProject">Salva progetto</button
@@ -77,7 +77,7 @@
           <div id="stageEmpty">
             <span>▷</span>
             <h2>Spazio alla tua storia.</h2>
-            <p>Trascina una clip su una delle tre tracce.</p>
+            <p>Trascina una clip sulla timeline.</p>
           </div>
         </div>
         <div class="transport">
@@ -375,7 +375,8 @@
           <button id="undoBtn">↶</button><button id="redoBtn">↷</button
           ><button id="cutTool">✂ Dividi</button
           ><button id="deleteTool">⌫ Elimina</button
-          ><button id="groupTool">▣ Raggruppa</button>
+          ><button id="groupTool">▣ Raggruppa</button
+          ><button id="addTrack">＋ Aggiungi traccia</button>
         </div>
         <div class="timeline-tips">
           <kbd>Shift</kbd> + rotella: scorri · <kbd>Ctrl</kbd> + rotella: zoom
@@ -393,32 +394,19 @@
           /><button id="zoomIn">＋</button><span id="zoomLabel"></span>
         </div>
       </div>
+      <div id="newTrackDrop">
+        Trascina qui un elemento per creare una nuova traccia
+      </div>
       <div class="timeline-body">
         <div class="track-labels">
           <div class="ruler-label">TRACCE LIBERE</div>
           <div id="labelViewport">
-            <div id="labelRows">
-              <div data-choose-track="2">
-                <span>3</span><b>Traccia superiore</b
-                ><small>Video · foto · audio · testi</small>
-              </div>
-              <div data-choose-track="1">
-                <span>2</span><b>Traccia centrale</b
-                ><small>Video · foto · audio · testi</small>
-              </div>
-              <div data-choose-track="0">
-                <span>1</span><b>Traccia inferiore</b
-                ><small>Video · foto · audio · testi</small>
-              </div>
-            </div>
+            <div id="labelRows"></div>
           </div>
         </div>
         <div id="timelineScroll">
           <div id="timeline">
             <div id="ruler"></div>
-            <div id="track2" class="track" data-track="2"></div>
-            <div id="track1" class="track" data-track="1"></div>
-            <div id="track0" class="track" data-track="0"></div>
             <div id="playhead"><span></span></div>
             <div id="marquee" hidden></div>
           </div>
@@ -436,7 +424,7 @@
           <h2>Esporta il montaggio</h2>
           <button class="close" value="cancel">×</button>
         </div>
-        <p class="hint">MP4 H.264 / AAC · tre tracce composte · 16:9</p>
+        <p class="hint">MP4 H.264 / AAC · tracce composte · 16:9</p>
         <div class="form-grid">
           <label
             >Risoluzione<select id="exportHeight">
@@ -616,6 +604,7 @@
     <div id="toast" role="status" hidden></div>
     <script src="model.js"></script>
     <script src="scene.js"></script>
+    <script src="playback.js"></script>
     <script src="renderer.js"></script>
   </body>
 </html>

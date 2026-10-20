@@ -1180,10 +1180,9 @@ dialog .check {
 main {
   height: calc(100vh - 74px - var(--timeline-height, 288px));
   min-height: 260px;
-  grid-template-columns: 74px var(--library-width, 265px) minmax(
-      200px,
-      1fr
-    ) var(--properties-width, 235px);
+  grid-template-columns:
+    74px var(--library-width, 265px) minmax(200px, 1fr)
+    var(--properties-width, 235px);
 }
 .timeline-panel {
   height: var(--timeline-height, 288px);
@@ -1292,4 +1291,49 @@ header button {
 }
 .track-labels > #labelViewport {
   height: calc(100% - 35px);
+}
+/* One visible lane per track. Both waveform and content use the full resized height. */
+.clip {
+  max-height: none;
+  min-height: 0;
+}
+.waveform {
+  image-rendering: auto;
+  max-height: none;
+}
+#newTrackDrop {
+  height: 26px;
+  text-align: center;
+  color: #a4b8c5;
+  background: #252e35;
+  border: 1px dashed #586773;
+  line-height: 24px;
+}
+#newTrackDrop.dragover {
+  background: #33572e;
+  color: #d9ffbf;
+  border-color: #b4ed70;
+}
+.timeline-body {
+  height: calc(var(--timeline-height, 288px) - 106px);
+}
+.drop-ghost {
+  position: fixed;
+  z-index: 200;
+  pointer-events: none;
+  border: 2px solid #b4ed70;
+  background: #b4ed7055;
+  min-width: 5px;
+  overflow: hidden;
+  color: #fff;
+}
+.drop-ghost.invalid {
+  border-color: #ff716d;
+  background: #ed707055;
+}
+#labelRows > div {
+  padding-right: 34px;
+}
+.timeline-toolbar .timeline-tips {
+  display: none;
 }

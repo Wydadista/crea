@@ -9,7 +9,7 @@
     "test": "node --test test/*.test.js",
     "pack": "electron-builder --dir",
     "build:win": "electron-builder --win --x64 --dir --publish never && node scripts/make-installer.cjs",
-    "test:ui": "node test/ui-smoke.cjs && node test/features-ui.cjs",
+    "test:ui": "node test/ui-smoke.cjs && node test/features-ui.cjs && node test/precision-ui.cjs",
     "prebuild:win": "node scripts/prepare-windows.cjs",
     "bundle:release": "node scripts/bundle-release.cjs",
     "build:release": "npm run build:win && npm run bundle:release"
