@@ -1165,3 +1165,14 @@ dialog .check {
   color: #717e90;
   margin-top: 5px;
 }
+
+#clipSpeed {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px;
+  background: #12171d;
+  border: 1px solid #37414d;
+  border-radius: 5px;
+  color: var(--text);
+}

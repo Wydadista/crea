@@ -37,7 +37,7 @@ Sono inclusi lockfile, script di preparazione Windows e cloud Linux, installer N
 
 La forma d'onda di video e audio proviene dai campioni reali del file: picchi del PCM stereo a banda intera, 50 punti al secondo, massimo fra i canali per evitare cancellazioni di fase. Non è un disegno decorativo. I silenzi non hanno picchi; i livelli molto bassi sotto circa −54 dB vengono omessi. L'altezza è normalizzata per file per rendere leggibili anche voci poco forti. Rifilatura, volume e velocità cambiano la rappresentazione. L'analisi viene eseguita in coda senza bloccare l'importazione; i file lunghi possono richiedere tempo.
 
-**Velocità ×** accetta valori numerici da `0,1` a `16`, compresi `0,5`, `2` o `2,4`. Su più clip selezionate applica il valore a tutte. **Ripristina selezione a 1×** ripristina la velocità originale; anche il valore `0` nel campo è interpretato come ripristino a `1×`. La durata sulla timeline è `(fine − inizio sorgente) / velocità`. Le posizioni delle altre clip restano invariate. L'export adatta l'audio con mantenimento dell'intonazione; l'anteprima a velocità estreme dipende anche dai limiti di Chromium.
+**Velocità ×** accetta valori numerici da `0,1` a `16`, compresi `0,5`, `2` o `2,4`; sono accettati sia la virgola sia il punto decimale. Su più clip selezionate applica il valore a tutte. **Ripristina selezione a 1×** ripristina la velocità originale; anche il valore `0` nel campo è interpretato come ripristino a `1×`. La durata sulla timeline è `(fine − inizio sorgente) / velocità`. Le posizioni delle altre clip restano invariate. L'export adatta l'audio con mantenimento dell'intonazione; l'anteprima a velocità estreme dipende anche dai limiti di Chromium.
 
 ## Sfocatura, pixelatura, zoom e annotazioni
 

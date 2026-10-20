@@ -740,7 +740,7 @@ for (const id of ["trimIn", "trimOut"])
     });
 $("clipSpeed").onchange = () =>
   edit((c) => {
-    c.speed = Number($("clipSpeed").value) || 1;
+    c.speed = Timeline.parseSpeed($("clipSpeed").value);
   });
 $("resetSpeed").onclick = () =>
   edit((c) => {

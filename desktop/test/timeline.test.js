@@ -15,6 +15,11 @@ const clip = (id, start, track = 0, speed = 1) => ({
   volume: 1,
 });
 test("speed-aware split preserves absolute placement, trim and track", () => {
+  assert.equal(T.parseSpeed("2,4"), 2.4);
+  assert.equal(T.parseSpeed("2.4"), 2.4);
+  assert.equal(T.parseSpeed("0"), 1);
+  assert.throws(() => T.parseSpeed("oops"));
+  assert.throws(() => T.parseSpeed("0,01"));
   const clips = [clip("x", 3, 2, 2.4), clip("other", 15, 1)];
   assert.equal(
     T.split(clips, ["x"], 4, () => "right"),

@@ -115,7 +115,7 @@ const run = require("node:util").promisify(
     await page.locator("#track1 .clip").click();
     await page.locator("#clipStart").fill("1");
     await page.locator("#clipStart").press("Tab");
-    await page.locator("#clipSpeed").fill("2.4");
+    await page.locator("#clipSpeed").fill("2,4");
     await page.locator("#clipSpeed").press("Tab");
     assert.equal(
       await page.evaluate(() => project.clips.find((c) => c.track === 1).speed),

@@ -3,6 +3,15 @@
   const n = (v, min, max) => Number.isFinite(v) && v >= min && v <= max;
   const api = {
     empty: () => ({ version: 2, media: [], clips: [] }),
+    parseSpeed(value) {
+      const text = String(value).trim().replace(",", ".");
+      if (!/^[0-9]+(?:\.[0-9]+)?$/.test(text))
+        throw Error("Inserisci una velocità numerica, ad esempio 2,4");
+      const speed = Number(text);
+      if (speed === 0) return 1;
+      if (!n(speed, 0.1, 16)) throw Error("Velocità consentita: 0,1–16×");
+      return speed;
+    },
     duration: (c) => (c.out - c.in) / (c.speed || 1),
     total: (clips) =>
       Math.max(0, ...clips.map((c) => c.start + api.duration(c))),
