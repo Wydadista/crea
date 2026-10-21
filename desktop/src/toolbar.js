@@ -3,7 +3,14 @@ const state = document.getElementById("state"),
 window.recordingControls.onState((s) => {
   state.textContent = (s.paused ? "Ⅱ PAUSA " : "● ") + s.time;
   pause.textContent = s.paused ? "Riprendi" : "Pausa";
-  document.getElementById("level").value = s.level || 0;
+  MicMeter.paint(
+    document.getElementById("level"),
+    document.getElementById("peak"),
+    document.getElementById("db"),
+    document.getElementById("micStatus"),
+    s,
+    s.paused,
+  );
 });
 pause.onclick = () => window.recordingControls.control("pause");
 document.getElementById("stop").onclick = () =>

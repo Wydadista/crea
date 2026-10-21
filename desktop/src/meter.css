@@ -1,0 +1,86 @@
+.mic-meter {
+  min-width: 145px;
+  max-width: 210px;
+  -webkit-app-region: no-drag;
+  font:
+    10px Arial,
+    sans-serif;
+}
+.mic-meter-track {
+  position: relative;
+  height: 9px;
+  overflow: hidden;
+  background: #091018;
+  border-radius: 3px;
+}
+.mic-meter-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: left;
+  transform: scaleX(0);
+  background: linear-gradient(
+    to right,
+    #57cf88 0%,
+    #57cf88 78%,
+    #e9bf50 91%,
+    #ff5460 100%
+  );
+  transition: transform 55ms linear;
+}
+.mic-meter-fill[data-status="clip"] {
+  background: #ff5460;
+}
+.mic-meter-peak {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #fff;
+  transition: left 55ms linear;
+}
+.mic-meter-scale {
+  display: flex;
+  justify-content: space-between;
+  color: #a8b8c6;
+  margin-top: 2px;
+  font-size: 9px;
+}
+.mic-meter-readout {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 13px;
+  margin-top: 2px;
+}
+.mic-meter-status {
+  color: #efce7c;
+  font-size: 9px;
+}
+
+.mic-meter-scale {
+  position: relative;
+  display: block;
+  height: 11px;
+}
+.mic-meter-scale > span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+.mic-meter-scale > span:nth-child(1) {
+  left: 0;
+  transform: none;
+}
+.mic-meter-scale > span:nth-child(2) {
+  left: 40%;
+}
+.mic-meter-scale > span:nth-child(3) {
+  left: 60%;
+}
+.mic-meter-scale > span:nth-child(4) {
+  left: 80%;
+}
+.mic-meter-scale > span:nth-child(5) {
+  left: 100%;
+  transform: translateX(-100%);
+}

@@ -3,6 +3,7 @@ const fs = require("node:fs/promises"),
 const { spawn } = require("node:child_process");
 const { once } = require("node:events");
 const { encoding } = require("./render");
+const RecordingPolicy = require("./recording-policy");
 // MediaRecorder MP4/H.264 is remuxed, never encoded a second time. On runtimes
 // without MP4 capture, conversion runs concurrently with capture, with backpressure.
 class Recording {
@@ -41,13 +42,13 @@ class Recording {
           ? ["-c:v", "copy"]
           : [
               "-vf",
-              `fps=${cfg.fps},scale=trunc(iw/2)*2:trunc(ih/2)*2`,
+              "pad=ceil(iw/2)*2:ceil(ih/2)*2",
               "-c:v",
               "libx264",
               "-preset",
               "veryfast",
               "-crf",
-              String(cfg.crf),
+              String(RecordingPolicy.fallbackCrf(this.settings)),
               "-threads",
               String(require("./encoders").threadBudget()),
               "-pix_fmt",
@@ -177,6 +178,8 @@ class Recording {
       videoReencoded: !!this.live && !this.copyVideo,
       conversionDuringCapture: !!this.live,
       bytes: this.bytes,
+      captureInfo: this.settings.captureInfo,
+      profile: this.settings.profile || "balanced",
     };
     this.notify({
       phase: "File pronto; importazione metadati",

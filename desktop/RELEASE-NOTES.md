@@ -1,3 +1,13 @@
+# AKhbar studio 0.3.4
+
+Aggancio dei bordi con tolleranza in pixel, riconoscimento degli attraversamenti rapidi, mantenimento dell’aggancio e nuovo controllo al rilascio; precedenza alla traccia iniziale e calamita separata dalla chiusura degli spazi. Velocità e ripristino limitati alla selezione, rifiuto atomico dei conflitti senza ricollocare clip su altre tracce; comando separato per la sorgente intera. Gruppi consecutivi con colore uniforme, contorno esterno e tagli grigi, separati anche da vuoti di 0,1 s; collegamento tra tracce disponibile esplicitamente. Righello da 24 px con etichette misurate e limitate all’area visibile. Invio applica le proprietà e le impostazioni; i campi multilinea conservano il ritorno a capo.
+
+Separazione audio dal menu della clip: nuova traccia subito sopra, stessi tagli/tempo/velocità, trasferimento delle proprietà audio, video silenziato e protezione contro duplicati. Audio indipendente anche per spostamento, taglio, silenziamento ed eliminazione. Slider Altezza tracce con pulsanti −/+: minimo 32 px contro gli 80 precedenti (−60%), geometria e forme d’onda adeguate, ridimensionamento individuale e salvataggio.
+
+Registrazione riordinata in Sorgente, Qualità e Audio, senza Modalità; opzioni secondarie in Altre impostazioni. Profilo Schermo e testo, bitrate calcolato sui pixel reali, ridimensionamento unico di qualità elevata fuori dal thread dell’interfaccia quando supportato; nessuna maschera di nitidezza. A risoluzione invariata resta il percorso diretto. Indicatore microfono in dBFS a 30 Hz nominali con attacco/rilascio, picchi e avvisi; misura per canale senza cancellazione di fase. Guadagno e AGC separati e dichiarati, nessun aumento del volume per far salire il misuratore.
+
+**Verifiche e limiti, inclusi confronto sintetico registrazioni e FPS effettivi nel cloud:** [VERIFICA-0.3.4.md](VERIFICA-0.3.4.md). Nessuna build Windows, misura con microfono reale/RTX 2060 o prova lunga in questa revisione: affidate al PC dell’utente.
+
 # AKhbar studio 0.3.3
 
 Anteprima aggiornata durante il trascinamento del cursore sulla timeline e della barra di navigazione: una ricerca video alla volta, destinazione intermedia sostituita dall’ultima richiesta, aggiornamenti accorpati al ridisegno dello schermo. Ogni fotogramma decodificato viene pubblicato prima di cercare il successivo. Durante le attese resta visibile l’ultimo fotogramma disponibile; i veri spazi vuoti della timeline rimangono neri. Risoluzione di anteprima temporaneamente limitata a 640 pixel di larghezza durante il movimento, con ripristino della qualità selezionata alla pausa o al rilascio. Cache e lettori inattivi limitati per contenere la memoria. Il video sorgente e l’esportazione conservano risoluzione e impostazioni.

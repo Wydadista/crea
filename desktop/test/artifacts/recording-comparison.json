@@ -1,0 +1,193 @@
+{
+  "hardware": {
+    "cpu": "INTEL(R) XEON(R) PLATINUM 8573C",
+    "platform": "linux",
+    "gpuDisabled": true,
+    "node": "v24.19.0"
+  },
+  "results": [
+    {
+      "profile": "balanced",
+      "ssim": 0.985247,
+      "bytes": 470038,
+      "duration": 3.183,
+      "avgFps": 11.941940172451044,
+      "audioDuration": 3.276,
+      "stopToImportMs": 1674,
+      "metrics": {
+        "finalizationMs": 1186.1760610000001,
+        "copyMs": 2.572152000000642,
+        "videoReencoded": false,
+        "conversionDuringCapture": true,
+        "bytes": 499481,
+        "captureInfo": {
+          "sourceWidth": 1920,
+          "sourceHeight": 1080,
+          "sourceFps": 12,
+          "outputWidth": 1920,
+          "outputHeight": 1080,
+          "profile": "balanced",
+          "requestedBitrate": 4480000,
+          "actualBitrate": 4480000,
+          "mime": "video/webm;codecs=h264,opus",
+          "micGainDb": 0,
+          "agc": false
+        },
+        "profile": "balanced",
+        "width": 1920,
+        "height": 1080,
+        "fps": "608000/50913",
+        "codec": "h264"
+      },
+      "meter": {
+        "samples": [
+          {
+            "db": "-32 dBFS",
+            "transform": "scaleX(0.476249)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.482635)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.483545)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.483926)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.484049)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.484044)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.483978)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.48403)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.484071)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.484024)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.483975)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.484023)"
+          }
+        ],
+        "calls": 25,
+        "maxGapMs": 160.29999999701977
+      },
+      "recordedLeftRmsDb": -30.99239049486776,
+      "codecProfile": "Constrained Baseline",
+      "pixelFormat": "yuv420p"
+    },
+    {
+      "profile": "screen-text",
+      "ssim": 0.987972,
+      "bytes": 559118,
+      "duration": 3.305,
+      "avgFps": 7.868058707822666,
+      "audioDuration": 3.398,
+      "stopToImportMs": 722,
+      "metrics": {
+        "finalizationMs": 521.5339889999996,
+        "copyMs": 0.5482019999981276,
+        "videoReencoded": false,
+        "conversionDuringCapture": true,
+        "bytes": 592720,
+        "captureInfo": {
+          "sourceWidth": 3840,
+          "sourceHeight": 2160,
+          "sourceFps": 12,
+          "outputWidth": 1920,
+          "outputHeight": 1080,
+          "profile": "screen-text",
+          "scaling": "worker",
+          "requestedBitrate": 10119289,
+          "actualBitrate": 10119289,
+          "mime": "video/webm;codecs=h264,opus",
+          "micGainDb": 0,
+          "agc": false
+        },
+        "profile": "screen-text",
+        "width": 1920,
+        "height": 1080,
+        "fps": "52000/6609",
+        "codec": "h264"
+      },
+      "meter": {
+        "samples": [
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.48404)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.484036)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.483992)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.483955)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.483913)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.483909)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.484076)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.484072)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.484053)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.484021)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.484003)"
+          },
+          {
+            "db": "-31 dBFS",
+            "transform": "scaleX(0.483938)"
+          }
+        ],
+        "calls": 20,
+        "maxGapMs": 212.30000000447035
+      },
+      "recordedLeftRmsDb": -30.98045020802826,
+      "codecProfile": "Constrained Baseline",
+      "pixelFormat": "yuv420p"
+    }
+  ]
+}

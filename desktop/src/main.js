@@ -123,6 +123,9 @@ async function inspect(file) {
     duration,
     hasAudio: data.streams.some((s) => s.codec_type === "audio"),
     codec: video?.codec_name,
+    codecProfile: video?.profile,
+    pixelFormat: video?.pix_fmt,
+    fileBitrate: Number(data.format.bit_rate || 0),
     fps: video?.avg_frame_rate,
     audioChannels: data.streams.find((s) => s.codec_type === "audio")?.channels,
     width: video?.width,
@@ -329,6 +332,13 @@ ipcMain.handle("recording-finish", async (_e, duration) => {
       percent: 100,
       metrics: { ...current.metrics, importMs: performance.now() - at },
     });
+    media.recordingInfo = {
+      ...current.metrics,
+      width: media.width,
+      height: media.height,
+      fps: media.fps,
+      codec: media.codec,
+    };
     return media;
   } catch (e) {
     if (!ready) {
@@ -355,8 +365,8 @@ ipcMain.handle("recording-toolbar", async (_e, state) => {
   if (!recordingToolbar) {
     const area = screen.getPrimaryDisplay().workArea;
     recordingToolbar = new BrowserWindow({
-      width: 460,
-      height: 80,
+      width: 540,
+      height: 86,
       x: area.x + 30,
       y: area.y + 30,
       frame: false,

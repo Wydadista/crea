@@ -9,12 +9,13 @@
     />
     <title>AKhbar studio</title>
     <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="meter.css" />
   </head>
   <body>
     <header>
       <div class="brand">
         <span class="brand-icon">A</span> AKhbar <b>STUDIO</b
-        ><span class="badge">DESKTOP · 0.3.3</span>
+        ><span class="badge">DESKTOP · 0.3.4</span>
       </div>
       <details id="fileMenu" class="file-menu">
         <summary>File ▾</summary>
@@ -473,7 +474,13 @@
             </div>
           </details>
           <div class="property-actions">
+            <button id="applyProperties" class="primary">Applica</button>
             <button id="groupBtn">Raggruppa selezione</button
+            ><button
+              id="groupAcrossTracks"
+              title="Collega esplicitamente gli elementi selezionati su tracce diverse"
+            >
+              Raggruppa tra tracce</button
             ><button id="ungroupBtn">Separa gruppo</button
             ><button id="deleteBtn" class="danger">Elimina selezione</button>
           </div>
@@ -488,12 +495,42 @@
           ><button id="deleteTool">⌫ Elimina</button
           ><button id="groupTool">▣ Raggruppa</button
           ><button id="addTrack">＋ Aggiungi traccia</button
+          ><label
+            class="track-height-controls"
+            title="Regola tutte le tracce; ogni traccia resta ridimensionabile singolarmente"
+            >Altezza tracce<button
+              id="trackHeightMinus"
+              type="button"
+              aria-label="Riduci altezza tracce"
+            >
+              −</button
+            ><input
+              id="trackHeight"
+              type="range"
+              min="32"
+              max="600"
+              step="1"
+              value="100"
+              aria-label="Altezza tracce"
+            /><button
+              id="trackHeightPlus"
+              type="button"
+              aria-label="Aumenta altezza tracce"
+            >
+              +</button
+            ><output id="trackHeightValue">100</output></label
+          ><button
+            id="edgeSnap"
+            aria-pressed="true"
+            title="Aggancia i bordi durante il trascinamento, senza chiudere gli spazi dopo un’eliminazione"
+          >
+            🧲 Aggancio: sì</button
           ><button
             id="rippleFamily"
             aria-pressed="false"
             title="Chiudi solo i vuoti lasciati dai segmenti della stessa aggiunta"
           >
-            🧲 Chiudi spazi della clip: no</button
+            ⇤ Chiudi spazi della clip: no</button
           ><label
             >Traccia
             <select id="activeTrack">
@@ -621,7 +658,9 @@
             <option value="75" selected>
               Ottima — dettagli nitidi, peso maggiore
             </option>
-            <option value="100">Super — massima qualità, file grandi</option>
+            <option value="100">
+              Massima qualità con compressione, file più grandi
+            </option>
             <option value="custom">
               Personalizzata — slider 1–100%
             </option></select
@@ -687,106 +726,146 @@
     <dialog id="recordDialog">
       <form method="dialog">
         <div class="modal-title">
-          <h2>Registra schermo e audio</h2>
-          <button class="close" value="cancel">×</button>
+          <h2>Registra schermo o finestra</h2>
+          <button class="close" value="cancel" aria-label="Chiudi">×</button>
         </div>
         <label
-          >Nome delle registrazioni<input
-            id="recordName"
-            value="Registrazione"
-            maxlength="100"
-        /></label>
-        <label
-          >Modalità<select id="captureMode">
-            <option value="screen">Schermo / finestra</option>
-            <option value="camera">Webcam</option>
-            <option value="screen-camera">Schermo e webcam</option>
-            <option value="audio">Solo microfono</option>
-          </select></label
-        >
-        <label
-          >Webcam<select id="cameraDevice">
-            <option value="default">Predefinita del sistema</option>
-          </select></label
-        >
-        <p id="deviceWarning" role="alert"></p>
-        <label>Schermo / finestra<select id="captureSource"></select></label>
-        <div class="form-grid">
-          <label
-            >Formato finale<select id="recordFormat">
-              <option value="mp4" selected>MP4 · H.264 / AAC</option>
-              <option value="webm">WebM · VP9 / Opus</option>
-            </select></label
-          ><label
-            >Risoluzione massima<select id="recordHeight">
-              <option value="720">720p</option>
-              <option value="1080" selected>1080p</option>
-              <option value="2160">2160p</option>
-            </select></label
-          ><label
-            >FPS personalizzati (1–120)<input
-              id="recordFps"
-              type="number"
+          >Sorgente da registrare<select id="captureSource"></select
+        ></label>
+        <select id="captureMode" hidden aria-hidden="true">
+          <option value="screen">Schermo</option>
+          <option value="audio">Audio</option>
+        </select>
+        <select id="cameraDevice" hidden aria-hidden="true">
+          <option value="default">Predefinita</option>
+        </select>
+        <fieldset class="record-section">
+          <legend>Qualità della registrazione</legend>
+          <div class="form-grid">
+            <label
+              >Profilo<select id="recordProfile">
+                <option value="screen-text" selected>Schermo e testo</option>
+                <option value="balanced">Video e movimento</option>
+              </select></label
+            >
+            <label
+              >Risoluzione massima<select id="recordHeight">
+                <option value="720">720p</option>
+                <option value="1080" selected>1080p</option>
+                <option value="2160">2160p</option>
+              </select></label
+            >
+          </div>
+          <label class="record-quality-heading"
+            >Qualità <b id="recordQualityValue">75%</b
+            ><select id="recordPreset">
+              <option value="35">Base · file piccoli</option>
+              <option value="55">Buona · peso contenuto</option>
+              <option value="75" selected>Ottima · dettagli nitidi</option>
+              <option value="100">Massima · file più grandi</option>
+              <option value="custom">Personalizzata</option></select
+            ><input
+              id="recordQuality"
+              type="range"
               min="1"
-              max="120"
-              value="30" /></label
-          ><label
-            >Bitrate audio (kbps)<input
-              id="recordAudioBitrate"
-              type="number"
-              min="32"
-              max="320"
-              value="192"
+              max="100"
+              value="75"
+              list="qualityMarks"
           /></label>
-        </div>
-        <label
-          >Qualità video <b id="recordQualityValue">70%</b
-          ><select id="recordPreset">
-            <option value="35">Base — file piccoli, meno dettagli</option>
-            <option value="55">Buona — uso quotidiano, peso contenuto</option>
-            <option value="75" selected>
-              Ottima — dettagli nitidi, peso maggiore
-            </option>
-            <option value="100">Super — massima qualità, file grandi</option>
-            <option value="custom">
-              Personalizzata — slider 1–100%
-            </option></select
-          ><input
-            id="recordQuality"
-            type="range"
-            min="1"
-            max="100"
-            value="70"
-            list="qualityMarks"
-        /></label>
-        <p class="hint">
-          La qualità non cambia risoluzione e FPS. I valori effettivi dipendono
-          dal dispositivo.
-        </p>
-        <label class="check"
-          ><input id="systemAudio" type="checkbox" checked /> Audio del computer
-          (Windows)</label
-        ><label class="check"
-          ><input id="microphone" type="checkbox" /> Registra microfono</label
-        ><label
-          >Microfono<select id="microphoneDevice">
-            <option value="default">Predefinito del sistema</option>
-          </select></label
-        ><button id="refreshMicrophones" type="button">
-          Rileva microfoni / autorizza accesso</button
-        ><label class="check"
-          ><input id="audioProcessing" type="checkbox" /> Riduzione rumore, eco
-          e guadagno automatico</label
-        >
-        <p class="hint">
-          La barra flottante resta in primo piano. Windows 10 2004+ può
-          escluderla dalla cattura tramite protezione contenuti; su altri
-          sistemi può comparire nel video. Spostala fuori dall’area acquisita se
-          necessario. Lascia disattivati i filtri per acquisire il segnale del
-          microfono senza elaborazioni automatiche. La cattura viene scritta
-          progressivamente sul disco e finalizzata nel formato scelto quando
-          premi Ferma.
-        </p>
+          <p class="hint">
+            100% è il massimo del profilo, con compressione. Ridurre uno schermo
+            4K a 1080p comporta perdita di dettagli. Nessuna nitidezza
+            artificiale.
+          </p>
+        </fieldset>
+        <fieldset class="record-section">
+          <legend>Audio</legend>
+          <label class="check"
+            ><input id="systemAudio" type="checkbox" checked /> Registra audio
+            del computer (Windows)</label
+          >
+          <div class="record-microphone-row">
+            <label class="check"
+              ><input id="microphone" type="checkbox" /> Registra
+              microfono</label
+            ><select id="microphoneDevice" aria-label="Dispositivo microfono">
+              <option value="default">Predefinito del sistema</option></select
+            ><button
+              id="refreshMicrophones"
+              type="button"
+              title="Rileva microfoni / autorizza accesso"
+              aria-label="Rileva microfoni"
+            >
+              ↻
+            </button>
+          </div>
+          <p id="deviceWarning" role="alert"></p>
+          <details class="mic-controls">
+            <summary>Controlli microfono</summary>
+            <label
+              >Guadagno <output id="micGainValue">0 dB</output
+              ><input
+                id="micGain"
+                type="range"
+                min="-12"
+                max="18"
+                step="1"
+                value="0"
+            /></label>
+            <p class="hint">
+              Il guadagno modifica il volume nel file. L’indicatore −60…0 dBFS
+              mostra il segnale acquisito, senza aumentarne il volume.
+            </p>
+            <label class="check"
+              ><input id="audioProcessing" type="checkbox" /> Riduzione rumore
+              ed eco del dispositivo</label
+            >
+            <label class="check"
+              ><input id="autoGain" type="checkbox" /> Guadagno automatico del
+              dispositivo (modifica l’audio registrato)</label
+            >
+          </details>
+        </fieldset>
+        <details class="record-secondary">
+          <summary>Altre impostazioni</summary>
+          <label
+            >Nome delle registrazioni<input
+              id="recordName"
+              value="Registrazione"
+              maxlength="100"
+          /></label>
+          <div class="form-grid">
+            <label
+              >Formato finale<select id="recordFormat">
+                <option value="mp4" selected>MP4 · H.264 / AAC</option>
+                <option value="webm">WebM · VP9 / Opus</option>
+              </select></label
+            >
+            <label
+              >FPS (1–120)<input
+                id="recordFps"
+                type="number"
+                min="1"
+                max="120"
+                value="30"
+            /></label>
+            <label
+              >Bitrate audio (kbps)<input
+                id="recordAudioBitrate"
+                type="number"
+                min="32"
+                max="320"
+                value="192"
+            /></label>
+          </div>
+          <p class="hint">
+            La barra flottante resta in primo piano. Windows 10 2004+ può
+            escluderla dalla cattura tramite protezione contenuti; sugli altri
+            sistemi può comparire. La cattura viene scritta sul disco durante la
+            registrazione.
+          </p>
+          <output id="captureDiagnostics" class="hint"></output>
+        </details>
         <div class="modal-actions">
           <button id="startRecording" type="button" class="primary">
             ● Avvia registrazione
@@ -845,7 +924,7 @@
         ><button id="resetPanels" type="button">Ripristina pannelli</button>
         <p id="settingsStatus" class="hint"></p>
         <button id="saveSettings" type="button" class="primary">
-          Salva impostazioni</button
+          Applica impostazioni</button
         ><button>Chiudi</button>
       </form>
     </dialog>
@@ -934,18 +1013,32 @@
       ><button data-action="ungroup">Separa gruppo</button
       ><button data-action="set-speed">
         Velocità · <span id="contextSpeedValue">1×</span></button
-      ><button data-action="speed">Ripristina velocità a 1×</button
+      ><button data-action="speed">Ripristina velocità originale</button
+      ><button
+        data-action="source-speed"
+        title="Seleziona esplicitamente tutti i segmenti della sorgente e apri il controllo velocità"
+      >
+        Velocità su tutta la sorgente…</button
+      ><button data-action="mute">Silenzia audio clip</button
+      ><button data-action="detach-audio">Separa audio dal video</button
       ><button data-action="delete">Elimina selezione</button>
     </div>
     <div id="recordingBar" hidden>
-      <i></i><span id="recordingTime"></span
-      ><meter
-        id="recordLevel"
-        min="0"
-        max="1"
-        value="0"
-        aria-label="Livello microfono"
-      ></meter
+      <i></i><span id="recordingTime"></span>
+      <div class="mic-meter" aria-label="Livello microfono da −60 a 0 dBFS">
+        <div class="mic-meter-track">
+          <span id="recordLevel" class="mic-meter-fill"></span
+          ><span id="recordPeak" class="mic-meter-peak"></span>
+        </div>
+        <div class="mic-meter-scale">
+          <span>−60</span><span>−36</span><span>−24</span><span>−12</span
+          ><span>0</span>
+        </div>
+        <div class="mic-meter-readout">
+          <output id="recordDb">≤ −60 dBFS</output
+          ><span id="recordMicStatus" class="mic-meter-status"></span>
+        </div>
+      </div>
       ><button id="pauseRecording">Pausa</button
       ><button id="stopRecording">■ Ferma e salva</button>
     </div>
@@ -954,6 +1047,9 @@
     <script src="scene.js"></script>
     <script src="playback.js"></script>
     <script src="preview.js"></script>
+    <script src="recording-policy.js"></script>
+    <script src="capture-processor.js"></script>
+    <script src="meter.js"></script>
     <script src="renderer.js"></script>
   </body>
 </html>

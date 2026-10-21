@@ -2,14 +2,14 @@
 
 Editor desktop per Windows 10/11 x64, derivato dal commit `427ae12b48a1d8e685e362506b92c78621b7fede` di Wydadista/crea. Conserva timeline multitraccia, tagli, gruppi, velocità di lavoro/ripristino, effetti, annotazioni, anteprima, recupero automatico e apertura dei progetti precedenti `.creastudio`. Il vecchio `../creapost.html` è indipendente.
 
+Verifiche della versione 0.3.4 e limiti delle misure: [VERIFICA-0.3.4.md](VERIFICA-0.3.4.md).
+
 ## Avvio e installer Windows
 
 Installare Node.js **24 x64**. Estrarre tutto lo ZIP dei sorgenti, aprire PowerShell nella cartella `desktop` ed eseguire in sequenza:
 
 ```powershell
 npm ci
-npx install-electron --no
-npm test
 npm start
 ```
 
@@ -19,7 +19,7 @@ Chiudere l'app prima di creare l'installer:
 npm run build:win
 ```
 
-Risultato: `dist/AKhbar-studio-0.3.3-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
+Risultato: `dist/AKhbar-studio-0.3.4-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
 
 ```powershell
 npm run build:release
@@ -46,7 +46,7 @@ Risultati e limiti dei benchmark: [PERFORMANCE.md](PERFORMANCE.md). Nessuna equi
 
 - **Crea fermo immagine**: selezionare il video e collocare il cursore al fotogramma desiderato. L'immagine PNG viene inserita su una nuova traccia per 5 secondi, senza tagliare/spostare nulla; durata regolabile con bordi o proprietà. Inquadratura, zoom all'istante scelto ed effetto della clip vengono conservati. L'audio sulle altre tracce continua. Annulla/Ripristina e salvataggio comprendono l'inserimento.
 - **Registra frase**: impostare inizio/fine con i campi della timeline, i pulsanti “= cursore” oppure Shift+trascinamento sul righello. L'intervallo è evidenziato. Selezionare le clip audio da correggere e attivare “Silenzia selezione nell'intervallo” solo se desiderato. Dopo 3 secondi di conto alla rovescia parte il microfono. Stop inserisce la registrazione WAV su una traccia dedicata, allineata all'inizio, con la sua durata effettiva. Solo il tratto scelto degli originali viene silenziato in modo reversibile; nulla viene spostato. Si possono usare i bordi per sistemare la frase. L'operazione di inserimento/silenziamento è un unico Annulla.
-- **🧲 Chiudi spazi della clip** chiude soltanto la durata dei segmenti eliminati appartenenti alla stessa aggiunta e sulla stessa traccia. Due inserimenti dello stesso file restano indipendenti. Le altre clip/tracce non si muovono. Disattivata, lascia i vuoti. L'aggancio preciso dei bordi durante il trascinamento rimane una funzione distinta, sempre disponibile. Le vecchie clip prive di un'identità certa non vengono raggruppate per file per questa operazione.
+- **⇤ Chiudi spazi della clip** chiude soltanto la durata dei segmenti eliminati appartenenti alla stessa aggiunta e sulla stessa traccia. Due inserimenti dello stesso file restano indipendenti. Le altre clip/tracce non si muovono. Disattivata, lascia i vuoti. Il pulsante **🧲 Aggancio** controlla separatamente l’aggancio dei bordi durante il trascinamento. Le vecchie clip prive di un'identità certa non vengono raggruppate per file per questa operazione.
 - Ogni segmento video mostra una miniatura del suo **inizio sorgente effettivo** (`in`), aggiornata dopo tagli/rifilature; immagini con miniatura. Larghezza fissa, ritagliata all'interno della clip senza deformazione. La generazione è in coda e in cache.
 - **Adatta tutto alla timeline** calcola lo zoom dalla durata di tutte le tracce e dalla larghezza disponibile, anche per ore; si aggiorna dopo modifiche e ridimensionamenti. Lo zoom manuale sulla linea verde rimane disponibile.
 - La barra sotto l'anteprima va sempre da zero alla fine dell'ultimo elemento su qualsiasi traccia, indipendentemente da zoom/scorrimento. Clic/trascinamento aggiornano anteprima e cursore anche in pausa; mostra corrente/totale.

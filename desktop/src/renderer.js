@@ -26,6 +26,7 @@ let project = Timeline.empty(),
   exportBusy = false,
   exportCancelled = false;
 let mediaView = localStorage.getItem("akhbar-media-view") || "grid";
+let edgeSnapEnabled = localStorage.getItem("akhbar-edge-snap") !== "false";
 let rippleFamily = localStorage.getItem("akhbar-family-ripple") === "true";
 let fitTimeline = false;
 const thumbCache = new Map();
@@ -439,6 +440,47 @@ function annotation(type, placement) {
 $("addText").onclick = () => annotation("text");
 $("addArrow").onclick = () => annotation("arrow");
 $("addCircle").onclick = () => annotation("circle");
+let rulerPaintFrame = null;
+function requestRulerPaint() {
+  if (rulerPaintFrame !== null) return;
+  rulerPaintFrame = requestAnimationFrame(() => {
+    rulerPaintFrame = null;
+    renderRuler();
+  });
+}
+function renderRuler() {
+  const ruler = $("ruler"),
+    sc = $("timelineScroll"),
+    width = sc.clientWidth;
+  const measure = document.createElement("canvas").getContext("2d");
+  measure.font = '600 11px "Segoe UI", Arial, sans-serif';
+  const { step, labels } = Timeline.rulerLabels(
+    scale,
+    sc.scrollLeft,
+    width,
+    (text) => measure.measureText(text).width + 8,
+  );
+  const fragment = document.createDocumentFragment();
+  for (const { time, text } of labels) {
+    const tick = el("span", "tick", text);
+    tick.style.left = time * scale + "px";
+    fragment.append(tick);
+  }
+  const minor = step / 5,
+    from = Math.ceil(sc.scrollLeft / scale / minor),
+    to = Math.floor((sc.scrollLeft + width) / scale / minor);
+  for (let i = from; i <= to; i++) {
+    const tick = el("span", "ruler-mark");
+    tick.style.left = i * minor * scale + "px";
+    fragment.append(tick);
+  }
+  ruler.replaceChildren(fragment);
+}
+function groupColor(id) {
+  let hash = 0;
+  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) | 0;
+  return `hsl(${Math.abs(hash) % 360} 28% 31%)`;
+}
 function renderTimeline() {
   const sc = $("timelineScroll"),
     total = Timeline.total(project.clips);
@@ -447,39 +489,27 @@ function renderTimeline() {
   $("zoom").min = String(minimum);
   $("timeline").style.width =
     Math.max(sc.clientWidth, (Math.max(total, time) + 20) * scale) + "px";
-  const ruler = $("ruler");
-  ruler.replaceChildren();
-  const step =
-    scale >= 320
-      ? 0.1
-      : scale >= 100
-        ? 1
-        : scale >= 35
-          ? 5
-          : scale >= 15
-            ? 10
-            : Math.max(30, Math.ceil(80 / scale / 30) * 30);
-  for (
-    let t = 0;
-    t < parseFloat($("timeline").style.width) / scale;
-    t += step
-  ) {
-    const tick = el(
-      "span",
-      "tick",
-      step < 1 ? fmt(t).slice(0, 8) : fmt(t).slice(0, 5),
-    );
-    tick.style.left = t * scale + "px";
-    ruler.append(tick);
-  }
+  renderRuler();
   ensureTrackRows();
   const blocks = Timeline.groups(project.clips);
+  const joins = new Map();
+  const groupIds = new Set(project.clips.map((c) => c.groupId).filter(Boolean));
+  for (const id of groupIds)
+    for (const run of Timeline.contiguousRuns(
+      project.clips.filter((c) => c.groupId === id),
+    )) {
+      if (run.length < 2) continue;
+      run.forEach((c, i) =>
+        joins.set(c.id, { left: i > 0, right: i < run.length - 1 }),
+      );
+    }
   for (let track = 0; track < Timeline.trackCount(project); track++) {
     $("track" + track).replaceChildren();
     const height = project.trackHeights?.[track] || 100;
     $("track" + track).style.height = height + "px";
     const label = document.querySelector('[data-choose-track="' + track + '"]');
     label.style.height = height + "px";
+    label.classList.toggle("compact-track", height < 64);
     const button = label.querySelector(".track-mute");
     button.textContent = project.trackMuted?.[track] ? "🔇" : "♪";
     button.setAttribute("aria-pressed", String(!!project.trackMuted?.[track]));
@@ -493,10 +523,21 @@ function renderTimeline() {
         "div",
         `clip${group ? " group" : ""}${m.kind === "audio" ? " audio" : ""}${m.kind === "annotation" ? " annotation" : ""}${members.some((c) => selection.has(c.id)) ? " selected" : ""}`,
       );
-    const clipHeight = (project.trackHeights?.[block.track] || 100) - 16;
-    node.style.height = clipHeight + "px";
-    node.style.top = "8px";
-    if (c.groupId) node.classList.add("group");
+    const rowHeight = project.trackHeights?.[block.track] || 100,
+      padding = trackPadding(rowHeight);
+    node.style.height = rowHeight - 2 * padding + "px";
+    node.style.top = padding + "px";
+    node.classList.toggle("compact-track", rowHeight < 64);
+    if (c.groupId) {
+      node.classList.add("group");
+      node.style.setProperty("--group-color", groupColor(c.groupId));
+      const join = joins.get(c.id);
+      if (join?.left) {
+        node.classList.add("joined-left");
+        node.append(el("span", "group-cut"));
+      }
+      if (join?.right) node.classList.add("joined-right");
+    }
     if (c.muted || project.trackMuted?.[c.track]) node.classList.add("muted");
     node.dataset.id = c.id;
     node.dataset.group = block.groupId || "";
@@ -527,6 +568,8 @@ function renderTimeline() {
       e.stopPropagation();
       if (!members.some((c) => selection.has(c.id)))
         selectIds(members.map((c) => c.id));
+      previewFocus = c.id;
+      properties();
       showContext(e.clientX, e.clientY);
     };
     if (!group)
@@ -544,6 +587,7 @@ function renderTimeline() {
       thumbnail(m, c.in, img);
     }
   }
+  syncTrackHeightControl();
   $("durationLabel").textContent =
     `${project.clips.length} clip · ${fmt(total)}`;
   $("zoom").value = scale;
@@ -553,8 +597,13 @@ function renderTimeline() {
   drawRecordRange();
 }
 function drawWave(node, block) {
-  const sc = $("timelineScroll"),
-    blockLeft = block.start * scale,
+  const sc = $("timelineScroll");
+  if (
+    block.start * scale > sc.scrollLeft + sc.clientWidth + 10 ||
+    block.end * scale < sc.scrollLeft - 10
+  )
+    return;
+  const blockLeft = block.start * scale,
     left = Math.max(0, sc.scrollLeft - blockLeft - 10),
     width = Math.max(
       0,
@@ -563,7 +612,11 @@ function drawWave(node, block) {
   if (!width || !block.members.some((c) => waves.get(c.mediaId)?.peaks)) return;
   const cv = el("canvas", "waveform"),
     dpr = window.devicePixelRatio || 1;
-  const height = Math.max(20, parseFloat(node.style.height) - 26);
+  const height = Math.max(
+    4,
+    parseFloat(node.style.height) -
+      (node.classList.contains("compact-track") ? 4 : 26),
+  );
   cv.width = Math.ceil(width * dpr);
   cv.height = Math.ceil(height * dpr);
   cv.style.height = height + "px";
@@ -607,6 +660,7 @@ function drawWave(node, block) {
   node.append(cv);
 }
 $("timelineScroll").onscroll = () => {
+  requestRulerPaint();
   $("labelRows").style.transform =
     `translateY(-${$("timelineScroll").scrollTop}px)`;
   for (const block of Timeline.groups(project.clips)) {
@@ -643,104 +697,137 @@ function beginClipDrag(e, block) {
   if (e.ctrlKey || e.shiftKey) selectIds(ids, true, true);
   else if (!ids.some((id) => selection.has(id))) selectIds(ids);
   if (!selection.size) return;
-  const origin = selected().map((c) => ({ c, start: c.start, track: c.track })),
-    x = e.clientX,
+  const origin = selected().map((c) => ({ c, start: c.start, track: c.track }));
+  const x = e.clientX,
     y = e.clientY,
     scroll = $("timelineScroll").scrollLeft;
+  const sourceHeight = $("track" + block.track).getBoundingClientRect().height;
   let moved = false,
     proposals = [],
     valid = false,
-    add = 0;
+    add = 0,
+    previousDelta = 0,
+    latch = null;
   const ghosts = origin.map(() => {
     const n = el("div", "drop-ghost");
     document.body.append(n);
     return n;
   });
+  const guide = el("div", "timeline-snap-guide");
+  guide.hidden = true;
+  document.body.append(guide);
   const cleanup = () => {
     ghosts.forEach((n) => n.remove());
+    guide.remove();
     $("newTrackDrop").classList.remove("dragover");
   };
-  captureMove(
-    e,
-    (ev) => {
-      if (!moved && Math.hypot(ev.clientX - x, ev.clientY - y) < 4) return;
-      moved = true;
-      const zone = $("newTrackDrop").getBoundingClientRect(),
-        newTrack = ev.clientY >= zone.top && ev.clientY <= zone.bottom;
-      const target = [...document.querySelectorAll(".track")].find((n) => {
-        const r = n.getBoundingClientRect();
-        return ev.clientY >= r.top && ev.clientY < r.bottom;
-      });
-      let td = newTrack
-        ? Timeline.trackCount(project) - Math.min(...origin.map((o) => o.track))
-        : Math.abs(ev.clientY - y) < 24
-          ? 0
-          : Number(target?.dataset.track ?? block.track) - block.track;
-      if (!newTrack)
-        td = Math.max(
-          -Math.min(...origin.map((o) => o.track)),
-          Math.min(
-            Timeline.trackCount(project) -
-              1 -
-              Math.max(...origin.map((o) => o.track)),
-            td,
-          ),
-        );
-      let delta = Math.max(
-        -Math.min(...origin.map((o) => o.start)),
-        (ev.clientX - x + $("timelineScroll").scrollLeft - scroll) / scale,
+  const update = (ev) => {
+    if (!moved && Math.hypot(ev.clientX - x, ev.clientY - y) < 4) return;
+    moved = true;
+    const intentional =
+      Math.abs(ev.clientY - y) >=
+      Math.max(32, Math.min(64, sourceHeight * 0.45));
+    const zone = $("newTrackDrop").getBoundingClientRect();
+    const newTrack =
+      intentional && ev.clientY >= zone.top && ev.clientY <= zone.bottom;
+    const target = [...document.querySelectorAll(".track")].find((n) => {
+      const r = n.getBoundingClientRect(),
+        inset = n.dataset.track === String(block.track) ? 0 : 12;
+      return ev.clientY >= r.top + inset && ev.clientY < r.bottom - inset;
+    });
+    let td = newTrack
+      ? Timeline.trackCount(project) - Math.min(...origin.map((o) => o.track))
+      : intentional && target
+        ? Number(target.dataset.track) - block.track
+        : 0;
+    if (!newTrack)
+      td = Math.max(
+        -Math.min(...origin.map((o) => o.track)),
+        Math.min(
+          Timeline.trackCount(project) -
+            1 -
+            Math.max(...origin.map((o) => o.track)),
+          td,
+        ),
       );
-      delta = Timeline.snap(project.clips, origin, delta, td, 10 / scale);
-      proposals = origin.map((o) => ({
-        ...o.c,
-        start: o.start + delta,
-        track: o.track + td,
-      }));
-      add = Math.max(
-        0,
-        ...proposals.map((c) => c.track + 1 - Timeline.trackCount(project)),
-      );
-      valid =
-        !!(target || newTrack || Math.abs(ev.clientY - y) < 24) &&
-        Timeline.canPlace(project.clips, proposals) &&
-        Timeline.trackCount(project) + add <= Timeline.MAX_TRACKS;
-      $("newTrackDrop").classList.toggle("dragover", newTrack);
-      proposals.forEach((c, i) => {
-        const r = newTrack
-          ? zone
-          : $("track" + c.track)?.getBoundingClientRect();
-        const ghost = ghosts[i];
-        ghost.classList.toggle("invalid", !valid);
-        if (r)
-          Object.assign(ghost.style, {
-            left:
-              $("ruler").getBoundingClientRect().left + c.start * scale + "px",
-            top: r.top + 4 + "px",
-            width: Math.max(5, Timeline.duration(c) * scale) + "px",
-            height: (newTrack ? zone.height - 8 : r.height - 8) + "px",
-          });
-        ghost.textContent = valid ? "Rilascia qui" : "Intervallo occupato";
-      });
-    },
-    (ev) => {
+    const rawDelta = Math.max(
+      -Math.min(...origin.map((o) => o.start)),
+      (ev.clientX - x + $("timelineScroll").scrollLeft - scroll) / scale,
+    );
+    const snapped = Timeline.snapMove(project.clips, origin, rawDelta, td, {
+      enabled: edgeSnapEnabled,
+      scale,
+      previousDelta,
+      latch,
+    });
+    previousDelta = rawDelta;
+    latch = snapped.latch;
+    proposals = origin.map((o) => ({
+      ...o.c,
+      start: o.start + snapped.delta,
+      track: o.track + td,
+    }));
+    if (latch?.edge === "start")
+      proposals.find((c) => c.id === latch.originId).start = latch.at;
+    add = Math.max(
+      0,
+      ...proposals.map((c) => c.track + 1 - Timeline.trackCount(project)),
+    );
+    valid =
+      Timeline.canPlace(project.clips, proposals) &&
+      Timeline.trackCount(project) + add <= Timeline.MAX_TRACKS;
+    $("newTrackDrop").classList.toggle("dragover", newTrack);
+    guide.hidden = !latch || !valid;
+    proposals.forEach((c, i) => {
+      const r = newTrack ? zone : $("track" + c.track)?.getBoundingClientRect(),
+        ghost = ghosts[i];
+      ghost.classList.toggle("invalid", !valid);
+      ghost.classList.toggle("snapped", !!latch && valid);
+      if (r)
+        Object.assign(ghost.style, {
+          left:
+            $("ruler").getBoundingClientRect().left + c.start * scale + "px",
+          top: r.top + 4 + "px",
+          width: Math.max(5, Timeline.duration(c) * scale) + "px",
+          height: (newTrack ? zone.height - 8 : r.height - 8) + "px",
+        });
+      ghost.textContent = valid
+        ? latch
+          ? "Agganciato · " + fmt(c.start)
+          : "Rilascia qui"
+        : "Intervallo occupato";
+      if (latch && r && c.id === latch.originId)
+        Object.assign(guide.style, {
+          left:
+            $("ruler").getBoundingClientRect().left + latch.at * scale + "px",
+          top: r.top + "px",
+          height: r.height + "px",
+        });
+    });
+  };
+  captureMove(e, update, (ev) => {
+    if (ev.type === "pointercancel") {
       cleanup();
-      if (ev.type === "pointercancel") return;
-      if (!moved) {
-        if (!e.ctrlKey && !e.shiftKey) selectIds(ids);
-        return;
-      }
-      if (!valid)
-        return toast("Posizione non disponibile: le clip sono rimaste ferme.");
-      checkpoint();
-      for (let i = 0; i < add; i++) Timeline.addTrack(project);
-      proposals.forEach((c) => {
-        const target = project.clips.find((o) => o.id === c.id);
-        Object.assign(target, c);
-        delete target.speedHomeTrack;
-      });
-      changed();
-    },
-  );
+      return;
+    }
+    // The release can contain a newer position than the last pointermove.
+    update(ev);
+    cleanup();
+    if (!moved) {
+      if (!e.ctrlKey && !e.shiftKey) selectIds(ids);
+      return;
+    }
+    if (!valid)
+      return toast("Posizione non disponibile: le clip sono rimaste ferme.");
+    checkpoint();
+    for (let i = 0; i < add; i++) Timeline.addTrack(project);
+    proposals.forEach((c) => {
+      const target = project.clips.find((o) => o.id === c.id);
+      Object.assign(target, c);
+      delete target.speedHomeTrack;
+    });
+    changed();
+  });
 }
 function trimDrag(e, c, side) {
   if (e.button !== 0) return;
@@ -751,8 +838,11 @@ function trimDrag(e, c, side) {
   const x = e.clientX,
     old = clone(c),
     m = mediaOf(c);
-  let dirty = false;
-  captureMove(e, (ev) => {
+  let dirty = false,
+    lastX = x;
+  const move = (ev) => {
+    if (ev.clientX === lastX) return;
+    lastX = ev.clientX;
     if (!dirty) {
       checkpoint();
       dirty = true;
@@ -785,6 +875,15 @@ function trimDrag(e, c, side) {
       toast("Intervallo occupato: rifilatura non applicata.");
     }
     changed();
+  };
+  captureMove(e, move, (ev) => {
+    if (ev.type === "pointercancel") {
+      Object.assign(c, old);
+      if (dirty) history.pop();
+      changed();
+      return;
+    }
+    move(ev);
   });
 }
 function bindTrack(track) {
@@ -816,13 +915,9 @@ function bindTrack(track) {
       out: m.duration,
       speed: 1,
     };
-    c.start += Timeline.snap(
-      project.clips,
-      [{ c, start, track }],
-      0,
-      0,
-      10 / scale,
-    );
+    c.start += edgeSnapEnabled
+      ? Timeline.snap(project.clips, [{ c, start, track }], 0, 0, 16 / scale)
+      : 0;
     ghost = el("div", "drop-ghost");
     const r = target.getBoundingClientRect();
     Object.assign(ghost.style, {
@@ -871,13 +966,15 @@ function bindTrack(track) {
       );
       const m = project.media.find((m) => m.id === id);
       const fake = { id: "drop", start, track, in: 0, out: m.duration };
-      const delta = Timeline.snap(
-        project.clips,
-        [{ c: fake, start, track }],
-        0,
-        0,
-        10 / scale,
-      );
+      const delta = edgeSnapEnabled
+        ? Timeline.snap(
+            project.clips,
+            [{ c: fake, start, track }],
+            0,
+            0,
+            16 / scale,
+          )
+        : 0;
       addMedia(id, start + delta, track);
     }
   };
@@ -1094,6 +1191,7 @@ function edit(mutator) {
   try {
     for (const c of selected()) mutator(c);
     Timeline.validate(project);
+    if (JSON.stringify(project) === JSON.stringify(before)) return;
     history.push(JSON.stringify(before));
     future = [];
     changed();
@@ -1137,14 +1235,13 @@ $("speedForm").onsubmit = (e) => {
     $("speedError").textContent = error.message;
   }
 };
-function changeSpeed(speed, includeFamily = false) {
+function changeSpeed(speed) {
   if (!selection.size) return;
   pause();
   try {
-    const ids = includeFamily
-      ? Timeline.familyIds(project, [...selection])
-      : [...selection];
+    const ids = [...selection];
     const next = Timeline.retime(project, ids, speed);
+    if (JSON.stringify(next) === JSON.stringify(project)) return true;
     checkpoint();
     project = next;
     selection = new Set(ids);
@@ -1164,7 +1261,7 @@ $("clipSpeed").onchange = () => {
     properties();
   }
 };
-$("resetSpeed").onclick = () => changeSpeed(null, true);
+$("resetSpeed").onclick = () => changeSpeed(null);
 $("selectSourceSegments").onclick = () =>
   selectIds(Timeline.familyIds(project, [...selection]));
 $("lockAspect").onchange = () =>
@@ -1302,12 +1399,17 @@ function group() {
 function editGroup(join) {
   pause();
   checkpoint();
-  const groupId = uid();
-  for (const c of selected())
-    if (join) c.groupId = groupId;
-    else delete c.groupId;
+  if (join) Timeline.groupSelected(project.clips, [...selection], uid);
+  else for (const c of selected()) delete c.groupId;
   changed();
 }
+$("groupAcrossTracks").onclick = () => {
+  if (selection.size < 2) return toast("Seleziona gli elementi da collegare.");
+  pause();
+  checkpoint();
+  Timeline.groupSelected(project.clips, [...selection], uid, true);
+  changed();
+};
 $("groupBtn").onclick = group;
 $("groupTool").onclick = group;
 $("ungroupBtn").onclick = () => editGroup(false);
@@ -1317,6 +1419,103 @@ $("deleteBtn").onclick = remove;
 $("deleteTool").onclick = remove;
 $("undoBtn").onclick = () => undo(history, future);
 $("redoBtn").onclick = () => undo(future, history);
+function detachSelectedAudio() {
+  const c = first();
+  if (!c) return;
+  try {
+    const result = Timeline.detachAudio(project, c.id, uid);
+    pause();
+    checkpoint();
+    project = result.project;
+    selection = new Set([result.audioId]);
+    const audio = first(),
+      m = mediaOf(audio),
+      original = project.media.find((x) => x.path === m.path && x.id !== m.id);
+    if (original && waves.has(original.id))
+      waves.set(m.id, waves.get(original.id));
+    else requestWave(m);
+    resetPlayers();
+    render();
+  } catch (error) {
+    toast(error.message);
+  }
+}
+function trackPadding(height) {
+  return Math.min(8, Math.max(2, Math.round(height * 0.08)));
+}
+let trackGeometryFrame = null,
+  trackHeightEditing = false;
+function syncTrackHeightControl() {
+  const heights = project.trackHeights || [],
+    value =
+      heights.length && heights.every((h) => h === heights[0])
+        ? heights[0]
+        : (project.defaultTrackHeight ?? 100);
+  $("trackHeight").value = value;
+  $("trackHeightValue").textContent = value;
+}
+function applyTrackGeometry() {
+  trackGeometryFrame = null;
+  syncTrackHeightControl();
+  for (let track = 0; track < Timeline.trackCount(project); track++) {
+    const height = project.trackHeights[track],
+      row = $("track" + track),
+      label = document.querySelector('[data-choose-track="' + track + '"]');
+    if (!row || !label) continue;
+    row.style.height = label.style.height = height + "px";
+    label.classList.toggle("compact-track", height < 64);
+    for (const block of Timeline.groups(project.clips).filter(
+      (b) => b.track === track,
+    )) {
+      const node = [...row.children].find(
+        (n) => n.dataset.id === block.members[0].id,
+      );
+      if (!node) continue;
+      const padding = trackPadding(height);
+      node.style.height = height - 2 * padding + "px";
+      node.style.top = padding + "px";
+      node.classList.toggle("compact-track", height < 64);
+      node.querySelector("canvas")?.remove();
+      drawWave(node, block);
+    }
+  }
+}
+function scheduleTrackGeometry() {
+  if (trackGeometryFrame === null)
+    trackGeometryFrame = requestAnimationFrame(applyTrackGeometry);
+}
+function setAllTrackHeights(value, finish = false) {
+  value = Math.max(Timeline.MIN_TRACK_HEIGHT, Math.min(600, Number(value)));
+  if (
+    project.defaultTrackHeight === value &&
+    project.trackHeights.every((h) => h === value)
+  ) {
+    if (finish) trackHeightEditing = false;
+    return;
+  }
+  if (!trackHeightEditing) {
+    pause();
+    checkpoint();
+    trackHeightEditing = true;
+  }
+  project.defaultTrackHeight = value;
+  project.trackHeights = Array(Timeline.trackCount(project)).fill(value);
+  $("trackHeight").value = value;
+  $("trackHeightValue").textContent = value;
+  scheduleTrackGeometry();
+  if (finish) trackHeightEditing = false;
+  $("undoBtn").disabled = false;
+  $("redoBtn").disabled = true;
+}
+$("trackHeight").oninput = () => setAllTrackHeights($("trackHeight").value);
+$("trackHeight").onchange = () => {
+  trackHeightEditing = false;
+  applyTrackGeometry();
+};
+$("trackHeightMinus").onclick = () =>
+  setAllTrackHeights(Number($("trackHeight").value) - 8, true);
+$("trackHeightPlus").onclick = () =>
+  setAllTrackHeights(Number($("trackHeight").value) + 8, true);
 let contextTrack = null;
 function showTrackContext(e, track) {
   e.preventDefault();
@@ -1362,10 +1561,23 @@ window.addEventListener("pointerdown", (e) => {
 function showContext(x, y) {
   $("trackContextMenu").hidden = true;
   const menu = $("contextMenu");
+  const c = first(),
+    m = c && mediaOf(c);
+  menu.querySelector('[data-action="detach-audio"]').disabled = !(
+    c &&
+    m.kind === "video" &&
+    m.hasAudio &&
+    !c.audioDetached
+  );
+  const mute = menu.querySelector('[data-action="mute"]');
+  mute.disabled = !(c && m.hasAudio && !c.audioDetached);
+  mute.textContent = c?.muted ? "Riattiva audio clip" : "Silenzia audio clip";
   $("contextSpeedValue").textContent = speedLabel(first()?.speed || 1);
   menu.hidden = false;
-  menu.style.left = Math.min(x, innerWidth - 280) + "px";
-  menu.style.top = Math.min(y, innerHeight - 220) + "px";
+  menu.style.left =
+    Math.max(4, Math.min(x, innerWidth - menu.offsetWidth - 4)) + "px";
+  menu.style.top =
+    Math.max(4, Math.min(y, innerHeight - menu.offsetHeight - 4)) + "px";
 }
 for (const button of $("contextMenu").querySelectorAll("button"))
   button.onclick = () => {
@@ -1374,13 +1586,25 @@ for (const button of $("contextMenu").querySelectorAll("button"))
     if (a === "split") split();
     if (a === "group") group();
     if (a === "ungroup") editGroup(false);
-    if (a === "set-speed") {
+    if (a === "source-speed") {
+      selection = new Set(Timeline.familyIds(project, [...selection]));
+      renderTimeline();
+      properties();
+    }
+    if (a === "set-speed" || a === "source-speed") {
       $("speedDialogValue").value = first()?.speed || 1;
       $("speedError").textContent = "";
       $("speedDialog").showModal();
       $("speedDialogValue").select();
     }
-    if (a === "speed") changeSpeed(null, true);
+    if (a === "speed") changeSpeed(null);
+    if (a === "detach-audio") detachSelectedAudio();
+    if (a === "mute") {
+      const muted = !first()?.muted;
+      edit((c) => {
+        if (mediaOf(c).hasAudio && !c.audioDetached) c.muted = muted;
+      });
+    }
     if (a === "delete") remove();
   };
 window.addEventListener("pointerdown", (e) => {
@@ -2009,6 +2233,56 @@ $("resetKeys").onclick = () => {
   localStorage.setItem("crea-keys", JSON.stringify(keys));
   showKeys();
 };
+let activePropertyField = null;
+document.querySelector(".properties").addEventListener("focusin", (e) => {
+  if (e.target.matches("input,select,textarea")) activePropertyField = e.target;
+});
+$("applyProperties").onclick = () => {
+  if (
+    activePropertyField &&
+    !activePropertyField.disabled &&
+    activePropertyField.getClientRects().length
+  )
+    activePropertyField.dispatchEvent(new Event("change", { bubbles: true }));
+};
+document.addEventListener(
+  "keydown",
+  (e) => {
+    if (
+      e.key !== "Enter" ||
+      e.isComposing ||
+      e.target.tagName === "TEXTAREA" ||
+      e.target.isContentEditable
+    )
+      return;
+    const field = e.target;
+    if (!field.matches("input,select")) return;
+    const dialog = field.closest("dialog");
+    if (dialog?.id === "speedDialog") {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      $("speedForm").requestSubmit(
+        $("speedForm").querySelector('[value="apply"]'),
+      );
+      return;
+    }
+    if (dialog?.id === "settingsDialog") {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      $("saveSettings").click();
+      return;
+    }
+    if (
+      field.closest(".properties") ||
+      ["recordDialog", "exportDialog", "keysDialog"].includes(dialog?.id)
+    ) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  },
+  true,
+);
 document.onkeydown = (e) => {
   if (
     (e.ctrlKey || e.metaKey) &&
@@ -2176,7 +2450,6 @@ $("cancelExport").onclick = () => {
 };
 const recordFields = [
   "recordName",
-  "captureMode",
   "captureSource",
   "cameraDevice",
   "recordFormat",
@@ -2185,6 +2458,9 @@ const recordFields = [
   "recordAudioBitrate",
   "recordPreset",
   "recordQuality",
+  "recordProfile",
+  "micGain",
+  "autoGain",
   "systemAudio",
   "microphone",
   "microphoneDevice",
@@ -2215,11 +2491,30 @@ for (const id of recordFields) {
     else $(id).value = recordingPrefs[id];
   $(id).addEventListener("change", saveRecordingPrefs);
 }
+// Preserve an existing explicit processing preference; new recordings start with no AGC.
+if (recordingPrefs.autoGain === undefined && recordingPrefs.audioProcessing)
+  $("autoGain").checked = true;
+$("micGain").oninput = () => {
+  const gain = Number($("micGain").value);
+  $("micGainValue").textContent = gain + " dB";
+  if (micGainNode)
+    micGainNode.gain.setTargetAtTime(
+      10 ** (gain / 20),
+      audioContext.currentTime,
+      0.01,
+    );
+};
 let overdub = null,
   pausedAt = 0,
   pausedMs = 0,
   micAnalyser = null,
+  micAnalysers = [],
+  micGainNode = null,
+  stopVideoComposer = null,
+  flushVideoFrame = null,
+  stoppingCapture = false,
   cameraFrame = null;
+$("micGain").oninput();
 function elapsedRecording() {
   return (
     (performance.now() -
@@ -2239,8 +2534,22 @@ function toggleRecordingPause() {
     pausedAt = 0;
   }
 }
-function stopRecording() {
-  if (recorder && recorder.state !== "inactive") recorder.stop();
+async function stopRecording() {
+  if (!recorder || recorder.state === "inactive" || stoppingCapture) return;
+  stoppingCapture = true;
+  try {
+    if (flushVideoFrame && recorder.state === "recording") {
+      try {
+        await flushVideoFrame();
+      } catch (error) {
+        console.warn(error.message);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+  } finally {
+    stoppingCapture = false;
+  }
 }
 $("pauseRecording").onclick = toggleRecordingPause;
 studio.onRecordingControl((action) =>
@@ -2266,6 +2575,11 @@ function stopCapture() {
   clearInterval(recordTimer);
   cancelAnimationFrame(cameraFrame);
   micAnalyser = null;
+  micAnalysers = [];
+  micGainNode = null;
+  stopVideoComposer?.();
+  stopVideoComposer = null;
+  flushVideoFrame = null;
   studio.recordingToolbar(null).catch(() => {});
   $("recordingBar").hidden = true;
   recorder = null;
@@ -2383,27 +2697,21 @@ $("startRecording").onclick = safe(async () => {
   )
     return toast("Controlla FPS e bitrate audio.");
   if (
-    ($("microphone").checked ||
-      overdub ||
-      $("captureMode").value === "audio") &&
+    ($("microphone").checked || overdub) &&
     $("microphoneDevice").value === "missing"
   )
     return toast("Scegli un microfono disponibile prima di registrare.");
-  if (
-    ["camera", "screen-camera"].includes($("captureMode").value) &&
-    $("cameraDevice").value === "missing"
-  )
-    return toast("Scegli una webcam disponibile");
   saveRecordingPrefs();
   $("startRecording").disabled = true;
   try {
     const settings = {
         name: $("recordName").value,
-        audioOnly: !!overdub || $("captureMode").value === "audio",
+        audioOnly: !!overdub,
         format: $("recordFormat").value,
         height: Number($("recordHeight").value),
         fps: Number($("recordFps").value),
         quality: Number($("recordQuality").value),
+        profile: $("recordProfile").value,
         audioBitrate: Number($("recordAudioBitrate").value),
       },
       system = $("systemAudio").checked;
@@ -2411,7 +2719,7 @@ $("startRecording").onclick = safe(async () => {
       id: $("captureSource").value,
       systemAudio: system,
     });
-    const mode = settings.audioOnly ? "audio" : $("captureMode").value;
+    const mode = settings.audioOnly ? "audio" : "screen";
     const cameraId = $("cameraDevice").value;
     const camera = ["camera", "screen-camera"].includes(mode)
       ? await navigator.mediaDevices.getUserMedia({
@@ -2433,7 +2741,9 @@ $("startRecording").onclick = safe(async () => {
           ? new MediaStream()
           : await navigator.mediaDevices.getDisplayMedia({
               video: {
-                height: { max: settings.height },
+                ...(settings.profile === "screen-text"
+                  ? { resizeMode: "none" }
+                  : { height: { max: settings.height } }),
                 frameRate: { ideal: settings.fps, max: settings.fps },
               },
               audio: system,
@@ -2451,62 +2761,181 @@ $("startRecording").onclick = safe(async () => {
             ...(id !== "default" ? { deviceId: { exact: id } } : {}),
             echoCancellation: processing,
             noiseSuppression: processing,
-            autoGainControl: processing,
+            autoGainControl: $("autoGain").checked,
           },
         });
       captureStreams.push(mic);
-      audio.push(mic);
       audioContext ||= new AudioContext();
-      micAnalyser = audioContext.createAnalyser();
-      micAnalyser.fftSize = 256;
-      audioContext.createMediaStreamSource(mic).connect(micAnalyser);
+      micGainNode = audioContext.createGain();
+      micGainNode.gain.value = 10 ** (Number($("micGain").value) / 20);
+      audioContext.createMediaStreamSource(mic).connect(micGainNode);
+      const splitter = audioContext.createChannelSplitter(2);
+      micGainNode.connect(splitter);
+      micAnalysers = [0, 1].map((channel) => {
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        splitter.connect(analyser, channel);
+        return analyser;
+      });
+      micAnalyser = micAnalysers[0];
     }
     let videoTracks = screen.getVideoTracks();
-    if (mode === "screen-camera") {
-      const screenVideo = document.createElement("video"),
-        cameraVideo = document.createElement("video");
-      screenVideo.srcObject = screen;
-      cameraVideo.srcObject = camera;
-      screenVideo.muted = cameraVideo.muted = true;
-      await Promise.all([screenVideo.play(), cameraVideo.play()]);
-      const cv = document.createElement("canvas");
-      cv.width = screenVideo.videoWidth;
-      cv.height = screenVideo.videoHeight;
-      const ctx = cv.getContext("2d");
-      const frame = () => {
-        ctx.drawImage(screenVideo, 0, 0, cv.width, cv.height);
-        const w = cv.width / 4,
-          h = (w * cameraVideo.videoHeight) / cameraVideo.videoWidth;
-        ctx.drawImage(cameraVideo, cv.width - w - 20, cv.height - h - 20, w, h);
-        cameraFrame = requestAnimationFrame(frame);
+    let outputSize = { width: 1920, height: settings.height };
+    if (videoTracks.length) {
+      const native = videoTracks[0].getSettings();
+      videoTracks[0].contentHint =
+        settings.profile === "screen-text" ? "detail" : "motion";
+      outputSize = RecordingPolicy.size(
+        native.width,
+        native.height,
+        settings.height,
+      );
+      settings.captureInfo = {
+        sourceWidth: native.width,
+        sourceHeight: native.height,
+        sourceFps: native.frameRate,
+        outputWidth: outputSize.width,
+        outputHeight: outputSize.height,
+        profile: settings.profile,
       };
-      frame();
-      const composite = cv.captureStream(settings.fps);
-      captureStreams.push(composite);
-      videoTracks = composite.getVideoTracks();
+      if (
+        mode === "screen-camera" ||
+        outputSize.width !== native.width ||
+        outputSize.height !== native.height
+      ) {
+        const scaled =
+          mode !== "screen-camera"
+            ? await createScaledCapture(
+                videoTracks[0],
+                outputSize,
+                settings.fps,
+              )
+            : null;
+        if (scaled) {
+          videoTracks = [scaled.track];
+          stopVideoComposer = scaled.close;
+          flushVideoFrame = scaled.flush;
+          settings.captureInfo.scaling = "worker";
+        } else {
+          settings.captureInfo.scaling = "canvas";
+          const sourceVideo = document.createElement("video");
+          sourceVideo.srcObject = screen;
+          sourceVideo.muted = true;
+          const cameraVideo =
+            mode === "screen-camera" ? document.createElement("video") : null;
+          if (cameraVideo) {
+            cameraVideo.srcObject = camera;
+            cameraVideo.muted = true;
+          }
+          await Promise.all([
+            sourceVideo.play(),
+            ...(cameraVideo ? [cameraVideo.play()] : []),
+          ]);
+          const cv = document.createElement("canvas");
+          cv.width = outputSize.width;
+          cv.height = outputSize.height;
+          const ctx = cv.getContext("2d", { alpha: false });
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+          const composite = cv.captureStream(settings.fps),
+            track = composite.getVideoTracks()[0];
+          let callback = null,
+            timer = null,
+            last = -Infinity,
+            stopped = false;
+          const paint = (now, final = false) => {
+            if (stopped) return;
+            if (sourceVideo.readyState >= 2) {
+              ctx.drawImage(sourceVideo, 0, 0, cv.width, cv.height);
+              if (cameraVideo) {
+                const w = cv.width / 4,
+                  h = (w * cameraVideo.videoHeight) / cameraVideo.videoWidth;
+                ctx.drawImage(
+                  cameraVideo,
+                  cv.width - w - 20,
+                  cv.height - h - 20,
+                  w,
+                  h,
+                );
+              }
+              track.requestFrame();
+              last = now;
+            }
+            if (final) return;
+            if (sourceVideo.requestVideoFrameCallback)
+              callback = sourceVideo.requestVideoFrameCallback((now) =>
+                paint(now),
+              );
+            else
+              timer = setTimeout(
+                () => paint(performance.now()),
+                1000 / settings.fps,
+              );
+          };
+          paint(performance.now());
+          flushVideoFrame = () => paint(performance.now(), true);
+          stopVideoComposer = () => {
+            stopped = true;
+            if (callback !== null)
+              sourceVideo.cancelVideoFrameCallback?.(callback);
+            clearTimeout(timer);
+            sourceVideo.pause();
+            sourceVideo.srcObject = null;
+            if (cameraVideo) {
+              cameraVideo.pause();
+              cameraVideo.srcObject = null;
+            }
+          };
+          captureStreams.push(composite);
+          videoTracks = composite.getVideoTracks();
+        }
+      }
     }
+    if (videoTracks[0])
+      videoTracks[0].contentHint =
+        settings.profile === "screen-text" ? "detail" : "motion";
     const mixed = new MediaStream(videoTracks);
-    if (audio.length) {
+    if (audio.length || micGainNode) {
       audioContext ||= new AudioContext();
       const dest = audioContext.createMediaStreamDestination();
       for (const s of audio)
         audioContext.createMediaStreamSource(s).connect(dest);
+      micGainNode?.connect(dest);
       dest.stream.getAudioTracks().forEach((t) => mixed.addTrack(t));
       await audioContext.resume();
     }
-    const candidates = settings.audioOnly
-      ? ["audio/webm;codecs=opus"]
-      : settings.format === "mp4"
-        ? [
-            "video/mp4;codecs=avc1.42001E,mp4a.40.2",
-            "video/mp4;codecs=avc1.42001E",
-            "video/webm;codecs=h264,opus",
-            "video/webm;codecs=vp8,opus",
-          ]
-        : ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus"];
-    const mime = candidates.find((m) => MediaRecorder.isTypeSupported(m));
-    settings.mime = mime;
-    if (!mime) throw Error("Codec di registrazione non disponibile");
+    const candidates = RecordingPolicy.mimeCandidates(settings).filter((m) =>
+      MediaRecorder.isTypeSupported(m),
+    );
+    const bitrate = RecordingPolicy.bitrate(
+      settings,
+      outputSize.width,
+      outputSize.height,
+    );
+    let chosenRecorder;
+    for (const mime of candidates)
+      try {
+        chosenRecorder = new MediaRecorder(mixed, {
+          mimeType: mime,
+          videoBitsPerSecond: bitrate,
+          audioBitsPerSecond: settings.audioBitrate * 1000,
+          videoKeyFrameIntervalDuration: 2000,
+        });
+        settings.mime = mime;
+        break;
+      } catch {}
+    if (!chosenRecorder) throw Error("Codec di registrazione non disponibile");
+    settings.captureInfo = {
+      ...settings.captureInfo,
+      requestedBitrate: bitrate,
+      actualBitrate: chosenRecorder.videoBitsPerSecond,
+      mime: chosenRecorder.mimeType,
+      micGainDb: Number($("micGain").value),
+      agc: $("autoGain").checked,
+    };
+    $("captureDiagnostics").textContent = settings.audioOnly
+      ? "Solo audio"
+      : `Sorgente ${settings.captureInfo.sourceWidth}×${settings.captureInfo.sourceHeight} → file ${outputSize.width}×${outputSize.height} · ${(chosenRecorder.videoBitsPerSecond / 1e6).toFixed(1)} Mbps richiesti · ${settings.profile === "screen-text" ? "Schermo e testo" : "Video e movimento"}`;
     if (overdub) {
       for (let n = 3; n > 0; n--) {
         $("startRecording").textContent = `Registrazione tra ${n}…`;
@@ -2517,17 +2946,7 @@ $("startRecording").onclick = safe(async () => {
     await studio.beginRecording(settings);
     let writes = Promise.resolve(),
       writeError;
-    const bitrate = Math.round(
-      8000000 *
-        (settings.height / 1080) ** 2 *
-        (settings.fps / 30) *
-        (0.2 + (settings.quality / 100) * 1.2),
-    );
-    recorder = new MediaRecorder(mixed, {
-      mimeType: mime,
-      videoBitsPerSecond: Math.max(200000, Math.min(80000000, bitrate)),
-      audioBitsPerSecond: settings.audioBitrate * 1000,
-    });
+    recorder = chosenRecorder;
     recorder.ondataavailable = (e) => {
       if (e.data.size)
         writes = writes
@@ -2547,10 +2966,18 @@ $("startRecording").onclick = safe(async () => {
         toast(
           "Finalizzazione " +
             settings.format.toUpperCase() +
-            ": scegli dove salvare…",
+            ": assemblaggio del file…",
         );
         const m = await studio.finishRecording(capturedDuration);
         if (m) {
+          if (m.recordingInfo && m.kind !== "audio") {
+            const rate = String(m.fps || "0")
+                .split("/")
+                .map(Number),
+              actualFps = rate.length > 1 ? rate[0] / rate[1] : rate[0];
+            $("captureDiagnostics").textContent =
+              `File pronto: ${m.width}×${m.height} · ${m.codec} ${m.codecProfile || ""} · ${actualFps.toFixed(1)} FPS medi · ${((m.fileBitrate || 0) / 1e6).toFixed(2)} Mbps effettivi. Sorgente acquisita: ${settings.captureInfo.sourceWidth}×${settings.captureInfo.sourceHeight}.`;
+          }
           checkpoint();
           project.media.push(m);
           renderLibrary();
@@ -2609,23 +3036,41 @@ $("startRecording").onclick = safe(async () => {
     $("recordingBar").hidden = false;
     $("recordingTime").textContent =
       "● " + settings.format.toUpperCase() + " · " + settings.fps + " FPS";
+    const meter = new MicMeter.Envelope(),
+      samples = micAnalysers.length
+        ? micAnalysers.map((a) => new Float32Array(a.fftSize))
+        : [new Float32Array(2048)];
+    let lastToolbar = 0,
+      toolbarBusy = false;
     recordTimer = setInterval(() => {
       const paused = recorder?.state === "paused";
-      const samples = new Float32Array(128);
-      micAnalyser?.getFloatTimeDomainData(samples);
-      const level = Math.min(
-        1,
-        Math.sqrt(samples.reduce((a, b) => a + b * b, 0) / samples.length) * 3,
-      );
-      const label = fmt(elapsedRecording());
+      samples.forEach((buffer, i) => {
+        buffer.fill(0);
+        if (!paused) micAnalysers[i]?.getFloatTimeDomainData(buffer);
+      });
+      const now = performance.now(),
+        state = { ...meter.sample(samples, now), micActive: !!micAnalyser },
+        label = fmt(elapsedRecording());
       $("recordingTime").textContent = (paused ? "Ⅱ PAUSA · " : "● ") + label;
       $("recordingBar").classList.toggle("paused", paused);
       $("pauseRecording").textContent = paused ? "Riprendi" : "Pausa";
-      $("recordLevel").value = level;
-      studio
-        .recordingToolbar({ paused, time: label, level })
-        .catch((e) => toast(e.message));
-    }, 200);
+      MicMeter.paint(
+        $("recordLevel"),
+        $("recordPeak"),
+        $("recordDb"),
+        $("recordMicStatus"),
+        state,
+        paused,
+      );
+      if (!toolbarBusy && now - lastToolbar >= 32) {
+        lastToolbar = now;
+        toolbarBusy = true;
+        studio
+          .recordingToolbar({ paused, time: label, ...state })
+          .catch((e) => toast(e.message))
+          .finally(() => (toolbarBusy = false));
+      }
+    }, 1000 / 30);
   } catch (e) {
     stopCapture();
     await studio.abortRecording();
@@ -2888,25 +3333,16 @@ function ensureTrackRows() {
         checkpoint();
         const y = e.clientY,
           height = label.getBoundingClientRect().height;
-        captureMove(e, (ev) => {
+        const move = (ev) => {
           project.trackHeights[t] = Math.max(
-            80,
+            Timeline.MIN_TRACK_HEIGHT,
             Math.min(600, height + ev.clientY - y),
           );
-          const h = project.trackHeights[t];
-          label.style.height = h + "px";
-          row.style.height = h + "px";
-          for (const block of Timeline.groups(project.clips).filter(
-            (b) => b.track === t,
-          )) {
-            const node = [...row.children].find(
-              (n) => n.dataset.id === block.members[0].id,
-            );
-            if (!node) continue;
-            node.style.height = h - 16 + "px";
-            node.querySelector("canvas")?.remove();
-            drawWave(node, block);
-          }
+          scheduleTrackGeometry();
+        };
+        captureMove(e, move, (ev) => {
+          if (ev.type !== "pointercancel") move(ev);
+          applyTrackGeometry();
         });
       };
       $("labelRows").append(label);
@@ -3235,11 +3671,22 @@ $("fitTimeline").onclick = () => {
 };
 new ResizeObserver(() => {
   if (fitTimeline) renderTimeline();
+  else requestRulerPaint();
 }).observe($("timelineScroll"));
+function showEdgeSnap() {
+  $("edgeSnap").setAttribute("aria-pressed", String(edgeSnapEnabled));
+  $("edgeSnap").textContent = "🧲 Aggancio: " + (edgeSnapEnabled ? "sì" : "no");
+}
+$("edgeSnap").onclick = () => {
+  edgeSnapEnabled = !edgeSnapEnabled;
+  localStorage.setItem("akhbar-edge-snap", String(edgeSnapEnabled));
+  showEdgeSnap();
+};
+showEdgeSnap();
 function showRipple() {
   $("rippleFamily").setAttribute("aria-pressed", String(rippleFamily));
   $("rippleFamily").textContent =
-    "🧲 Chiudi spazi della clip: " + (rippleFamily ? "sì" : "no");
+    "⇤ Chiudi spazi della clip: " + (rippleFamily ? "sì" : "no");
 }
 $("rippleFamily").onclick = () => {
   rippleFamily = !rippleFamily;

@@ -53,7 +53,7 @@ test("100 cuts restore in order on one track; deleted source sections stay delet
   }
   assert.equal(T.overlaps(restored.clips), false);
 });
-test("foreign clips stay fixed; overflow uses one reusable track and keeps computed time", () => {
+test("foreign clips stay fixed; insufficient room fails atomically without moving to another track", () => {
   const p = montage();
   p.media.push({
     id: "b",
@@ -72,16 +72,13 @@ test("foreign clips stay fixed; overflow uses one reusable track and keeps compu
     speed: 1,
     volume: 1,
   });
-  const restored = T.retime(p, T.familyIds(p, ["root"]), 1);
-  assert.equal(restored.trackCount, 2);
-  assert.deepEqual(restored.clips.at(-1), p.clips.at(-1));
-  restored.clips.slice(0, -1).forEach((c, i) => {
-    assert.ok(Math.abs(c.start - i) < 1e-8);
-    assert.equal(c.track, i >= 40 && i < 60 ? 1 : 0);
-  });
-  assert.equal(T.overlaps(restored.clips), false);
-  const faster = T.retime(restored, T.familyIds(restored, ["root"]), 2.5);
-  assert.ok(faster.clips.slice(0, -1).every((c) => c.track === 0));
+  const before = JSON.stringify(p);
+  assert.throws(
+    () => T.retime(p, T.familyIds(p, ["root"]), 1),
+    /Spazio insufficiente/,
+  );
+  assert.equal(JSON.stringify(p), before);
+  assert.equal(p.trackCount, 1);
 });
 test("reference before work acceleration persists; instances of the same media stay distinguishable", () => {
   let p = montage();
@@ -112,7 +109,7 @@ test("reference before work acceleration persists; instances of the same media s
     ).clips.every((c) => c.speed === 1),
   );
 });
-test("overflow limit fails atomically; ordinary edits still reject overlaps", () => {
+test("occupied rows fail atomically; ordinary edits still reject overlaps", () => {
   const p = montage();
   for (let t = 1; t < 128; t++) T.addTrack(p);
   p.media.push({
@@ -135,7 +132,10 @@ test("overflow limit fails atomically; ordinary edits still reject overlaps", ()
     });
   T.validate(p);
   const saved = JSON.stringify(p);
-  assert.throws(() => T.retime(p, T.familyIds(p, ["root"]), 1), /128/);
+  assert.throws(
+    () => T.retime(p, T.familyIds(p, ["root"]), 1),
+    /Spazio insufficiente/,
+  );
   assert.equal(JSON.stringify(p), saved);
   const bad = montage();
   bad.clips[0].speed = 1;

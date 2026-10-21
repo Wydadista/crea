@@ -3,9 +3,11 @@
   const n = (v, min, max) => Number.isFinite(v) && v >= min && v <= max;
   const api = {
     MAX_TRACKS: 128,
+    MIN_TRACK_HEIGHT: 32,
     empty: () => ({
       version: 2,
       trackCount: 1,
+      defaultTrackHeight: 100,
       trackHeights: [100],
       trackMuted: [false],
       media: [],
@@ -30,7 +32,7 @@
         throw Error("Impossibile inserire la traccia");
       p.trackHeights ||= Array(count).fill(100);
       p.trackMuted ||= Array(count).fill(false);
-      p.trackHeights.splice(index, 0, 100);
+      p.trackHeights.splice(index, 0, p.defaultTrackHeight ?? 100);
       p.trackMuted.splice(index, 0, false);
       for (const c of p.clips) {
         if (c.track >= index) c.track++;
@@ -56,7 +58,7 @@
       p.trackMuted.splice(index, 1);
       p.trackCount = Math.max(1, count - 1);
       if (count === 1) {
-        p.trackHeights = [100];
+        p.trackHeights = [p.defaultTrackHeight ?? 100];
         p.trackMuted = [false];
       }
     },
@@ -66,7 +68,7 @@
       p.trackCount = api.trackCount(p) + 1;
       p.trackHeights ||= Array(p.trackCount - 1).fill(100);
       p.trackMuted ||= Array(p.trackCount - 1).fill(false);
-      p.trackHeights.push(100);
+      p.trackHeights.push(p.defaultTrackHeight ?? 100);
       p.trackMuted.push(false);
       return p.trackCount - 1;
     },
@@ -166,18 +168,25 @@
       api.validate(p);
       const chosen = p.clips.filter((c) => ids.includes(c.id));
       if (!chosen.length) return p;
-      const groups = new Map();
-      for (const c of chosen) {
-        const key = api.sourceFamily(c);
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(c);
+      // An unselected clip always separates runs. Only selected neighbours can
+      // move to accommodate one another; their existing gaps stay intact.
+      const selectedIds = new Set(ids),
+        runs = [];
+      let run = null,
+        lastTrack = -1;
+      for (const c of [...p.clips].sort(
+        (a, b) => a.track - b.track || a.start - b.start,
+      )) {
+        if (c.track !== lastTrack || !selectedIds.has(c.id)) run = null;
+        lastTrack = c.track;
+        if (!selectedIds.has(c.id)) continue;
+        if (!run) {
+          run = [];
+          runs.push(run);
+        }
+        run.push(c);
       }
-      const proposals = [];
-      for (const clips of groups.values()) {
-        clips.sort(
-          (a, b) =>
-            a.start - b.start || p.clips.indexOf(a) - p.clips.indexOf(b),
-        );
+      for (const clips of runs) {
         let oldEnd, newEnd;
         for (const c of clips) {
           const oldSpeed = c.speed || 1,
@@ -197,36 +206,73 @@
               : newEnd + Math.max(0, oldStart - oldEnd);
           oldEnd = oldStart + oldDuration;
           c.speed = target;
+          delete c.speedHomeTrack;
           newEnd = c.start + api.duration(c);
-          proposals.push(c);
         }
       }
-      // Unaffected clips never move. Reserve all original/home-track positions first,
-      // so an overflow fragment cannot displace another fragment that fits at home.
-      const chosenIds = new Set(chosen.map((c) => c.id));
-      const placed = p.clips.filter((c) => !chosenIds.has(c.id)),
-        overflow = [];
-      proposals.sort((a, b) => a.start - b.start);
-      for (const c of proposals) {
-        const home = c.speedHomeTrack ?? c.track;
-        c.track = home;
-        if (api.canPlace(placed, [c])) placed.push(c);
-        else overflow.push({ c, home });
-      }
-      for (const { c, home } of overflow) {
-        let track = -1;
-        for (let t = 0; t < p.trackCount; t++)
-          if (t !== home && api.canPlace(placed, [{ ...c, track: t }])) {
-            track = t;
-            break;
-          }
-        if (track < 0) track = api.addTrack(p);
-        c.track = track;
-        c.speedHomeTrack = home;
-        placed.push(c);
-      }
+      if (api.overlaps(p.clips))
+        throw Error(
+          "Spazio insufficiente sulla traccia: nessuna modifica applicata. Sposta le altre clip per lasciare spazio.",
+        );
       api.validate(p);
       return p;
+    },
+    detachAudio(input, clipId, makeId) {
+      const p = JSON.parse(JSON.stringify(input));
+      api.validate(p);
+      const video = p.clips.find((c) => c.id === clipId),
+        media = video && p.media.find((m) => m.id === video.mediaId);
+      if (
+        !video ||
+        media.kind !== "video" ||
+        !media.hasAudio ||
+        video.audioDetached
+      )
+        throw Error(
+          "Questa clip non ha audio da separare o è già stata separata.",
+        );
+      if (p.clips.length >= 1000 || p.media.length >= 1000)
+        throw Error("Limite di elementi del progetto raggiunto");
+      const muted = !!video.muted || !!p.trackMuted?.[video.track];
+      const track = api.insertTrack(p, video.track + 1),
+        id = makeId(),
+        mediaId = makeId();
+      const audioMedia = {
+        ...media,
+        id: mediaId,
+        kind: "audio",
+        name: "Audio · " + media.name,
+      };
+      delete audioMedia.width;
+      delete audioMedia.height;
+      delete audioMedia.fps;
+      delete audioMedia.codec;
+      p.media.push(audioMedia);
+      const audio = {
+        ...JSON.parse(JSON.stringify(video)),
+        id,
+        mediaId,
+        track,
+        muted,
+        sourceInstanceId: id,
+        detachedFrom: video.id,
+      };
+      for (const key of [
+        "groupId",
+        "layout",
+        "zoom",
+        "effect",
+        "annotation",
+        "aspectUnlocked",
+        "speedHomeTrack",
+        "audioDetached",
+      ])
+        delete audio[key];
+      video.muted = true;
+      video.audioDetached = true;
+      p.clips.push(audio);
+      api.validate(p);
+      return { project: p, audioId: id };
     },
     projectSize(p) {
       if (p.canvasSize) return { ...p.canvasSize };
@@ -385,6 +431,156 @@
         delta + (Math.abs(correction) <= threshold ? correction : 0),
       );
     },
+    contiguousRuns(clips) {
+      const sorted = [...clips].sort(
+          (a, b) => a.track - b.track || a.start - b.start,
+        ),
+        runs = [];
+      for (const c of sorted) {
+        const run = runs.at(-1),
+          previous = run?.at(-1);
+        if (
+          previous &&
+          previous.track === c.track &&
+          Math.abs(c.start - previous.start - api.duration(previous)) <= 1e-8
+        )
+          run.push(c);
+        else runs.push([c]);
+      }
+      return runs;
+    },
+    groupSelected(clips, ids, makeId, acrossTracks = false) {
+      const chosen = clips.filter((c) => ids.includes(c.id));
+      chosen.forEach((c) => delete c.groupId);
+      const runs =
+        acrossTracks && new Set(chosen.map((c) => c.track)).size > 1
+          ? [chosen]
+          : api.contiguousRuns(chosen);
+      for (const run of runs)
+        if (run.length > 1) {
+          const id = makeId();
+          run.forEach((c) => (c.groupId = id));
+        }
+    },
+    snapMove(clips, origins, delta, trackDelta, options = {}) {
+      if (!options.enabled) return { delta, latch: null };
+      const scale = options.scale || 40,
+        ids = new Set(origins.map((o) => o.c.id)),
+        candidates = [];
+      for (const o of origins)
+        for (const other of clips) {
+          if (ids.has(other.id) || other.track !== o.track + trackDelta)
+            continue;
+          for (const edge of ["start", "end"]) {
+            const otherEnd = other.start + api.duration(other),
+              originalEnd = o.start + api.duration(o.c);
+            const previous = Number.isFinite(options.previousDelta)
+              ? options.previousDelta
+              : 0;
+            if (
+              trackDelta === 0 &&
+              (edge === "start"
+                ? o.start < otherEnd - 1e-8 &&
+                  o.start + previous < otherEnd - 1e-8
+                : originalEnd > other.start + 1e-8 &&
+                  originalEnd + previous > other.start + 1e-8)
+            )
+              continue;
+            const source =
+              edge === "start" ? o.start : o.start + api.duration(o.c);
+            const target =
+              edge === "start"
+                ? other.start + api.duration(other)
+                : other.start;
+            const desired = target - source,
+              distance = Math.abs(delta - desired) * scale;
+            const key = o.c.id + ":" + other.id + ":" + edge + ":" + trackDelta;
+            const held = options.latch?.key === key && distance <= 28;
+            const crossed =
+              Number.isFinite(options.previousDelta) &&
+              (options.previousDelta - desired) * (delta - desired) <= 0;
+            if (!held && distance > 16 && !(crossed && distance <= 24))
+              continue;
+            const proposal = origins.map((x) => ({
+              ...x.c,
+              start: x.start + desired,
+              track: x.track + trackDelta,
+            }));
+            if (!api.canPlace(clips, proposal)) continue;
+            candidates.push({
+              delta: desired,
+              distance,
+              held,
+              latch: {
+                key,
+                at: target,
+                edge,
+                originId: o.c.id,
+                otherId: other.id,
+                trackDelta,
+              },
+            });
+          }
+        }
+      candidates.sort(
+        (a, b) => Number(b.held) - Number(a.held) || a.distance - b.distance,
+      );
+      const best = candidates[0];
+      return best
+        ? { delta: best.delta, latch: best.latch }
+        : { delta, latch: null };
+    },
+    rulerLabels(scale, scrollLeft, width, measure) {
+      const steps = [
+        0.001, 0.002, 0.005, 0.01, 0.02, 0.025, 0.03, 0.05, 0.1, 0.2, 0.25, 0.3,
+        0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 15, 20, 30, 40, 45, 60,
+        90, 120, 180, 240, 300, 420, 600, 900, 1200, 1800, 2400, 3600, 7200,
+        14400, 28800, 86400, 172800, 604800,
+      ];
+      const format = (time, step) => {
+        const decimals = Math.min(3, (String(step).split(".")[1] || "").length);
+        const rounded = Number(time.toFixed(decimals)),
+          minutes = Math.floor(rounded / 60);
+        const seconds = (rounded - minutes * 60)
+          .toFixed(decimals)
+          .padStart(decimals ? 3 + decimals : 2, "0");
+        return (
+          String(minutes).padStart(2, "0") + ":" + seconds.replace(".", ",")
+        );
+      };
+      const start = scrollLeft / scale,
+        end = (scrollLeft + width) / scale;
+      const raw = width / scale / 7;
+      let step = steps.reduce(
+          (best, s) => (Math.abs(s - raw) < Math.abs(best - raw) ? s : best),
+          steps[0],
+        ),
+        labels = [];
+      for (let attempt = 0; attempt < steps.length; attempt++) {
+        labels = [];
+        let right = -Infinity,
+          overlap = false;
+        for (
+          let i = Math.ceil((start - 1e-9) / step);
+          i * step <= end + 1e-9;
+          i++
+        ) {
+          const time = Number((i * step).toFixed(6)),
+            text = format(time, step),
+            left = time * scale - scrollLeft + 4,
+            w = measure(text);
+          if (left + w > width - 2) continue;
+          if (left < right + 16) overlap = true;
+          labels.push({ time, text });
+          right = left + w;
+        }
+        if (!overlap && labels.length <= 8) break;
+        const next = steps.find((s) => s > step);
+        if (!next) break;
+        step = next;
+      }
+      return { step, labels };
+    },
     groups(clips) {
       const out = [],
         seen = new Set();
@@ -528,6 +724,13 @@
           typeof c.aspectUnlocked !== "boolean"
         )
           throw Error("Proporzioni non valide");
+        if (
+          c.audioDetached !== undefined &&
+          typeof c.audioDetached !== "boolean"
+        )
+          throw Error("Stato audio separato non valido");
+        if (c.detachedFrom !== undefined && typeof c.detachedFrom !== "string")
+          throw Error("Origine audio separato non valida");
         if (c.muted !== undefined && typeof c.muted !== "boolean")
           throw Error("Audio non valido");
         if (c.mono !== undefined && typeof c.mono !== "boolean")
@@ -597,10 +800,15 @@
         ids.add(c.id);
       }
       if (
+        p.defaultTrackHeight !== undefined &&
+        !n(p.defaultTrackHeight, api.MIN_TRACK_HEIGHT, 600)
+      )
+        throw Error("Altezza tracce non valida");
+      if (
         p.trackHeights &&
         (!Array.isArray(p.trackHeights) ||
           p.trackHeights.length !== p.trackCount ||
-          p.trackHeights.some((h) => !n(h, 80, 600)))
+          p.trackHeights.some((h) => !n(h, api.MIN_TRACK_HEIGHT, 600)))
       )
         throw Error("Altezza tracce non valida");
       if (

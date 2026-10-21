@@ -1498,7 +1498,7 @@ header button {
   background: #785c24;
 }
 #recordLevel {
-  width: 70px;
+  width: 100%;
 }
 
 #recordRangeOverlay {
@@ -1699,7 +1699,7 @@ header .project-name {
   display: none !important;
 }
 #ruler {
-  height: 44px !important;
+  height: 24px !important;
   background: var(--ruler-color, #335d80) !important;
   border-bottom: 2px solid #8eb5d4 !important;
   z-index: 5;
@@ -1709,15 +1709,15 @@ header .project-name {
   font-size: 12px !important;
   color: #fff !important;
   font-weight: 600;
-  top: 10px !important;
+  top: 0 !important;
 }
 .ruler-label {
-  height: 44px !important;
+  height: 24px !important;
   background: var(--ruler-color, #335d80);
   color: #fff;
 }
 #playhead {
-  top: 44px !important;
+  top: 24px !important;
 }
 #recordRangeOverlay {
   display: none !important;
@@ -1924,7 +1924,7 @@ header .project-name {
   height: auto;
 }
 .track-labels > #labelViewport {
-  height: calc(100% - 44px);
+  height: calc(100% - 24px);
 }
 .panel-resizer.top {
   height: 9px;
@@ -1932,4 +1932,225 @@ header .project-name {
 }
 #compactTimeline[aria-pressed="true"] {
   color: var(--accent);
+}
+
+/* The ruler is independent of clip heights and the playhead line width. */
+#ruler {
+  min-height: 24px;
+  padding: 0;
+  border-bottom-width: 1px !important;
+}
+#ruler .tick {
+  font-size: 11px !important;
+  height: 24px;
+  padding: 3px 4px 0;
+  white-space: nowrap;
+  line-height: 16px;
+}
+.ruler-label {
+  min-height: 24px;
+  padding: 5px 8px;
+  line-height: 14px;
+  letter-spacing: 1px;
+}
+.ruler-mark {
+  position: absolute;
+  bottom: 0;
+  height: 5px;
+  width: 1px;
+  background: #d1e2f090;
+  pointer-events: none;
+}
+#edgeSnap[aria-pressed="true"] {
+  background: #176e54;
+  color: #fff;
+}
+.drop-ghost.snapped {
+  border-color: #a9ff6a;
+  background: #3e7b4877;
+}
+.timeline-snap-guide {
+  position: fixed;
+  z-index: 205;
+  width: 2px;
+  background: #b4ed70;
+  pointer-events: none;
+}
+.clip.group {
+  background: var(--group-color) !important;
+  border: 1px solid #aaa1d1;
+  border-radius: 6px;
+}
+.clip.group.joined-left {
+  border-left: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.clip.group.joined-right {
+  border-right: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.clip.group.selected {
+  border-color: #d5c9ff;
+  box-shadow: none;
+}
+.group-cut {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #bbbcc8;
+  z-index: 6;
+  pointer-events: none;
+}
+
+#recordDialog {
+  width: min(620px, calc(100vw - 40px));
+  padding: 18px 20px;
+}
+#recordDialog .modal-title {
+  margin-bottom: 10px;
+}
+#recordDialog label {
+  margin: 5px 0;
+  font-size: 12px;
+}
+#recordDialog input:not([type="checkbox"]):not([type="range"]),
+#recordDialog select {
+  padding: 6px 8px;
+  margin-top: 3px;
+}
+#recordDialog .record-section {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin: 10px 0;
+  padding: 7px 10px;
+  min-width: 0;
+}
+#recordDialog legend {
+  color: #cbd6e0;
+  padding: 0 5px;
+  font-size: 12px;
+}
+#recordDialog .form-grid {
+  gap: 10px;
+}
+#recordDialog .hint {
+  font-size: 10px;
+  line-height: 1.4;
+  margin: 5px 0;
+}
+#recordDialog .check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+}
+.record-microphone-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.record-microphone-row > label {
+  white-space: nowrap;
+}
+.record-microphone-row > select {
+  flex: 1;
+  width: 0;
+  min-width: 70px;
+}
+#recordDialog #refreshMicrophones {
+  margin: 0;
+  padding: 5px 9px;
+}
+#recordDialog .record-secondary,
+#recordDialog .mic-controls {
+  margin: 7px 0;
+}
+#recordDialog summary {
+  font-size: 11px;
+  padding: 4px 0;
+}
+#recordDialog #deviceWarning:empty {
+  display: none;
+}
+#recordDialog .modal-actions {
+  margin-top: 12px;
+}
+#recordingBar .mic-meter {
+  width: 180px;
+}
+#recordingBar .mic-meter-fill {
+  height: 100%;
+}
+
+.timeline-toolbar {
+  height: auto;
+  min-height: 49px;
+}
+.track-height-controls {
+  white-space: nowrap;
+  font-size: 10px !important;
+  gap: 3px !important;
+}
+#trackHeight {
+  width: 64px;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+}
+.track-height-controls button {
+  padding: 3px 5px !important;
+}
+#trackHeightValue {
+  font-size: 10px;
+  min-width: 20px;
+}
+#labelRows > .compact-track {
+  padding: 3px 29px 2px 27px;
+}
+#labelRows > .compact-track span {
+  top: 6px;
+  left: 8px;
+  font-size: 11px;
+}
+#labelRows > .compact-track b {
+  font-size: 10px;
+}
+#labelRows > .compact-track small {
+  display: none;
+}
+#labelRows > .compact-track .track-mute {
+  top: 2px;
+  font-size: 10px;
+}
+.compact-track .track-resizer {
+  height: 6px;
+}
+.clip.compact-track .clip-duration {
+  display: none;
+}
+.clip.compact-track .clip-name {
+  font-size: 9px;
+  padding: 1px 4px !important;
+  line-height: 12px;
+  background: #0004;
+}
+.clip.compact-track .clip-thumb {
+  height: calc(100% - 2px);
+  width: 42px;
+  top: 1px;
+  bottom: auto;
+  object-fit: contain;
+}
+.clip.compact-track .handle {
+  top: 0;
+  bottom: 0;
+  height: 100%;
+}
+#contextMenu button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
