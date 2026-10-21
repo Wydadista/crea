@@ -52,6 +52,61 @@ function thumbnail(m, at, image) {
 let cleanProjectJSON = JSON.stringify(project),
   transitionBusy = false;
 const videoPool = new Map();
+let previewPaintFrame = null,
+  previewNeedsSync = false;
+let scrubbingPreview = false,
+  scrubIdleTimer;
+function requestPreviewPaint(sync = false) {
+  previewNeedsSync ||= sync;
+  if (previewPaintFrame !== null) return;
+  previewPaintFrame = requestAnimationFrame(() => {
+    previewPaintFrame = null;
+    const needsSync = previewNeedsSync;
+    previewNeedsSync = false;
+    if (needsSync) syncPlayers();
+    draw();
+  });
+}
+function markPreviewScrubbing() {
+  clearTimeout(scrubIdleTimer);
+  if (!scrubbingPreview) {
+    scrubbingPreview = true;
+    updatePreviewView();
+  }
+  scrubIdleTimer = setTimeout(finishPreviewScrubbing, 160);
+}
+function finishPreviewScrubbing() {
+  clearTimeout(scrubIdleTimer);
+  if (!scrubbingPreview) return;
+  scrubbingPreview = false;
+  updatePreviewView();
+  requestPreviewPaint(true);
+}
+function rememberVideoFrame(p) {
+  const video = p.element;
+  if (video.seeking || video.readyState < 2 || !video.videoWidth) return;
+  const width = Math.min(video.videoWidth, $("previewCanvas").width);
+  const height = Math.max(
+    1,
+    Math.round((width * video.videoHeight) / video.videoWidth),
+  );
+  if (
+    p.lastFrame &&
+    p.lastFrameTime === video.currentTime &&
+    p.lastFrame.width === width &&
+    p.lastFrame.height === height
+  )
+    return;
+  const snapshot = p.lastFrame || document.createElement("canvas");
+  if (snapshot.width !== width) snapshot.width = width;
+  if (snapshot.height !== height) snapshot.height = height;
+  try {
+    snapshot.getContext("2d").drawImage(video, 0, 0, width, height);
+    p.lastFrame = snapshot;
+    p.lastFrameTime = video.currentTime;
+  } catch {}
+}
+
 const transport = new AudioTransport((c, m, page) =>
   studio.audioData(c, m, page),
 );
@@ -100,7 +155,12 @@ function checkpoint() {
   future = [];
 }
 function resetPlayers() {
+  if (previewPaintFrame !== null) cancelAnimationFrame(previewPaintFrame);
+  previewPaintFrame = null;
+  previewNeedsSync = false;
   for (const p of videoPool.values()) {
+    p.seeker?.dispose();
+    p.element.onload = p.element.onerror = null;
     p.element.pause?.();
     p.element.removeAttribute("src");
     p.element.load?.();
@@ -893,9 +953,9 @@ $("ruler").onpointerdown = (e) => {
     return;
   }
   const move = (ev) =>
-    seek((ev.clientX - $("ruler").getBoundingClientRect().left) / scale);
+    seek((ev.clientX - $("ruler").getBoundingClientRect().left) / scale, true);
   move(e);
-  captureMove(e, move);
+  captureMove(e, move, finishPreviewScrubbing);
 };
 function fitScale() {
   return Math.min(
@@ -1333,8 +1393,7 @@ function updateHead() {
   $("projectSeekTime").textContent = fmt(time) + " / " + fmt(duration);
 
   $("playhead").style.left = time * scale + "px";
-  $("timecode").textContent =
-    fmt(time) + " / " + fmt(Timeline.total(project.clips));
+  $("timecode").textContent = fmt(time) + " / " + fmt(duration);
 }
 function revealHead() {
   const sc = $("timelineScroll"),
@@ -1342,12 +1401,12 @@ function revealHead() {
   if (x < sc.scrollLeft || x > sc.scrollLeft + sc.clientWidth - 25)
     sc.scrollLeft = Math.max(0, x - 30);
 }
-function seek(t) {
+function seek(t, scrub = false) {
   const resume = playing;
-  pause();
+  if (playing || preparing) pause();
+  if (scrub) markPreviewScrubbing();
   time = Math.max(0, Math.min(Timeline.total(project.clips), t));
-  syncPlayers(true);
-  draw();
+  requestPreviewPaint(true);
   updateHead();
   revealHead();
   if (resume) play();
@@ -1384,22 +1443,26 @@ function syncPlayers(force = false) {
         m.kind === "image" ? new Image() : document.createElement("video");
       element.preload = "auto";
       element.muted = true;
-      element.src = m.url;
       p = { element, kind: m.kind, error: false, key };
       videoPool.set(key, p);
-      element.onloadeddata = () => {
-        if (!playing) syncPlayers();
-        draw();
-      };
-      element.onseeked = () => {
-        if (!playing) syncPlayers();
-        draw();
-      };
-      element.onload = () => draw();
+      if (m.kind === "video")
+        p.seeker = new LatestVideoSeek(
+          element,
+          () => {
+            if (videoPool.get(key) !== p) return;
+            rememberVideoFrame(p);
+            requestPreviewPaint();
+          },
+          window,
+          () => rememberVideoFrame(p),
+        );
+      element.onload = () => requestPreviewPaint();
       element.onerror = () => {
         p.error = true;
         toast("Anteprima non disponibile: " + m.name);
+        requestPreviewPaint();
       };
+      element.src = m.url;
     }
     p.used = performance.now();
     players.set(c.id, p);
@@ -1411,13 +1474,7 @@ function syncPlayers(force = false) {
     v.muted = true;
     v.volume = 0;
     v.playbackRate = c.speed || 1;
-    if (
-      (force || Math.abs(v.currentTime - at) > (playing ? 0.08 : 0.002)) &&
-      !v.seeking
-    )
-      try {
-        v.currentTime = at;
-      } catch {}
+    p.seeker.request(at, playing ? 0.08 : 0.002);
     if (playing && activeIds.has(c.id) && v.paused && !p.error)
       v.play().catch((e) => {
         if (e.name !== "AbortError") toast("Video: " + e.message);
@@ -1427,7 +1484,9 @@ function syncPlayers(force = false) {
   for (const [key, p] of videoPool) {
     if (!used.has(key)) {
       p.element.pause?.();
-      if (videoPool.size > 64) {
+      if (videoPool.size > Math.max(8, used.size)) {
+        p.seeker?.dispose();
+        p.element.onload = p.element.onerror = null;
         p.element.removeAttribute("src");
         p.element.load?.();
         videoPool.delete(key);
@@ -1457,7 +1516,7 @@ async function readyVideos() {
             v.removeEventListener("error", fail);
           };
           const check = () => {
-            if (v.readyState >= 2 && !v.seeking) {
+            if (p.seeker.atTarget) {
               cleanup();
               resolve();
             }
@@ -1579,13 +1638,27 @@ function hitHandle(box, x, y) {
 }
 function draw() {
   const cv = $("previewCanvas"),
-    ctx = cv.getContext("2d");
+    ctx = cv.getContext("2d"),
+    pt = previewTime(),
+    active = Timeline.active(project.clips, pt);
+  $("stageEmpty").hidden = project.clips.length > 0;
+  // Hold the previous composition while a newly entered source has no frame.
+  // Empty timeline gaps still render black normally.
+  if (
+    active.some((c) => {
+      const m = mediaOf(c),
+        p = players.get(c.id);
+      if (!["image", "video"].includes(m.kind) || p?.error) return false;
+      if (!p) return true;
+      if (m.kind === "image")
+        return !p.element.complete || !p.element.naturalWidth;
+      return !p.lastFrame && (p.element.seeking || p.element.readyState < 2);
+    })
+  )
+    return;
   ctx.clearRect(0, 0, cv.width, cv.height);
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, cv.width, cv.height);
-  $("stageEmpty").hidden = project.clips.length > 0;
-  const pt = previewTime(),
-    active = Timeline.active(project.clips, pt);
   Scene.release(new Set(active.map((c) => c.id)));
   for (const c of active) {
     const m = mediaOf(c),
@@ -1605,21 +1678,24 @@ function draw() {
         cv.width,
         cv.height,
       );
-    else if (
-      p &&
-      (m.kind === "image"
-        ? p.element.complete && p.element.naturalWidth
-        : p.element.readyState >= 2)
-    )
-      Scene.draw(
-        ctx,
-        c,
-        m,
-        p.element,
-        Timeline.sourceTime(c, pt),
-        cv.width,
-        cv.height,
-      );
+    else if (p && !p.error) {
+      const source =
+        m.kind === "image"
+          ? p.element
+          : !p.element.seeking && p.element.readyState >= 2
+            ? p.element
+            : p.lastFrame;
+      if (source)
+        Scene.draw(
+          ctx,
+          c,
+          m,
+          source,
+          Timeline.sourceTime(c, pt),
+          cv.width,
+          cv.height,
+        );
+    }
   }
   const c = first();
   if (c && time >= c.start && time < c.start + Timeline.duration(c)) {
@@ -1658,6 +1734,7 @@ function pause() {
   $("playBtn").textContent = "▶";
 }
 async function play() {
+  finishPreviewScrubbing();
   if (!project.clips.length) return;
   if (time >= Timeline.total(project.clips)) time = 0;
   if (preparing) return;
@@ -2670,7 +2747,7 @@ function updatePreviewView(center = false) {
     size = Timeline.projectSize(project);
   const mode = $("previewScale").value;
   const quality = Number($("previewQuality").value) || 1280;
-  const w =
+  const selectedWidth =
       quality === 1280
         ? Math.min(
             size.width,
@@ -2679,9 +2756,18 @@ function updatePreviewView(center = false) {
               : Math.max(1280, (size.width * Number(mode)) / 100),
           )
         : quality,
-    h = Math.round((w * size.height) / size.width);
-  if (cv.width !== w) cv.width = w;
-  if (cv.height !== h) cv.height = h;
+    w = scrubbingPreview ? Math.min(640, selectedWidth) : selectedWidth,
+    h = Math.max(1, Math.round((w * size.height) / size.width));
+  if (cv.width !== w || cv.height !== h) {
+    // Resizing a canvas erases it: preserve its last frame across quality changes.
+    const previous = document.createElement("canvas");
+    previous.width = cv.width;
+    previous.height = cv.height;
+    previous.getContext("2d").drawImage(cv, 0, 0);
+    cv.width = w;
+    cv.height = h;
+    cv.getContext("2d").drawImage(previous, 0, 0, w, h);
+  }
   $("projectDimensions").textContent =
     `PROGETTO · ${size.width} × ${size.height}`;
   $("originalResolution").textContent =
@@ -3135,9 +3221,12 @@ function libraryPanel(elements) {
 $("railMedia").onclick = () => libraryPanel(false);
 $("railElements").onclick = () => libraryPanel(true);
 $("projectSeek").oninput = () => {
-  pause();
-  seek(Number($("projectSeek").value));
+  if (playing || preparing) pause();
+  seek(Number($("projectSeek").value), true);
 };
+$("projectSeek").onchange = finishPreviewScrubbing;
+$("projectSeek").onpointerup = finishPreviewScrubbing;
+$("projectSeek").onpointercancel = finishPreviewScrubbing;
 $("fitTimeline").onclick = () => {
   fitTimeline = true;
   scale = fitScale();

@@ -1,6 +1,6 @@
 {
   "name": "akhbar-studio",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Editor video desktop semplice con timeline e registrazione schermo",
   "author": "AKhbar studio",
   "main": "src/main.js",
@@ -13,7 +13,8 @@
     "prebuild:win": "node scripts/prepare-windows.cjs",
     "bundle:release": "node scripts/bundle-release.cjs",
     "build:release": "npm run build:win && npm run bundle:release",
-    "test:akhbar": "node test/akhbar-ui.cjs"
+    "test:akhbar": "node test/akhbar-ui.cjs",
+    "test:scrub": "node test/scrub-ui.cjs"
   },
   "dependencies": {
     "ffmpeg-static": "5.3.0",
