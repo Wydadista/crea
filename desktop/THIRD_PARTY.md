@@ -1,6 +1,6 @@
 # Componenti di terze parti
 
-Crea Studio utilizza Electron (MIT), Node.js e Chromium, distribuiti con le rispettive licenze nel runtime Electron. Le dipendenze npm e le loro licenze sono incluse nel pacchetto applicativo.
+AKhbar studio utilizza Electron (MIT), Node.js e Chromium, distribuiti con le rispettive licenze nel runtime Electron. Le dipendenze npm e le loro licenze sono incluse nel pacchetto applicativo.
 
 FFmpeg è eseguito come processo separato, tramite `ffmpeg-static` 5.3.0 (GPL-3.0-or-later), distribuzione binari `b6.1.1`. Licenza, note del build e riferimenti upstream vengono conservati accanto al binario (`node_modules/ffmpeg-static/ffmpeg.LICENSE`, `ffmpeg.README`; sul build Windows anche `ffmpeg.exe.LICENSE` e `ffmpeg.exe.README`). Il motore utilizza il codec libx264.
 

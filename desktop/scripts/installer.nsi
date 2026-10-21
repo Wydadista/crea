@@ -1,14 +1,14 @@
 Unicode true
 !include "MUI2.nsh"
 !include "x64.nsh"
-Name "Crea Studio"
+Name "AKhbar studio"
 OutFile "${OUTPUT}"
-InstallDir "$LOCALAPPDATA\Programs\Crea Studio"
-InstallDirRegKey HKCU "Software\Crea Studio" "InstallDir"
+InstallDir "$LOCALAPPDATA\Programs\AKhbar studio"
+InstallDirRegKey HKCU "Software\AKhbar studio" "InstallDir"
 RequestExecutionLevel user
 SetCompressor zlib
 !define MUI_ABORTWARNING
-!define MUI_FINISHPAGE_RUN "$INSTDIR\Crea Studio.exe"
+!define MUI_FINISHPAGE_RUN "$INSTDIR\AKhbar studio.exe"
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
@@ -17,39 +17,39 @@ SetCompressor zlib
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "Italian"
 VIProductVersion "${VERSION}.0"
-VIAddVersionKey /LANG=1040 "ProductName" "Crea Studio"
-VIAddVersionKey /LANG=1040 "FileDescription" "Installazione Crea Studio"
+VIAddVersionKey /LANG=1040 "ProductName" "AKhbar studio"
+VIAddVersionKey /LANG=1040 "FileDescription" "Installazione AKhbar studio"
 VIAddVersionKey /LANG=1040 "FileVersion" "${VERSION}"
-VIAddVersionKey /LANG=1040 "LegalCopyright" "Crea Studio"
+VIAddVersionKey /LANG=1040 "LegalCopyright" "AKhbar studio"
 Function .onInit
   ${IfNot} ${RunningX64}
-    MessageBox MB_OK|MB_ICONSTOP "Crea Studio richiede Windows a 64 bit."
+    MessageBox MB_OK|MB_ICONSTOP "AKhbar studio richiede Windows a 64 bit."
     Abort
   ${EndIf}
 FunctionEnd
-Section "Crea Studio"
+Section "AKhbar studio"
   SetShellVarContext current
   SetOutPath "$INSTDIR"
   File /r "${APP_DIR}\*"
-  WriteRegStr HKCU "Software\Classes\.creastudio" "" "CreaStudio.Project"
-  WriteRegStr HKCU "Software\Classes\CreaStudio.Project" "" "Progetto Crea Studio"
-  WriteRegStr HKCU "Software\Classes\CreaStudio.Project\DefaultIcon" "" '$\"$INSTDIR\project-icon.ico$\",0'
-  WriteRegStr HKCU "Software\Classes\CreaStudio.Project\shell\open\command" "" '$\"$INSTDIR\Crea Studio.exe$\" $\"%1$\"'
+  WriteRegStr HKCU "Software\Classes\.creastudio" "" "AKhbarStudio.Project"
+  WriteRegStr HKCU "Software\Classes\AKhbarStudio.Project" "" "Progetto AKhbar studio"
+  WriteRegStr HKCU "Software\Classes\AKhbarStudio.Project\DefaultIcon" "" '$\"$INSTDIR\project-icon.ico$\",0'
+  WriteRegStr HKCU "Software\Classes\AKhbarStudio.Project\shell\open\command" "" '$\"$INSTDIR\AKhbar studio.exe$\" $\"%1$\"'
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
   WriteUninstaller "$INSTDIR\Disinstalla.exe"
-  CreateDirectory "$SMPROGRAMS\Crea Studio"
-  CreateShortcut "$SMPROGRAMS\Crea Studio\Crea Studio.lnk" "$INSTDIR\Crea Studio.exe"
-  CreateShortcut "$DESKTOP\Crea Studio.lnk" "$INSTDIR\Crea Studio.exe"
-  WriteRegStr HKCU "Software\Crea Studio" "InstallDir" "$INSTDIR"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CreaStudio" "DisplayName" "Crea Studio"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CreaStudio" "DisplayVersion" "${VERSION}"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CreaStudio" "Publisher" "Crea Studio"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CreaStudio" "UninstallString" '"$INSTDIR\Disinstalla.exe"'
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CreaStudio" "InstallLocation" "$INSTDIR"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CreaStudio" "DisplayIcon" "$INSTDIR\Crea Studio.exe"
-  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CreaStudio" "EstimatedSize" ${SIZE_KB}
-  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CreaStudio" "NoModify" 1
-  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CreaStudio" "NoRepair" 1
+  CreateDirectory "$SMPROGRAMS\AKhbar studio"
+  CreateShortcut "$SMPROGRAMS\AKhbar studio\AKhbar studio.lnk" "$INSTDIR\AKhbar studio.exe"
+  CreateShortcut "$DESKTOP\AKhbar studio.lnk" "$INSTDIR\AKhbar studio.exe"
+  WriteRegStr HKCU "Software\AKhbar studio" "InstallDir" "$INSTDIR"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AKhbarStudio" "DisplayName" "AKhbar studio"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AKhbarStudio" "DisplayVersion" "${VERSION}"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AKhbarStudio" "Publisher" "AKhbar studio"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AKhbarStudio" "UninstallString" '"$INSTDIR\Disinstalla.exe"'
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AKhbarStudio" "InstallLocation" "$INSTDIR"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AKhbarStudio" "DisplayIcon" "$INSTDIR\AKhbar studio.exe"
+  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AKhbarStudio" "EstimatedSize" ${SIZE_KB}
+  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AKhbarStudio" "NoModify" 1
+  WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AKhbarStudio" "NoRepair" 1
 SectionEnd
 Section "Uninstall"
   SetShellVarContext current
@@ -57,17 +57,17 @@ Section "Uninstall"
   !include "${MANIFEST}"
   Delete "$INSTDIR\Disinstalla.exe"
   RMDir "$INSTDIR"
-  Delete "$DESKTOP\Crea Studio.lnk"
-  Delete "$SMPROGRAMS\Crea Studio\Crea Studio.lnk"
-  RMDir "$SMPROGRAMS\Crea Studio"
-  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CreaStudio"
-  ReadRegStr $0 HKCU "Software\Classes\CreaStudio.Project\shell\open\command" ""
-  StrCmp $0 '$\"$INSTDIR\Crea Studio.exe$\" $\"%1$\"' 0 association_done
-  DeleteRegKey HKCU "Software\Classes\CreaStudio.Project"
+  Delete "$DESKTOP\AKhbar studio.lnk"
+  Delete "$SMPROGRAMS\AKhbar studio\AKhbar studio.lnk"
+  RMDir "$SMPROGRAMS\AKhbar studio"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AKhbarStudio"
+  ReadRegStr $0 HKCU "Software\Classes\AKhbarStudio.Project\shell\open\command" ""
+  StrCmp $0 '$\"$INSTDIR\AKhbar studio.exe$\" $\"%1$\"' 0 association_done
+  DeleteRegKey HKCU "Software\Classes\AKhbarStudio.Project"
   ReadRegStr $0 HKCU "Software\Classes\.creastudio" ""
-  StrCmp $0 "CreaStudio.Project" 0 association_done
+  StrCmp $0 "AKhbarStudio.Project" 0 association_done
   DeleteRegKey HKCU "Software\Classes\.creastudio"
   association_done:
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
-  DeleteRegKey HKCU "Software\Crea Studio"
+  DeleteRegKey HKCU "Software\AKhbar studio"
 SectionEnd

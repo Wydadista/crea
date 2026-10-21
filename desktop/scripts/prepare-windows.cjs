@@ -9,6 +9,9 @@ if (!fs.existsSync(executable)) {
     stdio: "inherit",
     env: {
       ...process.env,
+      XDG_CACHE_HOME:
+        process.env.XDG_CACHE_HOME ||
+        path.join(require("node:os").tmpdir(), "akhbar-build-cache"),
       npm_config_platform: "win32",
       npm_config_arch: "x64",
     },

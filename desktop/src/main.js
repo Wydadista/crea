@@ -6,6 +6,7 @@ const {
   desktopCapturer,
   session,
   shell,
+  screen,
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs/promises");
@@ -23,10 +24,43 @@ const binaries = {
   ffmpeg: unpack(require("ffmpeg-static")),
   ffprobe: unpack(require("ffprobe-static").path),
 };
+let recordingToolbar;
 let win, chosenSource, exportController, lastExport;
 let projectPath = null,
   savedProject = null,
   savingProject = false;
+const { collectProject, safeName, reserveRecording } = require("./storage");
+const { Recording } = require("./recording");
+const preferencesFile = () =>
+  path.join(app.getPath("userData"), "preferences.json");
+async function preferences() {
+  let saved = {};
+  try {
+    saved = JSON.parse(await fs.readFile(preferencesFile(), "utf8"));
+  } catch (e) {
+    if (e.code !== "ENOENT") throw e;
+  }
+  return {
+    projects: path.join(app.getPath("documents"), "AKhbar studio"),
+    exports: app.getPath("downloads"),
+    ...saved,
+  };
+}
+ipcMain.handle("preferences", preferences);
+ipcMain.handle("set-preferences", async (_e, values) => {
+  const current = await preferences();
+  for (const key of ["projects", "exports"])
+    if (typeof values[key] === "string" && path.isAbsolute(values[key]))
+      current[key] = values[key];
+  await atomic(preferencesFile(), current);
+  return current;
+});
+ipcMain.handle("choose-directory", async () => {
+  const r = await dialog.showOpenDialog(win, {
+    properties: ["openDirectory", "createDirectory"],
+  });
+  return r.canceled ? null : r.filePaths[0];
+});
 const projectArgument = () =>
   process.argv.find((a) => /\.(creastudio|crea\.json)$/i.test(a));
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -71,6 +105,9 @@ async function inspect(file) {
     kind,
     duration,
     hasAudio: data.streams.some((s) => s.codec_type === "audio"),
+    codec: video?.codec_name,
+    fps: video?.avg_frame_rate,
+    audioChannels: data.streams.find((s) => s.codec_type === "audio")?.channels,
     width: video?.width,
     height: video?.height,
   };
@@ -108,13 +145,14 @@ app.whenReady().then(() => {
     minWidth: 1080,
     minHeight: 820,
     backgroundColor: "#15191f",
-    title: "Crea Studio",
+    title: "AKhbar studio",
     icon: path.join(__dirname, "project-icon.ico"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      backgroundThrottling: false,
     },
   });
   win.setMenuBarVisibility(false);
@@ -207,82 +245,210 @@ ipcMain.handle("recording-begin", async (_e, settings) => {
   if (!["mp4", "webm"].includes(settings.format))
     throw Error("Formato registrazione non valido");
   if (recordingFile) throw Error("Registrazione già attiva");
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "crea-record-"));
-  const input = path.join(dir, "capture.webm");
-  recordingFile = { settings, dir, input, handle: await fs.open(input, "w") };
-});
-ipcMain.handle("recording-chunk", async (_e, buffer) => {
-  if (!recordingFile?.handle) throw Error("Registrazione non attiva");
-  const data = Buffer.from(buffer);
-  let offset = 0;
-  while (offset < data.length) {
-    const { bytesWritten } = await recordingFile.handle.write(data, offset);
-    offset += bytesWritten;
+  const prefs = await preferences();
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "akhbar-record-"));
+  const folder = path.join(
+    projectPath ? path.dirname(projectPath) : prefs.projects,
+    "Registrazioni",
+  );
+  const name = safeName(settings.name),
+    counters = prefs.recordingCounters || {};
+  const output = await reserveRecording(
+    folder,
+    name,
+    settings.audioOnly ? "wav" : settings.format,
+    counters[name] || 1,
+  );
+  counters[name] = Number(path.basename(output).match(/-(\d+)\.[^.]+$/)[1]) + 1;
+  await atomic(preferencesFile(), {
+    ...(await preferences()),
+    recordingCounters: counters,
+  });
+  try {
+    recordingFile = await new Recording(
+      binaries.ffmpeg,
+      dir,
+      output,
+      settings,
+      (p) => win?.webContents.send("recording-progress", p),
+    ).begin();
+  } catch (e) {
+    await fs.rm(output, { force: true });
+    await fs.rm(dir, { recursive: true, force: true });
+    throw e;
   }
+});
+ipcMain.handle("recording-chunk", (_e, buffer) => {
+  if (!recordingFile) throw Error("Registrazione non attiva");
+  return recordingFile.append(buffer);
 });
 async function discardRecording() {
   if (!recordingFile) return;
   const current = recordingFile;
   recordingFile = null;
-  await current.handle?.close().catch(() => {});
-  await fs.rm(current.dir, { recursive: true, force: true });
+  await current.dispose();
+  // A reserved zero-byte name is removed on abort. Completed files are preserved.
+  try {
+    if ((await fs.stat(current.output)).size === 0) await fs.rm(current.output);
+  } catch {}
 }
 ipcMain.handle("recording-abort", discardRecording);
-ipcMain.handle("recording-finish", async () => {
+ipcMain.handle("recording-finish", async (_e, duration) => {
   if (!recordingFile) throw Error("Nessuna registrazione da salvare");
   const current = recordingFile;
+  if (Number.isFinite(duration) && duration > 0)
+    current.settings.captureDuration = duration;
+  let ready = false;
   try {
-    await current.handle.close();
-    current.handle = null;
-    const result = await dialog.showSaveDialog(win, {
-      defaultPath: `Registrazione-${Date.now()}.${current.settings.format}`,
-      filters: [
-        { name: "Registrazione", extensions: [current.settings.format] },
-      ],
+    const file = await current.finish();
+    ready = true;
+    const at = performance.now(),
+      media = await inspect(file);
+    win?.webContents.send("recording-progress", {
+      phase: "Clip disponibile; forma d’onda in background",
+      percent: 100,
+      metrics: { ...current.metrics, importMs: performance.now() - at },
     });
-    if (result.canceled) return null;
-    const finalized = path.join(
-      current.dir,
-      `final.${current.settings.format}`,
-    );
-    const cfg = encoding(current.settings);
-    const args = ["-v", "error", "-nostdin", "-y", "-i", current.input];
-    if (current.settings.format === "mp4")
-      args.push(
-        "-vf",
-        `fps=${cfg.fps},scale=trunc(iw/2)*2:trunc(ih/2)*2`,
-        "-c:v",
-        "libx264",
-        "-preset",
-        "fast",
-        "-crf",
-        String(cfg.crf),
-        "-threads",
-        "2",
-        "-pix_fmt",
-        "yuv420p",
-        "-c:a",
-        "aac",
-        "-b:a",
-        String(current.settings.audioBitrate || 192) + "k",
-        "-movflags",
-        "+faststart",
-      );
-    else args.push("-c", "copy");
-    await promisify(execFile)(binaries.ffmpeg, [...args, finalized], {
-      windowsHide: true,
-      maxBuffer: 4 * 1024 * 1024,
-    });
-    await fs.copyFile(finalized, result.filePath);
-    return await inspect(result.filePath);
+    return media;
+  } catch (e) {
+    if (!ready) {
+      const backup = current.output + ".recupero" + path.extname(current.input);
+      try {
+        await fs.copyFile(current.input, backup);
+        e.message += " · Cattura originale conservata in " + backup;
+      } catch {
+        recordingFile = null;
+        e.message += " · Cattura recuperabile in " + current.input;
+      }
+    }
+    throw e;
   } finally {
     await discardRecording();
   }
 });
-async function loadProject(file) {
-  const project = Timeline.validate(
-    JSON.parse(await fs.readFile(file, "utf8")),
+ipcMain.handle("recording-toolbar", async (_e, state) => {
+  if (!state) {
+    recordingToolbar?.close();
+    recordingToolbar = null;
+    return;
+  }
+  if (!recordingToolbar) {
+    const area = screen.getPrimaryDisplay().workArea;
+    recordingToolbar = new BrowserWindow({
+      width: 460,
+      height: 80,
+      x: area.x + 30,
+      y: area.y + 30,
+      frame: false,
+      resizable: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      show: false,
+      webPreferences: {
+        preload: path.join(__dirname, "toolbar-preload.js"),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+    recordingToolbar.setContentProtection(true);
+    recordingToolbar.setAlwaysOnTop(true, "screen-saver");
+    recordingToolbar.setVisibleOnAllWorkspaces(true);
+    recordingToolbar.on("closed", () => (recordingToolbar = null));
+    await recordingToolbar.loadFile(path.join(__dirname, "toolbar.html"));
+    recordingToolbar.showInactive();
+  }
+  recordingToolbar.webContents.send("recording-state", state);
+});
+ipcMain.on("recording-control", (event, action) => {
+  if (
+    event.sender === recordingToolbar?.webContents &&
+    ["pause", "stop"].includes(action)
+  )
+    win?.webContents.send("recording-control", action);
+});
+app.on("before-quit", () => recordingToolbar?.close());
+const thumbnailCache = new Map();
+ipcMain.handle("thumbnail", async (_e, file, seconds = 0) => {
+  if (!Number.isFinite(seconds) || seconds < 0) throw Error("Tempo non valido");
+  const stat = await fs.stat(file),
+    key = file + stat.mtimeMs + ":" + seconds.toFixed(4);
+  if (!thumbnailCache.has(key))
+    thumbnailCache.set(
+      key,
+      (async () => {
+        const dir = path.join(os.tmpdir(), "akhbar-thumbnails");
+        await fs.mkdir(dir, { recursive: true });
+        const output = path.join(
+          dir,
+          require("node:crypto")
+            .createHash("sha256")
+            .update(key)
+            .digest("hex") + ".jpg",
+        );
+        await promisify(execFile)(
+          binaries.ffmpeg,
+          [
+            "-v",
+            "error",
+            "-y",
+            "-ss",
+            String(seconds),
+            "-i",
+            file,
+            "-frames:v",
+            "1",
+            "-vf",
+            "scale=160:90:force_original_aspect_ratio=decrease,pad=160:90:(ow-iw)/2:(oh-ih)/2",
+            "-threads",
+            "1",
+            output,
+          ],
+          { windowsHide: true },
+        );
+        return pathToFileURL(output).href;
+      })().catch((e) => {
+        thumbnailCache.delete(key);
+        throw e;
+      }),
+    );
+  return thumbnailCache.get(key);
+});
+ipcMain.handle("freeze-frame", async (_e, media, seconds) => {
+  if (!Number.isFinite(seconds) || seconds < 0 || seconds > media.duration)
+    throw Error("Fotogramma non valido");
+  const prefs = await preferences(),
+    folder = path.join(
+      projectPath ? path.dirname(projectPath) : prefs.projects,
+      "Fermi immagine",
+    );
+  await fs.mkdir(folder, { recursive: true });
+  const output = path.join(folder, randomUUID() + ".png");
+  await promisify(execFile)(
+    binaries.ffmpeg,
+    [
+      "-v",
+      "error",
+      "-ss",
+      String(seconds),
+      "-i",
+      media.path,
+      "-frames:v",
+      "1",
+      "-threads",
+      "1",
+      output,
+    ],
+    { windowsHide: true },
   );
+  return inspect(output);
+});
+async function loadProject(file) {
+  const raw = JSON.parse(await fs.readFile(file, "utf8"));
+  for (const m of raw.media || [])
+    if (m.path && !path.isAbsolute(m.path))
+      m.path = path.resolve(path.dirname(file), m.path);
+  const project = Timeline.validate(raw);
   const missing = [];
   for (const m of project.media) {
     if (["annotation", "effect"].includes(m.kind)) continue;
@@ -304,11 +470,39 @@ ipcMain.handle("save-project", async (_e, project) => {
     project = Timeline.validate(project);
     if (!projectPath) {
       const result = await dialog.showSaveDialog(win, {
-        defaultPath: "Montaggio.creastudio",
-        filters: [{ name: "Progetto Crea Studio", extensions: ["creastudio"] }],
+        defaultPath: path.join(
+          (await preferences()).projects,
+          "Montaggio.creastudio",
+        ),
+        filters: [
+          { name: "Progetto AKhbar studio", extensions: ["creastudio"] },
+        ],
       });
       if (result.canceled) return false;
-      projectPath = result.filePath;
+      const folder = path.join(
+        path.dirname(result.filePath),
+        safeName(
+          path.basename(result.filePath, path.extname(result.filePath)),
+          "Montaggio",
+        ),
+      );
+      await fs.mkdir(folder, { recursive: true });
+      projectPath = path.join(folder, path.basename(result.filePath));
+    }
+    if (
+      !project.assetsCollected &&
+      path.basename(path.dirname(projectPath)) !==
+        path.basename(projectPath, path.extname(projectPath))
+    ) {
+      const folder = path.join(
+        path.dirname(projectPath),
+        safeName(
+          path.basename(projectPath, path.extname(projectPath)),
+          "Montaggio",
+        ),
+      );
+      await fs.mkdir(folder, { recursive: true });
+      projectPath = path.join(folder, path.basename(projectPath));
     }
     if (
       project.media.some(
@@ -319,7 +513,7 @@ ipcMain.handle("save-project", async (_e, project) => {
       )
     )
       throw Error("Non sovrascrivere un file multimediale con il progetto");
-    await atomic(projectPath, project);
+    await collectProject(project, projectPath);
     savedProject = JSON.stringify(project);
     await fs.rm(recoveryPath(), { force: true });
     return true;
@@ -332,7 +526,7 @@ ipcMain.handle("open-project", async () => {
     properties: ["openFile"],
     filters: [
       {
-        name: "Progetti Crea Studio (anche precedenti)",
+        name: "Progetti AKhbar studio (anche precedenti)",
         extensions: ["creastudio", "json"],
       },
     ],
@@ -394,14 +588,18 @@ ipcMain.handle("encoders", () => require("./encoders").detect(binaries.ffmpeg));
 const processedAudio = new Map();
 const previewAudioController = new AbortController();
 app.on("before-quit", () => previewAudioController.abort());
-async function previewAudio(clip, media) {
+const continuousAudio = (c) =>
+  !c.voice?.bypass && (c.voice?.noise > 0 || c.voice?.level > 0);
+async function previewAudio(clip, media, page = 0) {
   const { audioFilters } = require("./audio");
   const effects = await audioFilters(clip, media, binaries.ffmpeg);
   const processing = [effects, require("./render").tempo(clip.speed || 1)]
     .filter(Boolean)
     .join(",");
   const stat = await fs.stat(media.path);
-  const key = media.path + stat.mtimeMs + processing;
+  const continuous = continuousAudio(clip);
+  const key =
+    media.path + stat.mtimeMs + processing + ":" + (continuous ? "all" : page);
   if (!processedAudio.has(key))
     processedAudio.set(
       key,
@@ -421,6 +619,14 @@ async function previewAudio(clip, media) {
             "-v",
             "error",
             "-y",
+            ...(continuous
+              ? []
+              : [
+                  "-ss",
+                  String(page * 30 * (clip.speed || 1)),
+                  "-t",
+                  String(30 * (clip.speed || 1)),
+                ]),
             "-i",
             media.path,
             "-vn",
@@ -448,7 +654,7 @@ ipcMain.handle("audio-preview", (_e, c, m) => previewAudio(c, m));
 ipcMain.handle("audio-data", async (_e, c, m, page = 0) => {
   if (!Number.isInteger(page) || page < 0 || page > 201600)
     throw Error("Pagina audio non valida");
-  const url = await previewAudio(c, m),
+  const url = await previewAudio(c, m, page),
     file = require("node:url").fileURLToPath(url),
     handle = await fs.open(file, "r");
   try {
@@ -466,7 +672,8 @@ ipcMain.handle("audio-data", async (_e, c, m, page = 0) => {
       at += 8 + size + (size % 2);
     }
     if (dataOffset === undefined) throw Error("PCM anteprima non riconosciuto");
-    const byteOffset = dataOffset + page * 30 * 48000 * 4,
+    const byteOffset =
+        dataOffset + (continuousAudio(c) ? page * 30 * 48000 * 4 : 0),
       stat = await handle.stat(),
       length = Math.max(0, Math.min(30 * 48000 * 4, stat.size - byteOffset));
     if (!length)
@@ -502,13 +709,25 @@ ipcMain.handle("audio-data", async (_e, c, m, page = 0) => {
     await handle.close();
   }
 });
+ipcMain.handle("choose-export", async () => {
+  const result = await dialog.showSaveDialog(win, {
+    defaultPath: path.join((await preferences()).exports, "Video-AKhbar.mp4"),
+    filters: [{ name: "Video MP4", extensions: ["mp4"] }],
+  });
+  return result.canceled ? null : result.filePath;
+});
 ipcMain.handle("export", async (_e, project, settings) => {
   if (exportController) throw Error("Esportazione già in corso");
   project = Timeline.validate(project);
-  const result = await dialog.showSaveDialog(win, {
-    defaultPath: "Video-crea.mp4",
-    filters: [{ name: "Video MP4", extensions: ["mp4"] }],
-  });
+  const result = settings.outputPath
+    ? { filePath: settings.outputPath }
+    : await dialog.showSaveDialog(win, {
+        defaultPath: path.join(
+          (await preferences()).exports,
+          "Video-AKhbar.mp4",
+        ),
+        filters: [{ name: "Video MP4", extensions: ["mp4"] }],
+      });
   if (result.canceled) return null;
   const target = path.resolve(result.filePath);
   if (
@@ -559,7 +778,7 @@ app.on("before-quit", () => exportController?.abort());
 const waveformJobs = new Map(),
   waveformController = new AbortController();
 app.on("before-quit", () => waveformController.abort());
-ipcMain.handle("waveform", async (_e, file) => {
+ipcMain.handle("waveform", async (_e, file, channels) => {
   const stat = await fs.stat(file),
     key = file + ":" + stat.mtimeMs + ":" + stat.size;
   if (!waveformJobs.has(key))
@@ -570,7 +789,9 @@ ipcMain.handle("waveform", async (_e, file) => {
         throw e;
       }),
     );
-  return waveformJobs.get(key);
+  const result = await waveformJobs.get(key);
+  require("./audio").rememberLevels(file, stat, result.levels, channels);
+  return result;
 });
 ipcMain.handle("fonts", async () => {
   try {

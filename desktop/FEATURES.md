@@ -1,3 +1,5 @@
+> Versione 0.3: vedere [README.md](README.md) per le modifiche correnti e [PERFORMANCE.md](PERFORMANCE.md) per le verifiche effettive. Quanto segue descrive anche funzionalità precedenti.
+
 # Montaggio, esportazione e recupero
 
 - **Export MP4**: percentuale complessiva basata sui timestamp `out_time_us` di FFmpeg. La composizione degli intervalli pesa secondo la durata, non secondo il numero delle clip; la codifica finale è una seconda passata. Il progresso resta inferiore a 100 fino alla copia del file completato. È una misura dei secondi elaborati, non una stima del tempo residuo: gli effetti possono rallentare alcuni intervalli.

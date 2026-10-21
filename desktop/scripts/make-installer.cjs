@@ -8,7 +8,7 @@ const pkg = require("../package.json");
 const escape = (value) => value.replaceAll("$", "$$").replaceAll('"', '$\\"');
 async function main() {
   const appDir = path.join(root, "dist", "win-unpacked");
-  await fs.access(path.join(appDir, "Crea Studio.exe"));
+  await fs.access(path.join(appDir, "AKhbar studio.exe"));
   const files = [],
     directories = [];
   let size = 0;
@@ -25,7 +25,10 @@ async function main() {
       } else throw Error("Tipo di file non supportato nel pacchetto: " + rel);
     }
   }
-  await fs.copyFile(path.join(root,"src","project-icon.ico"),path.join(appDir,"project-icon.ico"));
+  await fs.copyFile(
+    path.join(root, "src", "project-icon.ico"),
+    path.join(appDir, "project-icon.ico"),
+  );
   await scan(appDir);
   const manifest = path.join(root, "dist", "uninstall-files.nsh");
   const win = (rel) => escape(rel.split(path.sep).join("\\"));
@@ -38,7 +41,7 @@ async function main() {
   const output = path.join(
     root,
     "dist",
-    `Crea-Studio-${pkg.version}-x64-Setup.exe`,
+    `AKhbar-studio-${pkg.version}-x64-Setup.exe`,
   );
   const nsis = await getMakeNsisPath();
   const prefix = process.platform === "win32" ? "/" : "-";

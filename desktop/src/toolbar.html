@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'"
+    />
+    <title>AKhbar studio · Registrazione</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 14px;
+        background: #19222c;
+        color: white;
+        font: 14px Arial;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        -webkit-app-region: drag;
+      }
+      button,
+      meter {
+        -webkit-app-region: no-drag;
+      }
+      button {
+        padding: 10px;
+        border: 0;
+        border-radius: 5px;
+        cursor: pointer;
+      }
+      #stop {
+        background: #ed4c5c;
+        color: white;
+      }
+      meter {
+        width: 65px;
+      }
+      #state {
+        min-width: 100px;
+      }
+    </style>
+  </head>
+  <body>
+    <span id="state">● 00:00</span
+    ><meter
+      id="level"
+      min="0"
+      max="1"
+      value="0"
+      aria-label="Livello microfono"
+    ></meter
+    ><button id="pause">Pausa</button><button id="stop">■ Stop</button>
+    <script src="toolbar.js"></script>
+  </body>
+</html>

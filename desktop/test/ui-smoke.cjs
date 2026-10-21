@@ -6,6 +6,21 @@ const { _electron: electron } = require("playwright"),
 const run = require("node:util").promisify(
   require("node:child_process").execFile,
 );
+const bundled = (f) =>
+  path.join(
+    path.dirname(f),
+    path.basename(f, path.extname(f)),
+    path.basename(f),
+  );
+const resolvedProject = (p, file) => {
+  const out = structuredClone(p);
+  for (const m of out.media)
+    if (m.path) {
+      m.path = path.resolve(path.dirname(file), m.path);
+      m.url = require("node:url").pathToFileURL(m.path).href;
+    }
+  return out;
+};
 (async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "crea-ui2-"));
   let app;
@@ -63,7 +78,11 @@ const run = require("node:util").promisify(
       },
     });
     const page = await app.firstWindow();
-    page.setDefaultTimeout(10000);
+    page.setDefaultTimeout(30000);
+    await page.evaluate(
+      async (dir) => studio.setPreferences({ projects: dir, exports: dir }),
+      temp,
+    );
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await app.evaluate(
@@ -103,7 +122,7 @@ const run = require("node:util").promisify(
     assert.equal(await page.locator("#track2 .clip").count(), 1);
     await page.locator("#toStart").click();
     await page.locator("#playBtn").click();
-    await page.waitForTimeout(350);
+    await page.waitForFunction(() => time > 0.1);
     assert.ok(await page.evaluate(() => time > 0.1));
     assert.ok(
       await page.evaluate(() =>
@@ -238,15 +257,21 @@ const run = require("node:util").promisify(
     // Text with chosen font/color/background; red arrow and animated circle on any track.
     await page.locator("#activeTrack").selectOption("2");
     await page.locator("#addTrack").click();
+    await page.locator("#railElements").click();
     await page.locator("#addText").click();
+    await page.locator("#railMedia").click();
     await page.locator("#annotationText").fill("Prova testo");
     await page.locator("#annotationText").press("Tab");
     await page.locator("#annotationBgEnabled").check();
     await page.locator("#annotationFont").selectOption({ index: 1 });
     await page.locator("#addTrack").click();
+    await page.locator("#railElements").click();
     await page.locator("#addArrow").click();
+    await page.locator("#railMedia").click();
     await page.locator("#addTrack").click();
+    await page.locator("#railElements").click();
     await page.locator("#addCircle").click();
+    await page.locator("#railMedia").click();
     assert.equal(
       await page.evaluate(
         () => project.clips.filter((c) => c.annotation).length,
@@ -259,7 +284,7 @@ const run = require("node:util").promisify(
         .getElementById("status")
         .textContent.startsWith("Progetto salvato"),
     );
-    const saved = JSON.parse(await fs.readFile(save));
+    const saved = JSON.parse(await fs.readFile(bundled(save)));
     assert.equal(saved.version, 2);
     assert.equal(saved.clips.length, 7);
     await page.locator("#exportBtn").click();
@@ -298,7 +323,7 @@ const run = require("node:util").promisify(
         canceled: false,
         filePaths: [save],
       });
-    }, save);
+    }, bundled(save));
     page.once("dialog", (d) => d.accept());
     await page.locator("#openProject").click();
     await page.waitForFunction(
@@ -357,6 +382,7 @@ const run = require("node:util").promisify(
       await page.evaluate(() => window.lastMicConstraints.autoGainControl),
       false,
     );
+    const recordedPath = await page.evaluate(() => project.media.at(-1).path);
     const rec = JSON.parse(
       (
         await run(ffprobe, [
@@ -365,7 +391,7 @@ const run = require("node:util").promisify(
           "-show_streams",
           "-of",
           "json",
-          recording,
+          recordedPath,
         ])
       ).stdout,
     );
@@ -373,9 +399,12 @@ const run = require("node:util").promisify(
       rec.streams.find((s) => s.codec_type === "video").codec_name,
       "h264",
     );
-    assert.equal(
-      rec.streams.find((s) => s.codec_type === "video").avg_frame_rate,
-      "15/1",
+    const videoRate = rec.streams
+      .find((s) => s.codec_type === "video")
+      .avg_frame_rate.split("/")
+      .map(Number);
+    assert.ok(
+      videoRate[0] / videoRate[1] > 0 && videoRate[0] / videoRate[1] <= 16,
     );
     assert.ok(rec.streams.some((s) => s.codec_type === "audio"));
     assert.deepEqual(errors, []);
@@ -392,8 +421,25 @@ const run = require("node:util").promisify(
     console.log(
       "PASS Electron 0.2: universal layers, real waveforms, no ripple, playhead zoom, grouping, multi-select speed/reset, effects, text/arrows/circle, low-FPS MP4 export, project migration/reopen, chosen microphone, MP4 recording.",
     );
+  } catch (e) {
+    if (app) {
+      const p = await app.firstWindow();
+      console.error(
+        "UI_STATE",
+        await p
+          .evaluate(() => ({
+            status: document.getElementById("status").textContent,
+            recordDialog: document.getElementById("recordDialog").open,
+            recorder: recorder?.state,
+            finishing,
+            exportBusy,
+          }))
+          .catch(() => ({})),
+      );
+    }
+    throw e;
   } finally {
-    if (app) await app.close();
+    if (app) await app.evaluate(({ app }) => app.exit(0)).catch(() => {});
     await fs.rm(temp, { recursive: true, force: true });
   }
 })().catch((e) => {

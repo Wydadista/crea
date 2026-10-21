@@ -7,14 +7,14 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: blob:; media-src 'self' file: blob:; connect-src 'self' blob:"
     />
-    <title>Crea Studio</title>
+    <title>AKhbar studio</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <header>
       <div class="brand">
-        <span class="brand-icon">C</span> CREA <b>STUDIO</b
-        ><span class="badge">DESKTOP · 0.2</span>
+        <span class="brand-icon">A</span> AKhbar <b>STUDIO</b
+        ><span class="badge">DESKTOP · 0.3</span>
       </div>
       <div class="project-name">
         Monta a modo tuo<span>Tracce progressive · Aggancio preciso</span>
@@ -22,43 +22,50 @@
       <button id="openProject">Apri</button
       ><button id="saveProject">Salva progetto</button
       ><button id="resetPanels">Ripristina pannelli</button
+      ><button id="settingsBtn">⚙ Impostazioni</button
+      ><button id="settingsBtn">⚙ Impostazioni</button
       ><button id="keysBtn">⌨ Comandi</button
       ><button id="recordBtn" class="record"><i></i> Registra schermo</button
       ><button id="exportBtn" class="primary">↗ Esporta</button>
     </header>
     <main>
       <aside class="rail">
-        <button class="active">▦<span>Media</span></button
+        <button id="railMedia" class="active">▦<span>Media</span></button
+        ><button id="railElements">✦<span>Elementi ed effetti</span></button
         ><button id="railRecord">◉<span>Registra</span></button>
         <div class="rail-bottom">
-          CREA<br /><small>Spazio alle tue idee.</small>
+          AKhbar<br /><small>Spazio alle tue idee.</small>
         </div>
       </aside>
       <section class="library">
-        <span class="eyebrow">IL TUO MATERIALE</span>
-        <h2>Libreria media <span id="mediaCount">0</span></h2>
-        <button id="importBtn" class="import">＋ Importa file</button>
-        <p class="hint">Trascina file su qualsiasi traccia.</p>
-        <div class="annotation-tools">
-          <button id="addText">T Testo</button
-          ><button id="addArrow">➜ Freccia</button
-          ><button id="addBlur">◌ Sfocatura</button
-          ><button id="addPixel">▦ Pixelizzazione</button
-          ><button id="addCircle">◯ Cerchio</button>
+        <div id="mediaPanel">
+          <span class="eyebrow">IL TUO MATERIALE</span>
+          <h2>Libreria media <span id="mediaCount">0</span></h2>
+          <button id="importBtn" class="import">＋ Importa file</button>
+          <p class="hint">Trascina file su qualsiasi traccia.</p>
+          <label
+            >Visualizzazione<select id="mediaView">
+              <option value="list">Elenco</option>
+              <option value="grid">Griglia</option>
+            </select></label
+          >
+          <div id="mediaList" class="media-list"></div>
+          <div id="libraryEmpty" class="library-empty">
+            <div>▧</div>
+            <h3>Ogni storia inizia qui</h3>
+            <p>Importa video, foto e audio.<br />Sovrapponili liberamente.</p>
+          </div>
         </div>
-        <p class="hint">
-          Aggiungi alla traccia
-          <select id="activeTrack">
-            <option value="2">3 · Superiore</option>
-            <option value="1">2 · Centrale</option>
-            <option value="0" selected>1 · Inferiore</option>
-          </select>
-        </p>
-        <div id="mediaList" class="media-list"></div>
-        <div id="libraryEmpty" class="library-empty">
-          <div>▧</div>
-          <h3>Ogni storia inizia qui</h3>
-          <p>Importa video, foto e audio.<br />Sovrapponili liberamente.</p>
+        <div id="elementsPanel" hidden>
+          <h2>Elementi ed effetti</h2>
+          <div class="annotation-tools">
+            <button id="addText">T Testo</button
+            ><button id="addArrow">➜ Freccia</button
+            ><button id="addBlur">◌ Sfocatura</button
+            ><button id="addPixel">▦ Pixelizzazione</button
+            ><button id="addCircle">◯ Cerchio</button>
+          </div>
+          <p class="hint">Scegli la traccia nella barra della timeline.</p>
         </div>
         <div class="library-footer">● File locali · forme d’onda reali</div>
       </section>
@@ -104,7 +111,16 @@
             ><button id="playBtn" class="play">▶</button
             ><button id="toEnd">▷|</button>
           </div>
-          <span id="playbackState">Aggancio senza ripple</span>
+          <input
+            id="projectSeek"
+            type="range"
+            min="0"
+            max="0"
+            step="0.001"
+            value="0"
+            aria-label="Navigazione intero montaggio"
+          /><span id="projectSeekTime">00:00 / 00:00</span
+          ><span id="playbackState">Aggancio senza ripple</span>
         </div>
       </section>
       <aside class="properties">
@@ -185,6 +201,10 @@
                   min="0"
                   max="100"
                   value="0" /></label
+              ><button id="noiseModerate" type="button">
+                Riduzione leggera · 25%</button
+              ><button id="noiseCompare" type="button" aria-pressed="false">
+                Ascolta originale (prima/dopo)</button
               ><button id="splitBtn">✂ Dividi · S</button>
             </div>
           </details>
@@ -399,18 +419,61 @@
           ><button id="cutTool">✂ Dividi</button
           ><button id="deleteTool">⌫ Elimina</button
           ><button id="groupTool">▣ Raggruppa</button
-          ><button id="addTrack">＋ Aggiungi traccia</button>
+          ><button id="addTrack">＋ Aggiungi traccia</button
+          ><button
+            id="rippleFamily"
+            aria-pressed="false"
+            title="Chiudi solo i vuoti lasciati dai segmenti della stessa aggiunta"
+          >
+            🧲 Chiudi spazi della clip: no</button
+          ><label
+            >Traccia
+            <select id="activeTrack">
+              <option value="2">3 · Superiore</option>
+              <option value="1">2 · Centrale</option>
+              <option value="0" selected>1 · Inferiore</option>
+            </select></label
+          ><button id="freezeFrame">Crea fermo immagine</button>
+        </div>
+        <div class="range-tools">
+          <label
+            >Intervallo da (s)<input
+              id="rangeStart"
+              type="number"
+              min="0"
+              step="0.01"
+              value="0" /></label
+          ><button id="markRangeStart">Inizio = cursore</button
+          ><label
+            >a (s)<input
+              id="rangeEnd"
+              type="number"
+              min="0"
+              step="0.01"
+              value="5" /></label
+          ><button id="markRangeEnd">Fine = cursore</button
+          ><button
+            id="recordPhrase"
+            title="Puoi selezionare l’intervallo anche con Shift + trascinamento sul righello"
+          >
+            Registra frase</button
+          ><label
+            ><input id="replaceAudio" type="checkbox" />Silenzia selezione
+            nell’intervallo</label
+          >
         </div>
         <div class="timeline-tips">
           <kbd>Shift</kbd> + rotella: scorri · <kbd>Ctrl</kbd> + rotella: zoom
           sulla linea verde
         </div>
         <div class="zoom-controls">
-          <button id="zoomOut">−</button
+          <button id="fitTimeline">Adatta tutto alla timeline</button
+          ><button id="zoomOut">−</button
           ><input
             id="zoom"
             type="range"
-            min="8"
+            min="0.001"
+            step="any"
             max="640"
             value="40"
             aria-label="Zoom timeline"
@@ -430,6 +493,7 @@
         <div id="timelineScroll">
           <div id="timeline">
             <div id="ruler"></div>
+            <div id="recordRangeOverlay" hidden></div>
             <div id="playhead"><span></span></div>
             <div id="marquee" hidden></div>
           </div>
@@ -498,8 +562,32 @@
             <option value="cpu">CPU — compatibile</option>
           </select></label
         >
+        <label
+          >Velocità codifica CPU<select id="exportCpuPreset">
+            <option value="veryfast">
+              Rapida · file potenzialmente più grandi
+            </option>
+            <option value="fast">Compressione maggiore · più lenta</option>
+          </select></label
+        ><label
+          >Keyframe ogni (secondi)<input
+            id="exportKeyframe"
+            type="number"
+            min="1"
+            max="30"
+            value="4"
+        /></label>
+        <label
+          ><input id="preserveOriginal" type="checkbox" />Copia flussi originali
+          senza ricodifica (solo clip intera, FPS e dimensioni identici; ignora
+          qualità encoder)</label
+        >
+        <button id="chooseExportPath" type="button">Scegli destinazione…</button
+        ><output id="exportPath">Destinazione da scegliere</output>
         <p id="gpuStatus" class="hint"></p>
         <progress id="exportProgress" value="0" max="100"></progress>
+        <p id="exportEngine">Encoder da verificare all’avvio</p>
+        <p id="exportElapsed">Tempo trascorso: 00:00</p>
         <p id="exportStatus">Scegli dove salvare il video.</p>
         <div id="exportResultActions" hidden>
           <button id="openExportVideo" type="button">Apri video</button
@@ -520,6 +608,26 @@
           <h2>Registra schermo e audio</h2>
           <button class="close" value="cancel">×</button>
         </div>
+        <label
+          >Nome delle registrazioni<input
+            id="recordName"
+            value="Registrazione"
+            maxlength="100"
+        /></label>
+        <label
+          >Modalità<select id="captureMode">
+            <option value="screen">Schermo / finestra</option>
+            <option value="camera">Webcam</option>
+            <option value="screen-camera">Schermo e webcam</option>
+            <option value="audio">Solo microfono</option>
+          </select></label
+        >
+        <label
+          >Webcam<select id="cameraDevice">
+            <option value="default">Predefinita del sistema</option>
+          </select></label
+        >
+        <p id="deviceWarning" role="alert"></p>
         <label>Schermo / finestra<select id="captureSource"></select></label>
         <div class="form-grid">
           <label
@@ -545,7 +653,7 @@
               id="recordAudioBitrate"
               type="number"
               min="32"
-              max="640"
+              max="320"
               value="192"
           /></label>
         </div>
@@ -589,8 +697,11 @@
           e guadagno automatico</label
         >
         <p class="hint">
-          Lascia disattivati i filtri per acquisire il segnale del microfono
-          senza elaborazioni automatiche. La cattura viene scritta
+          La barra flottante resta in primo piano. Windows 10 2004+ può
+          escluderla dalla cattura tramite protezione contenuti; su altri
+          sistemi può comparire nel video. Spostala fuori dall’area acquisita se
+          necessario. Lascia disattivati i filtri per acquisire il segnale del
+          microfono senza elaborazioni automatiche. La cattura viene scritta
           progressivamente sul disco e finalizzata nel formato scelto quando
           premi Ferma.
         </p>
@@ -599,6 +710,26 @@
             ● Avvia registrazione
           </button>
         </div>
+      </form>
+    </dialog>
+    <dialog id="settingsDialog">
+      <form method="dialog">
+        <h2>Cartelle predefinite</h2>
+        <label>Progetti<input id="projectsDirectory" readonly /></label
+        ><button id="chooseProjectsDirectory" type="button">
+          Scegli cartella progetti</button
+        ><label>Esportazioni<input id="exportsDirectory" readonly /></label
+        ><button id="chooseExportsDirectory" type="button">
+          Scegli cartella esportazioni</button
+        ><button>Chiudi</button>
+      </form>
+    </dialog>
+    <dialog id="sourceDialog">
+      <form method="dialog">
+        <h2>ANTEPRIMA SORGENTE · <span id="sourceName"></span></h2>
+        <p>Materiale originale, indipendente dal montaggio.</p>
+        <div id="sourcePlayer"></div>
+        <button>Chiudi</button>
       </form>
     </dialog>
     <dialog id="keysDialog">
@@ -629,6 +760,14 @@
     </div>
     <div id="recordingBar" hidden>
       <i></i><span id="recordingTime"></span
+      ><meter
+        id="recordLevel"
+        min="0"
+        max="1"
+        value="0"
+        aria-label="Livello microfono"
+      ></meter
+      ><button id="pauseRecording">Pausa</button
       ><button id="stopRecording">■ Ferma e salva</button>
     </div>
     <div id="toast" role="status" hidden></div>

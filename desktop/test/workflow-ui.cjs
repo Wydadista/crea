@@ -6,6 +6,21 @@ const fs = require("node:fs/promises"),
 const run = require("node:util").promisify(
   require("node:child_process").execFile,
 );
+const bundled = (f) =>
+  path.join(
+    path.dirname(f),
+    path.basename(f, path.extname(f)),
+    path.basename(f),
+  );
+const resolvedProject = (p, file) => {
+  const out = structuredClone(p);
+  for (const m of out.media)
+    if (m.path) {
+      m.path = path.resolve(path.dirname(file), m.path);
+      m.url = require("node:url").pathToFileURL(m.path).href;
+    }
+  return out;
+};
 (async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "crea-workflow-"));
   let app;
@@ -357,7 +372,7 @@ const run = require("node:util").promisify(
         .getElementById("status")
         .textContent.startsWith("Progetto salvato"),
     );
-    const disk = JSON.parse(await fs.readFile(saved, "utf8"));
+    const disk = JSON.parse(await fs.readFile(bundled(saved), "utf8"));
     assert.deepEqual(disk.canvasSize, { width: 1536, height: 864 });
     assert.ok(disk.clips.some((c) => c.layout));
     await app.evaluate(({ dialog }, saved) => {
@@ -365,14 +380,17 @@ const run = require("node:util").promisify(
         canceled: false,
         filePaths: [saved],
       });
-    }, saved);
+    }, bundled(saved));
     page.on("dialog", (d) => d.accept().catch(() => {}));
     await page.locator("#openProject").click();
     await page.waitForFunction(
       () =>
         document.getElementById("status").textContent === "Progetto aperto.",
     );
-    assert.deepEqual(await page.evaluate(() => clone(project)), disk);
+    assert.deepEqual(
+      await page.evaluate(() => clone(project)),
+      resolvedProject(disk, bundled(saved)),
+    );
     await page.locator("#exportBtn").click();
     assert.ok(await page.locator("#exportResultActions").isHidden());
     assert.match(
@@ -462,7 +480,7 @@ const run = require("node:util").promisify(
       "PASS workflow: work-speed restore with deleted sections/foreign clip, undo/redo, playback sync, six view scales/pan, eight aspect handles, photo selection, original-resolution saved/reopened export and native open actions with Unicode paths.",
     );
   } finally {
-    await app?.close();
+    if (app) await app.evaluate(({ app }) => app.exit(0)).catch(() => {});
     await fs.rm(dir, { recursive: true, force: true });
   }
 })().catch((e) => {

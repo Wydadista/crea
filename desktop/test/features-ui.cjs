@@ -6,6 +6,21 @@ const fs = require("node:fs/promises"),
 const run = require("node:util").promisify(
   require("node:child_process").execFile,
 );
+const bundled = (f) =>
+  path.join(
+    path.dirname(f),
+    path.basename(f, path.extname(f)),
+    path.basename(f),
+  );
+const resolvedProject = (p, file) => {
+  const out = structuredClone(p);
+  for (const m of out.media)
+    if (m.path) {
+      m.path = path.resolve(path.dirname(file), m.path);
+      m.url = require("node:url").pathToFileURL(m.path).href;
+    }
+  return out;
+};
 (async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "crea-new-ui-"));
   let app;
@@ -169,7 +184,9 @@ const run = require("node:util").promisify(
       .evaluate((e) => Math.round(e.getBoundingClientRect().width));
     assert.equal(libraryWidth, 325);
     await page.locator("#activeTrack").selectOption("1");
+    await page.locator("#railElements").click();
     await page.locator("#addPixel").click();
+    await page.locator("#railMedia").click();
     assert.equal(await page.evaluate(() => mediaOf(first()).kind), "effect");
     await page.evaluate(() => {
       first().start = 0.5;
@@ -194,7 +211,9 @@ const run = require("node:util").promisify(
     await page.mouse.up();
     assert.ok((await page.evaluate(() => first().effect.width)) > oldWidth);
     await page.locator("#activeTrack").selectOption("2");
+    await page.locator("#railElements").click();
     await page.locator("#addText").click();
+    await page.locator("#railMedia").click();
     await page
       .locator("#annotationText")
       .fill(
@@ -268,7 +287,7 @@ const run = require("node:util").promisify(
         .getElementById("status")
         .textContent.startsWith("Progetto salvato"),
     );
-    const saved = JSON.parse(await fs.readFile(save, "utf8"));
+    const saved = JSON.parse(await fs.readFile(bundled(save), "utf8"));
     assert.equal(saved.trackHeights[2], 170);
     assert.ok(saved.clips[0].mono);
     assert.equal(saved.clips.at(-2).effect.type, "pixel");
@@ -307,7 +326,7 @@ const run = require("node:util").promisify(
         canceled: false,
         filePaths: [save],
       });
-    }, save);
+    }, bundled(save));
     page.on("dialog", (d) => d.accept().catch(() => {}));
     await page.locator("#openProject").click();
     await page.waitForFunction(
@@ -316,7 +335,7 @@ const run = require("node:util").promisify(
     );
     assert.deepEqual(
       await page.evaluate(() => JSON.parse(JSON.stringify(project))),
-      saved,
+      resolvedProject(saved, bundled(save)),
     );
     const exported = path.join(temp, "reopened.mp4");
     await app.evaluate(({ dialog }, output) => {
@@ -376,7 +395,7 @@ const run = require("node:util").promisify(
       "PASS new UI: paused seeking, playhead drag, snap, audio processing/mute, independent track resize, panels, timed effect resize, text wrapping, cross-track groups, 640 px/s, preview quality, Ctrl+S, recovery and project roundtrip.",
     );
   } finally {
-    await app?.close();
+    if (app) await app.evaluate(({ app }) => app.exit(0)).catch(() => {});
     await fs.rm(temp, { recursive: true, force: true });
   }
 })().catch((e) => {

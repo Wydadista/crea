@@ -1,5 +1,16 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 contextBridge.exposeInMainWorld("studio", {
+  preferences: () => ipcRenderer.invoke("preferences"),
+  setPreferences: (v) => ipcRenderer.invoke("set-preferences", v),
+  chooseDirectory: () => ipcRenderer.invoke("choose-directory"),
+  chooseExport: () => ipcRenderer.invoke("choose-export"),
+  thumbnail: (file, t) => ipcRenderer.invoke("thumbnail", file, t),
+  freezeFrame: (m, t) => ipcRenderer.invoke("freeze-frame", m, t),
+  recordingToolbar: (state) => ipcRenderer.invoke("recording-toolbar", state),
+  onRecordingControl: (fn) =>
+    ipcRenderer.on("recording-control", (_e, a) => fn(a)),
+  onRecordingProgress: (fn) =>
+    ipcRenderer.on("recording-progress", (_e, p) => fn(p)),
   autosave: (p) => ipcRenderer.invoke("autosave", p),
   recover: () => ipcRenderer.invoke("recover"),
   projectFile: () => ipcRenderer.invoke("project-file"),
@@ -14,10 +25,11 @@ contextBridge.exposeInMainWorld("studio", {
   chooseSource: (source) => ipcRenderer.invoke("choose-source", source),
   platform: () => ipcRenderer.invoke("platform"),
   beginRecording: (settings) => ipcRenderer.invoke("recording-begin", settings),
-  waveform: (file) => ipcRenderer.invoke("waveform", file),
+  waveform: (file, channels) => ipcRenderer.invoke("waveform", file, channels),
   fonts: () => ipcRenderer.invoke("fonts"),
   appendRecording: (buffer) => ipcRenderer.invoke("recording-chunk", buffer),
-  finishRecording: () => ipcRenderer.invoke("recording-finish"),
+  finishRecording: (duration) =>
+    ipcRenderer.invoke("recording-finish", duration),
   abortRecording: () => ipcRenderer.invoke("recording-abort"),
   saveProject: (project) => ipcRenderer.invoke("save-project", project),
   openProject: () => ipcRenderer.invoke("open-project"),

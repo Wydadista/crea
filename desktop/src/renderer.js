@@ -14,6 +14,30 @@ let project = Timeline.empty(),
   future = [],
   exportBusy = false,
   exportCancelled = false;
+let mediaView = localStorage.getItem("akhbar-media-view") || "list";
+let rippleFamily = localStorage.getItem("akhbar-family-ripple") === "true";
+let fitTimeline = false;
+const thumbCache = new Map();
+let thumbQueue = Promise.resolve();
+function thumbnail(m, at, image) {
+  if (m.kind === "image") {
+    image.src = m.url;
+    return;
+  }
+  const key = m.path + ":" + at.toFixed(4);
+  if (!thumbCache.has(key)) {
+    const job = thumbQueue.then(() => studio.thumbnail(m.path, at));
+    thumbQueue = job.catch(() => {});
+    thumbCache.set(key, job);
+    job.catch(() => thumbCache.delete(key));
+  }
+  thumbCache
+    .get(key)
+    .then((url) => {
+      if (image.isConnected) image.src = url;
+    })
+    .catch(() => {});
+}
 const videoPool = new Map();
 const transport = new AudioTransport((c, m, page) =>
   studio.audioData(c, m, page),
@@ -135,7 +159,7 @@ function requestWave(m) {
   waveQueue = waveQueue.then(async () => {
     if (epoch !== waveEpoch) return;
     try {
-      const wave = await studio.waveform(m.path);
+      const wave = await studio.waveform(m.path, m.audioChannels);
       if (epoch !== waveEpoch) return;
       let max = 0;
       for (const peak of wave.peaks) max = Math.max(max, peak);
@@ -150,6 +174,7 @@ function requestWave(m) {
 }
 function renderLibrary() {
   const list = $("mediaList");
+  list.classList.toggle("grid", mediaView === "grid");
   list.replaceChildren();
   const actual = project.media.filter(
     (m) => !["annotation", "effect"].includes(m.kind),
@@ -158,6 +183,19 @@ function renderLibrary() {
   $("libraryEmpty").hidden = !!actual.length;
   for (const m of actual) {
     const card = el("div", "media-card");
+    card.tabIndex = 0;
+    card.onclick = (e) => {
+      if (!e.target.closest("button")) showSource(m);
+    };
+    card.onkeydown = (e) => {
+      if (e.key === "Enter") showSource(m);
+    };
+    if (m.kind !== "audio") {
+      const img = el("img", "media-thumb");
+      img.alt = m.name;
+      card.append(img);
+      queueMicrotask(() => thumbnail(m, 0, img));
+    }
     card.draggable = true;
     card.append(
       el(
@@ -166,7 +204,7 @@ function renderLibrary() {
         m.kind === "audio" ? "♫" : m.kind === "image" ? "▧" : "▷",
       ),
     );
-    const text = el("div");
+    const text = el("div", "media-meta");
     text.append(
       el("strong", "", m.name),
       el("small", "", `${m.kind.toUpperCase()} · ${fmt(m.duration)}`),
@@ -230,6 +268,7 @@ function addMedia(id, start, track) {
     out: m.duration,
     speed: 1,
     volume: 1,
+    mono: true,
   };
   if (!Timeline.canPlace(project.clips, [c])) {
     toast("Intervallo occupato: scegli uno spazio libero o un’altra traccia.");
@@ -316,6 +355,9 @@ $("addCircle").onclick = () => annotation("circle");
 function renderTimeline() {
   const sc = $("timelineScroll"),
     total = Timeline.total(project.clips);
+  const minimum = minimumZoom();
+  if (fitTimeline) scale = fitScale();
+  $("zoom").min = String(minimum);
   $("timeline").style.width =
     Math.max(sc.clientWidth, (Math.max(total, time) + 20) * scale) + "px";
   const ruler = $("ruler");
@@ -329,7 +371,7 @@ function renderTimeline() {
           ? 5
           : scale >= 15
             ? 10
-            : 30;
+            : Math.max(30, Math.ceil(80 / scale / 30) * 30);
   for (
     let t = 0;
     t < parseFloat($("timeline").style.width) / scale;
@@ -408,12 +450,20 @@ function renderTimeline() {
       }
     $("track" + block.track).append(node);
     drawWave(node, block);
+    if (["video", "image"].includes(m.kind)) {
+      const img = el("img", "clip-thumb");
+      img.alt = "Primo fotogramma del segmento";
+      node.append(img);
+      thumbnail(m, c.in, img);
+    }
   }
   $("durationLabel").textContent =
     `${project.clips.length} clip · ${fmt(total)}`;
   $("zoom").value = scale;
-  $("zoomLabel").textContent = Math.round(scale) + " px/s";
+  $("zoomLabel").textContent =
+    (scale < 1 ? scale.toFixed(3) : Math.round(scale)) + " px/s";
   updateHead();
+  drawRecordRange();
 }
 function drawWave(node, block) {
   const sc = $("timelineScroll"),
@@ -770,16 +820,48 @@ function bindTrack(track) {
 $("ruler").onpointerdown = (e) => {
   if (e.button !== 0) return;
   pause();
+  if (e.shiftKey) {
+    const begin = Math.max(
+      0,
+      (e.clientX - $("ruler").getBoundingClientRect().left) / scale,
+    );
+    const range = (ev) => {
+      const at = Math.max(
+        0,
+        (ev.clientX - $("ruler").getBoundingClientRect().left) / scale,
+      );
+      $("rangeStart").value = Math.min(begin, at).toFixed(3);
+      $("rangeEnd").value = Math.max(begin, at).toFixed(3);
+      drawRecordRange();
+    };
+    range(e);
+    captureMove(e, range);
+    return;
+  }
   const move = (ev) =>
     seek((ev.clientX - $("ruler").getBoundingClientRect().left) / scale);
   move(e);
   captureMove(e, move);
 };
+function fitScale() {
+  return Math.min(
+    640,
+    Math.max(
+      0.0001,
+      Math.max(1, $("timelineScroll").clientWidth - 12) /
+        Math.max(1, Timeline.total(project.clips)),
+    ),
+  );
+}
+function minimumZoom() {
+  return Math.min(8, fitScale());
+}
 function setZoom(value) {
+  fitTimeline = false;
   const sc = $("timelineScroll"),
     oldX = time * scale - sc.scrollLeft,
     anchor = oldX >= 0 && oldX <= sc.clientWidth ? oldX : sc.clientWidth / 2;
-  scale = Math.max(8, Math.min(640, Number(value)));
+  scale = Math.max(minimumZoom(), Math.min(640, Number(value)));
   renderTimeline();
   sc.scrollLeft = Math.max(0, time * scale - anchor);
 }
@@ -832,6 +914,10 @@ function properties() {
   $("trimOut").disabled = all.length > 1;
   $("muteClip").checked = !!c.muted;
   $("monoClip").checked = !!c.mono;
+  $("noiseCompare").setAttribute("aria-pressed", String(!!c.voice?.bypass));
+  $("noiseCompare").textContent = c.voice?.bypass
+    ? "Originale attivo · ascolta elaborato"
+    : "Ascolta originale (prima/dopo)";
   const annotation = m.kind === "annotation";
   $("annotationPanel").hidden = !annotation;
   $("layoutPanel").hidden = annotation || ["audio", "effect"].includes(m.kind);
@@ -1069,7 +1155,11 @@ function remove() {
   if (!selection.size) return;
   pause();
   checkpoint();
-  project.clips = project.clips.filter((c) => !selection.has(c.id));
+  project = Timeline.deleteFamilySegments(
+    project,
+    [...selection],
+    rippleFamily,
+  );
   selection.clear();
   changed();
 }
@@ -1116,6 +1206,11 @@ window.addEventListener("pointerdown", (e) => {
   if (!$("contextMenu").contains(e.target)) $("contextMenu").hidden = true;
 });
 function updateHead() {
+  const duration = Timeline.total(project.clips);
+  $("projectSeek").max = String(duration);
+  $("projectSeek").value = String(time);
+  $("projectSeekTime").textContent = fmt(time) + " / " + fmt(duration);
+
   $("playhead").style.left = time * scale + "px";
   $("timecode").textContent =
     fmt(time) + " / " + fmt(Timeline.total(project.clips));
@@ -1620,9 +1715,11 @@ $("previewCanvas").onpointerdown = (e) => {
 };
 $("saveProject").onclick = safe(async () => {
   if (await studio.saveProject(project))
-    toast("Progetto salvato. Conserva anche i file originali.");
+    toast("Progetto salvato con i materiali nella cartella dedicata.");
 });
 $("openProject").onclick = safe(async () => {
+  if (recorder || finishing)
+    throw Error("Termina la registrazione prima di aprire un altro progetto");
   if (
     project.clips.length &&
     !confirm("Aprire il progetto e sostituire il montaggio non salvato?")
@@ -1769,7 +1866,11 @@ $("exportQuality").oninput = () => {
 };
 studio.onProgress((p) => {
   $("exportProgress").value = p.percent;
-  $("exportStatus").textContent = `${p.percent}% · ${p.message}`;
+  if (p.encoder)
+    $("exportEngine").textContent =
+      `Encoder: ${p.encoder} · Decoder: ${p.decoder || "CPU"} · Percorso: ${p.path}${p.fallbackFrom ? " · Ripiego da " + p.fallbackFrom : ""}`;
+  $("exportStatus").textContent =
+    `${p.percent}% contenuto · ${fmt(p.elapsedSeconds || 0)} trascorsi · ${p.encoder || "preparazione"} / decoder ${p.decoder || "CPU"}${p.fallbackFrom ? " (ripiego da " + p.fallbackFrom + ")" : ""} · ${p.message}`;
 });
 $("exportDialog").oncancel = (e) => {
   if (exportBusy) e.preventDefault();
@@ -1782,6 +1883,11 @@ $("doExport").onclick = safe(async () => {
     return toast("Inserisci FPS interi tra 1 e 120.");
   $("exportResultActions").hidden = true;
   exportBusy = true;
+  const elapsedStart = performance.now();
+  const elapsedTimer = setInterval(() => {
+    $("exportElapsed").textContent =
+      "Tempo trascorso: " + fmt((performance.now() - elapsedStart) / 1000);
+  }, 200);
   exportCancelled = false;
   $("doExport").disabled = true;
   $("cancelExport").hidden = false;
@@ -1795,7 +1901,17 @@ $("doExport").onclick = safe(async () => {
       fps: Number($("exportFps").value),
       quality: Number($("exportQuality").value),
       encoder: $("exportEncoder").value,
+      cpuPreset: $("exportCpuPreset").value,
+      outputPath: exportOutputPath || undefined,
+      preserveOriginal: $("preserveOriginal").checked,
+      keyframeSeconds: Number($("exportKeyframe").value),
     };
+    if (!exportOutputPath) {
+      exportOutputPath = await studio.chooseExport();
+      if (!exportOutputPath) return;
+      $("exportPath").textContent = exportOutputPath;
+      s.outputPath = exportOutputPath;
+    }
     $("exportStatus").textContent = "Preparazione testi e indicatori…";
     const out = await exportProject(s);
     if (exportCancelled) throw Error("Esportazione annullata");
@@ -1810,6 +1926,7 @@ $("doExport").onclick = safe(async () => {
   } catch (e) {
     $("exportStatus").textContent = e.message;
   } finally {
+    clearInterval(elapsedTimer);
     exportBusy = false;
     $("doExport").disabled = false;
     $("cancelExport").hidden = true;
@@ -1819,6 +1936,84 @@ $("cancelExport").onclick = () => {
   exportCancelled = true;
   studio.cancelExport();
 };
+const recordFields = [
+  "recordName",
+  "captureMode",
+  "captureSource",
+  "cameraDevice",
+  "recordFormat",
+  "recordHeight",
+  "recordFps",
+  "recordAudioBitrate",
+  "recordPreset",
+  "recordQuality",
+  "systemAudio",
+  "microphone",
+  "microphoneDevice",
+  "audioProcessing",
+];
+let recordingPrefs = {};
+try {
+  recordingPrefs = JSON.parse(localStorage.getItem("akhbar-recording") || "{}");
+} catch {}
+function saveRecordingPrefs() {
+  for (const id of recordFields)
+    if ($(id).value !== "missing")
+      recordingPrefs[id] =
+        $(id).type === "checkbox" ? $(id).checked : $(id).value;
+  const opt = $("microphoneDevice").selectedOptions[0];
+  if (opt && opt.value !== "missing") {
+    recordingPrefs.microphoneLabel = opt.textContent;
+    recordingPrefs.microphoneGroup = opt.dataset.group || "";
+  }
+  localStorage.setItem("akhbar-recording", JSON.stringify(recordingPrefs));
+}
+for (const id of recordFields) {
+  if (
+    recordingPrefs[id] !== undefined &&
+    !["captureSource", "cameraDevice", "microphoneDevice"].includes(id)
+  )
+    if ($(id).type === "checkbox") $(id).checked = recordingPrefs[id];
+    else $(id).value = recordingPrefs[id];
+  $(id).addEventListener("change", saveRecordingPrefs);
+}
+let overdub = null,
+  pausedAt = 0,
+  pausedMs = 0,
+  micAnalyser = null,
+  cameraFrame = null;
+function elapsedRecording() {
+  return (
+    (performance.now() -
+      startTime -
+      pausedMs -
+      (pausedAt ? performance.now() - pausedAt : 0)) /
+    1000
+  );
+}
+function toggleRecordingPause() {
+  if (recorder?.state === "recording") {
+    recorder.pause();
+    pausedAt = performance.now();
+  } else if (recorder?.state === "paused") {
+    recorder.resume();
+    pausedMs += performance.now() - pausedAt;
+    pausedAt = 0;
+  }
+}
+function stopRecording() {
+  if (recorder && recorder.state !== "inactive") recorder.stop();
+}
+$("pauseRecording").onclick = toggleRecordingPause;
+studio.onRecordingControl((action) =>
+  action === "pause" ? toggleRecordingPause() : stopRecording(),
+);
+studio.onRecordingProgress((p) => {
+  $("status").textContent =
+    p.phase + (p.percent == null ? "…" : ` · ${p.percent}%`);
+  if (p.metrics)
+    console.info("AKHBAR_RECORDING_METRICS", JSON.stringify(p.metrics));
+});
 let recorder = null,
   captureStreams = [],
   audioContext = null,
@@ -1831,6 +2026,9 @@ function stopCapture() {
   audioContext?.close();
   audioContext = null;
   clearInterval(recordTimer);
+  cancelAnimationFrame(cameraFrame);
+  micAnalyser = null;
+  studio.recordingToolbar(null).catch(() => {});
   $("recordingBar").hidden = true;
   recorder = null;
 }
@@ -1842,7 +2040,8 @@ async function microphones(ask = false) {
       video: false,
     });
   try {
-    const previous = $("microphoneDevice").value,
+    const previous =
+        recordingPrefs.microphoneDevice || $("microphoneDevice").value,
       devices = (await navigator.mediaDevices.enumerateDevices()).filter(
         (d) => d.kind === "audioinput",
       );
@@ -1853,10 +2052,58 @@ async function microphones(ask = false) {
     for (const [i, d] of devices.entries()) {
       const o = el("option", "", d.label || `Microfono ${i + 1}`);
       o.value = d.deviceId;
+      o.dataset.group = d.groupId;
       $("microphoneDevice").append(o);
     }
-    if ([...$("microphoneDevice").options].some((o) => o.value === previous))
-      $("microphoneDevice").value = previous;
+    $("deviceWarning").textContent = "";
+    let savedOption = [...$("microphoneDevice").options].find(
+      (o) => o.value === previous,
+    );
+    if (!savedOption && recordingPrefs.microphoneGroup)
+      savedOption = [...$("microphoneDevice").options].find(
+        (o) =>
+          o.dataset.group === recordingPrefs.microphoneGroup &&
+          o.textContent === recordingPrefs.microphoneLabel,
+      );
+    if (savedOption) $("microphoneDevice").value = savedOption.value;
+    else if (previous && previous !== "default") {
+      const missing = el(
+        "option",
+        "",
+        "Non disponibile: " +
+          (recordingPrefs.microphoneLabel || "microfono salvato"),
+      );
+      missing.value = "missing";
+      $("microphoneDevice").append(missing);
+      $("microphoneDevice").value = "missing";
+      $("deviceWarning").textContent =
+        "Il microfono salvato non è disponibile. Scegli un altro dispositivo prima di registrare.";
+    }
+    const cameras = (await navigator.mediaDevices.enumerateDevices()).filter(
+      (d) => d.kind === "videoinput",
+    );
+    $("cameraDevice").replaceChildren(
+      new Option("Predefinita del sistema", "default"),
+    );
+    for (const d of cameras)
+      $("cameraDevice").append(new Option(d.label || "Webcam", d.deviceId));
+    if (
+      [...$("cameraDevice").options].some(
+        (o) => o.value === recordingPrefs.cameraDevice,
+      )
+    )
+      $("cameraDevice").value = recordingPrefs.cameraDevice;
+    else if (
+      recordingPrefs.cameraDevice &&
+      recordingPrefs.cameraDevice !== "default"
+    ) {
+      $("cameraDevice").append(
+        new Option("Webcam salvata non disponibile", "missing"),
+      );
+      $("cameraDevice").value = "missing";
+      $("deviceWarning").textContent +=
+        " Webcam salvata non disponibile: scegline un’altra per le modalità con webcam.";
+    }
   } finally {
     permission?.getTracks().forEach((t) => t.stop());
   }
@@ -1869,17 +2116,24 @@ async function showRecording() {
   if (recorder || finishing)
     return toast("Registrazione o salvataggio in corso.");
   const sources = await studio.sources();
-  if (!sources.length) return toast("Nessuno schermo disponibile.");
+
   $("captureSource").replaceChildren();
   for (const s of sources) {
     const o = el("option", "", s.name);
     o.value = s.id;
     $("captureSource").append(o);
   }
+  if (
+    [...$("captureSource").options].some(
+      (o) => o.value === recordingPrefs.captureSource,
+    )
+  )
+    $("captureSource").value = recordingPrefs.captureSource;
   const windows = (await studio.platform()) === "win32";
   $("systemAudio").disabled = !windows;
   if (!windows) $("systemAudio").checked = false;
   await microphones();
+  $("recordQualityValue").textContent = $("recordQuality").value + "%";
   $("recordDialog").showModal();
 }
 $("recordBtn").onclick = safe(showRecording);
@@ -1890,9 +2144,24 @@ $("startRecording").onclick = safe(async () => {
     !$("recordAudioBitrate").checkValidity()
   )
     return toast("Controlla FPS e bitrate audio.");
+  if (
+    ($("microphone").checked ||
+      overdub ||
+      $("captureMode").value === "audio") &&
+    $("microphoneDevice").value === "missing"
+  )
+    return toast("Scegli un microfono disponibile prima di registrare.");
+  if (
+    ["camera", "screen-camera"].includes($("captureMode").value) &&
+    $("cameraDevice").value === "missing"
+  )
+    return toast("Scegli una webcam disponibile");
+  saveRecordingPrefs();
   $("startRecording").disabled = true;
   try {
     const settings = {
+        name: $("recordName").value,
+        audioOnly: !!overdub || $("captureMode").value === "audio",
         format: $("recordFormat").value,
         height: Number($("recordHeight").value),
         fps: Number($("recordFps").value),
@@ -1904,18 +2173,38 @@ $("startRecording").onclick = safe(async () => {
       id: $("captureSource").value,
       systemAudio: system,
     });
-    const screen = await navigator.mediaDevices.getDisplayMedia({
-      video: {
-        height: { max: settings.height },
-        frameRate: { ideal: settings.fps, max: settings.fps },
-      },
-      audio: system,
-    });
+    const mode = settings.audioOnly ? "audio" : $("captureMode").value;
+    const cameraId = $("cameraDevice").value;
+    const camera = ["camera", "screen-camera"].includes(mode)
+      ? await navigator.mediaDevices.getUserMedia({
+          video: {
+            ...(cameraId !== "default"
+              ? { deviceId: { exact: cameraId } }
+              : {}),
+            height: { ideal: settings.height },
+            frameRate: { ideal: settings.fps, max: settings.fps },
+          },
+          audio: false,
+        })
+      : null;
+    if (camera) captureStreams.push(camera);
+    const screen =
+      mode === "camera"
+        ? camera
+        : mode === "audio"
+          ? new MediaStream()
+          : await navigator.mediaDevices.getDisplayMedia({
+              video: {
+                height: { max: settings.height },
+                frameRate: { ideal: settings.fps, max: settings.fps },
+              },
+              audio: system,
+            });
     captureStreams.push(screen);
     const audio = [];
     if (system && screen.getAudioTracks().length) audio.push(screen);
     else if (system) toast("La sorgente non fornisce audio di sistema.");
-    if ($("microphone").checked) {
+    if ($("microphone").checked || settings.audioOnly) {
       const id = $("microphoneDevice").value,
         processing = $("audioProcessing").checked,
         mic = await navigator.mediaDevices.getUserMedia({
@@ -1929,22 +2218,64 @@ $("startRecording").onclick = safe(async () => {
         });
       captureStreams.push(mic);
       audio.push(mic);
+      audioContext ||= new AudioContext();
+      micAnalyser = audioContext.createAnalyser();
+      micAnalyser.fftSize = 256;
+      audioContext.createMediaStreamSource(mic).connect(micAnalyser);
     }
-    const mixed = new MediaStream(screen.getVideoTracks());
+    let videoTracks = screen.getVideoTracks();
+    if (mode === "screen-camera") {
+      const screenVideo = document.createElement("video"),
+        cameraVideo = document.createElement("video");
+      screenVideo.srcObject = screen;
+      cameraVideo.srcObject = camera;
+      screenVideo.muted = cameraVideo.muted = true;
+      await Promise.all([screenVideo.play(), cameraVideo.play()]);
+      const cv = document.createElement("canvas");
+      cv.width = screenVideo.videoWidth;
+      cv.height = screenVideo.videoHeight;
+      const ctx = cv.getContext("2d");
+      const frame = () => {
+        ctx.drawImage(screenVideo, 0, 0, cv.width, cv.height);
+        const w = cv.width / 4,
+          h = (w * cameraVideo.videoHeight) / cameraVideo.videoWidth;
+        ctx.drawImage(cameraVideo, cv.width - w - 20, cv.height - h - 20, w, h);
+        cameraFrame = requestAnimationFrame(frame);
+      };
+      frame();
+      const composite = cv.captureStream(settings.fps);
+      captureStreams.push(composite);
+      videoTracks = composite.getVideoTracks();
+    }
+    const mixed = new MediaStream(videoTracks);
     if (audio.length) {
-      audioContext = new AudioContext();
+      audioContext ||= new AudioContext();
       const dest = audioContext.createMediaStreamDestination();
       for (const s of audio)
         audioContext.createMediaStreamSource(s).connect(dest);
       dest.stream.getAudioTracks().forEach((t) => mixed.addTrack(t));
       await audioContext.resume();
     }
-    const mime = [
-      "video/webm;codecs=vp9,opus",
-      "video/webm;codecs=vp8,opus",
-      "video/webm",
-    ].find((m) => MediaRecorder.isTypeSupported(m));
+    const candidates = settings.audioOnly
+      ? ["audio/webm;codecs=opus"]
+      : settings.format === "mp4"
+        ? [
+            "video/mp4;codecs=avc1.42001E,mp4a.40.2",
+            "video/mp4;codecs=avc1.42001E",
+            "video/webm;codecs=h264,opus",
+            "video/webm;codecs=vp8,opus",
+          ]
+        : ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus"];
+    const mime = candidates.find((m) => MediaRecorder.isTypeSupported(m));
+    settings.mime = mime;
     if (!mime) throw Error("Codec di registrazione non disponibile");
+    if (overdub) {
+      for (let n = 3; n > 0; n--) {
+        $("startRecording").textContent = `Registrazione tra ${n}…`;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      $("startRecording").textContent = "● Avvia registrazione";
+    }
     await studio.beginRecording(settings);
     let writes = Promise.resolve(),
       writeError;
@@ -1965,11 +2296,12 @@ $("startRecording").onclick = safe(async () => {
           .then(async () => studio.appendRecording(await e.data.arrayBuffer()))
           .catch((error) => {
             writeError = error;
-            if (recorder?.state === "recording") recorder.stop();
+            if (recorder && recorder.state !== "inactive") recorder.stop();
           });
     };
     recorder.onstop = async () => {
       finishing = true;
+      const capturedDuration = elapsedRecording();
       stopCapture();
       try {
         await writes;
@@ -1979,12 +2311,40 @@ $("startRecording").onclick = safe(async () => {
             settings.format.toUpperCase() +
             ": scegli dove salvare…",
         );
-        const m = await studio.finishRecording();
+        const m = await studio.finishRecording(capturedDuration);
         if (m) {
           checkpoint();
           project.media.push(m);
           renderLibrary();
           requestWave(m);
+          if (overdub) {
+            const region = overdub;
+            overdub = null;
+            if (region.mute)
+              project = Timeline.muteRange(
+                project,
+                region.ids,
+                region.start,
+                region.end,
+                uid,
+              );
+            const track = Timeline.addTrack(project),
+              id = uid();
+            project.clips.push({
+              id,
+              sourceInstanceId: id,
+              mediaId: m.id,
+              start: region.start,
+              track,
+              in: 0,
+              out: m.duration,
+              speed: 1,
+              volume: 1,
+              mono: true,
+            });
+            selection = new Set([id]);
+            changed();
+          }
           toast(
             "Registrazione " +
               settings.format.toUpperCase() +
@@ -2002,24 +2362,32 @@ $("startRecording").onclick = safe(async () => {
       toast(e.error?.message || "Errore di registrazione");
       if (recorder?.state !== "inactive") recorder.stop();
     };
-    screen.getVideoTracks()[0].onended = () => {
-      if (recorder?.state === "recording") recorder.stop();
-    };
+    for (const t of screen.getVideoTracks()) t.onended = stopRecording;
     recorder.start(1000);
-    startTime = Date.now();
+    startTime = performance.now();
+    pausedAt = 0;
+    pausedMs = 0;
     $("recordDialog").close();
     $("recordingBar").hidden = false;
     $("recordingTime").textContent =
       "● " + settings.format.toUpperCase() + " · " + settings.fps + " FPS";
-    recordTimer = setInterval(
-      () =>
-        ($("recordingTime").textContent =
-          "● " +
-          settings.format.toUpperCase() +
-          " · " +
-          fmt((Date.now() - startTime) / 1000)),
-      500,
-    );
+    recordTimer = setInterval(() => {
+      const paused = recorder?.state === "paused";
+      const samples = new Float32Array(128);
+      micAnalyser?.getFloatTimeDomainData(samples);
+      const level = Math.min(
+        1,
+        Math.sqrt(samples.reduce((a, b) => a + b * b, 0) / samples.length) * 3,
+      );
+      const label = fmt(elapsedRecording());
+      $("recordingTime").textContent = (paused ? "Ⅱ PAUSA · " : "● ") + label;
+      $("recordingBar").classList.toggle("paused", paused);
+      $("pauseRecording").textContent = paused ? "Riprendi" : "Pausa";
+      $("recordLevel").value = level;
+      studio
+        .recordingToolbar({ paused, time: label, level })
+        .catch((e) => toast(e.message));
+    }, 200);
   } catch (e) {
     stopCapture();
     await studio.abortRecording();
@@ -2028,9 +2396,7 @@ $("startRecording").onclick = safe(async () => {
     $("startRecording").disabled = false;
   }
 });
-$("stopRecording").onclick = () => {
-  if (recorder?.state === "recording") recorder.stop();
-};
+$("stopRecording").onclick = stopRecording;
 window.onbeforeunload = (e) => {
   if (recorder || finishing || exportBusy) {
     e.preventDefault();
@@ -2102,6 +2468,8 @@ for (const id of ["voiceNoise", "voiceLevel"])
   $(id).onchange = () =>
     edit((c) => {
       c.voice = {
+        ...c.voice,
+        bypass: false,
         noise: Number($("voiceNoise").value) / 100,
         level: Number($("voiceLevel").value) / 100,
       };
@@ -2427,6 +2795,8 @@ function applyOpened(data) {
 }
 studio.onProjectFile(() =>
   safe(async () => {
+    if (recorder || finishing)
+      throw Error("Termina la registrazione prima di aprire un altro progetto");
     if (
       project.clips.length &&
       !confirm("Aprire il progetto e sostituire il montaggio corrente?")
@@ -2501,3 +2871,200 @@ transport.onerror = (e) => {
   pause();
   toast("Audio non disponibile: " + e.message);
 };
+
+// Independent source monitor: never inserts into the edit or changes the playhead.
+function showSource(m) {
+  pause();
+  $("sourceName").textContent = m.name;
+  const player = document.createElement(
+    m.kind === "image" ? "img" : m.kind === "audio" ? "audio" : "video",
+  );
+  player.src = m.url;
+  if (m.kind !== "image") player.controls = true;
+  $("sourcePlayer").replaceChildren(player);
+  $("sourceDialog").showModal();
+}
+$("sourceDialog").onclose = () => {
+  $("sourcePlayer")
+    .querySelectorAll("video,audio")
+    .forEach((p) => p.pause());
+  $("sourcePlayer").replaceChildren();
+};
+$("mediaView").value = mediaView;
+$("mediaView").onchange = () => {
+  mediaView = $("mediaView").value;
+  localStorage.setItem("akhbar-media-view", mediaView);
+  renderLibrary();
+};
+function libraryPanel(elements) {
+  $("mediaPanel").hidden = elements;
+  $("elementsPanel").hidden = !elements;
+  $("railMedia").classList.toggle("active", !elements);
+  $("railElements").classList.toggle("active", elements);
+}
+$("railMedia").onclick = () => libraryPanel(false);
+$("railElements").onclick = () => libraryPanel(true);
+$("projectSeek").oninput = () => {
+  pause();
+  seek(Number($("projectSeek").value));
+};
+$("fitTimeline").onclick = () => {
+  fitTimeline = true;
+  scale = fitScale();
+  $("timelineScroll").scrollLeft = 0;
+  renderTimeline();
+};
+new ResizeObserver(() => {
+  if (fitTimeline) renderTimeline();
+}).observe($("timelineScroll"));
+function showRipple() {
+  $("rippleFamily").setAttribute("aria-pressed", String(rippleFamily));
+  $("rippleFamily").textContent =
+    "🧲 Chiudi spazi della clip: " + (rippleFamily ? "sì" : "no");
+}
+$("rippleFamily").onclick = () => {
+  rippleFamily = !rippleFamily;
+  localStorage.setItem("akhbar-family-ripple", String(rippleFamily));
+  showRipple();
+};
+showRipple();
+$("markRangeStart").onclick = () => {
+  $("rangeStart").value = time.toFixed(3);
+  drawRecordRange();
+};
+$("markRangeEnd").onclick = () => {
+  $("rangeEnd").value = time.toFixed(3);
+  drawRecordRange();
+};
+$("recordPhrase").onclick = safe(async () => {
+  const start = Number($("rangeStart").value),
+    end = Number($("rangeEnd").value);
+  if (!(end > start) || start < 0)
+    throw Error("Seleziona un intervallo valido");
+  if (Timeline.trackCount(project) >= Timeline.MAX_TRACKS)
+    throw Error("Nessuna traccia disponibile");
+  const ids = selected()
+    .filter((c) => mediaOf(c).hasAudio)
+    .map((c) => c.id);
+  if ($("replaceAudio").checked && !ids.length)
+    throw Error("Seleziona le clip audio da silenziare nel tratto sostituito");
+  pause();
+  overdub = { start, end, ids, mute: $("replaceAudio").checked };
+  await showRecording();
+  $("microphone").checked = true;
+});
+$("recordDialog").addEventListener("close", () => {
+  if (!recorder) overdub = null;
+});
+$("freezeFrame").onclick = safe(async () => {
+  pause();
+  const selectedClip = first(),
+    atTime = time,
+    activeProject = project;
+  const c = selectedClip && clone(selectedClip);
+  if (
+    !c ||
+    mediaOf(c).kind !== "video" ||
+    time < c.start ||
+    time >= c.start + Timeline.duration(c)
+  )
+    throw Error("Seleziona un video e posiziona il cursore al suo interno");
+  if (Timeline.trackCount(project) >= Timeline.MAX_TRACKS)
+    throw Error("Nessuna traccia disponibile");
+  const m = await studio.freezeFrame(
+    mediaOf(c),
+    Timeline.sourceTime(c, atTime),
+  );
+  if (project !== activeProject)
+    throw Error("Il progetto è cambiato durante l’estrazione del fotogramma");
+  checkpoint();
+  project.media.push(m);
+  const track = Timeline.addTrack(project),
+    id = uid();
+  const still = {
+    id,
+    sourceInstanceId: id,
+    mediaId: m.id,
+    start: atTime,
+    track,
+    in: 0,
+    out: 5,
+    speed: 1,
+    volume: 0,
+  };
+  if (c.layout) still.layout = clone(c.layout);
+  if (c.effect) still.effect = clone(c.effect);
+  if (c.zoom) {
+    const z = c.zoom,
+      at = (atTime - c.start) / Timeline.duration(c),
+      value = z.from + (z.to - z.from) * at;
+    still.zoom = { ...z, from: value, to: value };
+  }
+  project.clips.push(still);
+  selection = new Set([id]);
+  render();
+  toast(
+    "Fermo immagine inserito su una nuova traccia; durata regolabile con i bordi o le proprietà.",
+  );
+});
+let exportOutputPath = null;
+$("chooseExportPath").onclick = safe(async () => {
+  const path = await studio.chooseExport();
+  if (path) {
+    exportOutputPath = path;
+    $("exportPath").textContent = path;
+  }
+});
+$("settingsBtn").onclick = safe(async () => {
+  const p = await studio.preferences();
+  $("projectsDirectory").value = p.projects;
+  $("exportsDirectory").value = p.exports;
+  $("settingsDialog").showModal();
+});
+for (const [id, key] of [
+  ["Projects", "projects"],
+  ["Exports", "exports"],
+])
+  $("choose" + id + "Directory").onclick = safe(async () => {
+    const dir = await studio.chooseDirectory();
+    if (dir) {
+      const p = await studio.setPreferences({ [key]: dir });
+      $(key + "Directory").value = p[key];
+    }
+  });
+$("noiseCompare").onclick = () => {
+  const c = first();
+  if (!c) return;
+  const resume = playing;
+  edit((c) => {
+    c.voice = { noise: 0, level: 0, ...c.voice, bypass: !c.voice?.bypass };
+  });
+  $("noiseCompare").setAttribute(
+    "aria-pressed",
+    String(!!first()?.voice?.bypass),
+  );
+  $("noiseCompare").textContent = first()?.voice?.bypass
+    ? "Originale attivo · ascolta elaborato"
+    : "Ascolta originale (prima/dopo)";
+  if (resume) safe(play)();
+};
+
+function drawRecordRange() {
+  const from = Number($("rangeStart").value),
+    to = Number($("rangeEnd").value),
+    overlay = $("recordRangeOverlay");
+  overlay.hidden = !(to > from);
+  overlay.style.left = from * scale + "px";
+  overlay.style.width = Math.max(0, (to - from) * scale) + "px";
+}
+$("rangeStart").oninput = $("rangeEnd").oninput = drawRecordRange;
+
+$("noiseModerate").onclick = () =>
+  edit((c) => {
+    c.voice = {
+      ...c.voice,
+      noise: 0.25,
+      level: c.voice?.level || 0,
+      bypass: false,
+    };
+  });

@@ -56,6 +56,59 @@
         !api.overlaps([...clips.filter((c) => !ids.has(c.id)), ...candidates])
       );
     },
+    deleteFamilySegments(input, ids, closeGaps = false) {
+      const p = JSON.parse(JSON.stringify(input)),
+        selected = new Set(ids);
+      const removed = p.clips.filter((c) => selected.has(c.id));
+      p.clips = p.clips.filter((c) => !selected.has(c.id));
+      if (closeGaps) {
+        // Identity belongs to an insertion, never to a file. Legacy fragments with
+        // no identity are independent; guessing by mediaId would move other inserts.
+        for (const c of p.clips) {
+          const holes = removed.filter(
+            (r) =>
+              r.sourceInstanceId &&
+              r.sourceInstanceId === c.sourceInstanceId &&
+              r.track === c.track &&
+              r.start < c.start,
+          );
+          const shift = holes.reduce(
+            (sum, r) =>
+              sum + Math.max(0, Math.min(api.duration(r), c.start - r.start)),
+            0,
+          );
+          c.start = Math.max(0, c.start - shift);
+        }
+        if (api.overlaps(p.clips))
+          throw Error(
+            "Chiusura spazio bloccata da un’altra clip: nessuna clip è stata spostata",
+          );
+      }
+      return api.validate(p);
+    },
+    muteRange(input, ids, start, end, makeId) {
+      if (!n(start, 0, 604800) || !n(end, start + 0.001, 604800))
+        throw Error("Intervallo non valido");
+      const p = JSON.parse(JSON.stringify(input));
+      const chosen = new Set(ids);
+      for (const at of [start, end]) {
+        const added = [];
+        api.split(p.clips, [...chosen], at, () => {
+          const id = makeId();
+          added.push(id);
+          return id;
+        });
+        added.forEach((id) => chosen.add(id));
+      }
+      for (const c of p.clips)
+        if (
+          chosen.has(c.id) &&
+          c.start >= start - 1e-8 &&
+          c.start + api.duration(c) <= end + 1e-8
+        )
+          c.muted = true;
+      return api.validate(p);
+    },
     sourceFamily(c) {
       return c.sourceInstanceId || c.mediaId;
     },

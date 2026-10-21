@@ -11,9 +11,9 @@ const pkg = require("../package.json");
 async function main() {
   const dist = path.join(root, "dist");
   const app = path.join(dist, "win-unpacked");
-  const base = `Crea-Studio-${pkg.version}`;
+  const base = `AKhbar-studio-${pkg.version}`;
   const installer = `${base}-x64-Setup.exe`;
-  await fs.access(path.join(app, "Crea Studio.exe"));
+  await fs.access(path.join(app, "AKhbar studio.exe"));
   await fs.access(path.join(dist, installer));
   const tool = await getPath7za();
   async function zip(output, cwd, args) {
@@ -35,19 +35,25 @@ async function main() {
     source = `${base}-Sorgenti.zip`;
   await zip(portable, app, ["."]);
   const repo = path.resolve(root, "..");
-  const result = await run("git", ["ls-files", "-z", "--", "desktop"], {
-    cwd: repo,
-    encoding: "buffer",
-  });
-  const files = result.stdout.toString("utf8").split("\0").filter(Boolean);
-  if (
-    !files.includes("desktop/package-lock.json") ||
-    !files.includes("desktop/scripts/bundle-release.cjs")
-  ) {
-    throw Error(
-      "Aggiungi al Git tutti i sorgenti prima di generare il pacchetto sorgenti.",
-    );
+  // Source archives extracted from GitHub have no .git directory. Use a bounded
+  // source manifest so release builds work both from clones and source ZIPs.
+  const files = [];
+  async function sources(dir, rel) {
+    for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+      const name = path.join(rel, entry.name),
+        full = path.join(dir, entry.name);
+      if (entry.isDirectory()) await sources(full, name);
+      else if (entry.isFile()) files.push(name);
+      else throw Error("Link non previsto nei sorgenti: " + name);
+    }
   }
+  for (const name of ["src", "scripts", "test"])
+    await sources(path.join(root, name), path.join("desktop", name));
+  for (const entry of await fs.readdir(root, { withFileTypes: true }))
+    if (entry.isFile() && /\.(json|md)$/.test(entry.name))
+      files.push(path.join("desktop", entry.name));
+  if (!files.includes(path.join("desktop", "package-lock.json")))
+    throw Error("Lockfile mancante");
   await zip(source, repo, files);
   const sums = [];
   for (const name of [installer, portable, source]) {

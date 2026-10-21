@@ -1391,3 +1391,149 @@ header button {
 #previewSurface {
   min-height: 0;
 }
+[hidden] {
+  display: none !important;
+}
+.rail button span {
+  font-size: 10px;
+}
+.media-list.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: 8px;
+}
+.media-list.grid .media-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.media-thumb {
+  width: 76px;
+  height: 44px;
+  object-fit: contain;
+  flex-shrink: 0;
+  background: #111;
+}
+.grid .media-thumb {
+  width: 100%;
+  height: 76px;
+}
+.media-card {
+  cursor: pointer;
+}
+.clip {
+  overflow: hidden;
+}
+.clip-thumb {
+  position: absolute;
+  left: 0;
+  top: 24px;
+  width: 80px;
+  height: 45px;
+  object-fit: cover;
+  pointer-events: none;
+  max-width: none;
+  z-index: 2;
+}
+.clip .clip-name,
+.clip .clip-duration {
+  z-index: 3;
+  position: relative;
+}
+.transport {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+#projectSeek {
+  flex: 1;
+  min-width: 120px;
+}
+#projectSeekTime {
+  font-size: 11px;
+}
+.timeline-toolbar {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.timeline-toolbar > div {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.timeline-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  margin: 0;
+}
+.range-tools {
+  display: flex;
+  gap: 4px;
+}
+.range-tools input[type="number"] {
+  width: 75px;
+}
+#rippleFamily[aria-pressed="true"] {
+  background: #176e54;
+  color: white;
+}
+#sourcePlayer video,
+#sourcePlayer img {
+  max-width: 75vw;
+  max-height: 65vh;
+}
+#sourcePlayer audio {
+  width: 500px;
+}
+#exportPath {
+  display: block;
+  overflow-wrap: anywhere;
+  padding: 8px;
+  color: #75e6bd;
+}
+#deviceWarning {
+  color: #ffbc77;
+}
+#recordingBar.paused {
+  background: #785c24;
+}
+#recordLevel {
+  width: 70px;
+}
+
+#recordRangeOverlay {
+  position: absolute;
+  top: 32px;
+  bottom: 0;
+  pointer-events: none;
+  background: #529fea14;
+  border-left: 1px solid #529fea;
+  border-right: 1px solid #529fea;
+  z-index: 1;
+}
+
+.media-card .media-meta {
+  min-width: 0;
+  flex: 1;
+}
+.media-card:has(.media-thumb) .media-icon {
+  display: none;
+}
+.grid .media-meta {
+  width: 100%;
+}
+
+#mediaPanel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+#mediaList {
+  min-height: 0;
+}
+#elementsPanel {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}

@@ -1,4 +1,4 @@
-const { spawn } = require("node:child_process");
+const { spawn, execFile } = require("node:child_process");
 const fs = require("node:fs/promises"),
   os = require("node:os"),
   path = require("node:path");
@@ -8,6 +8,13 @@ function encoding(s, project) {
   const fps = Number(s.fps),
     { width, height } = T.outputSize(project || { media: [] }, s.height);
   const old = { small: 30, balanced: 23, high: 18 };
+  if (
+    s.keyframeSeconds !== undefined &&
+    (!Number.isFinite(s.keyframeSeconds) ||
+      s.keyframeSeconds < 1 ||
+      s.keyframeSeconds > 30)
+  )
+    throw Error("Intervallo keyframe: 1–30 secondi");
   const quality = s.quality === undefined ? 70 : Number(s.quality);
   const crf = Object.hasOwn(old, s.quality)
     ? old[s.quality]
@@ -56,14 +63,41 @@ async function renderProject(
     total = T.total(p.clips);
   if (!total) throw Error("Aggiungi una clip alla timeline");
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "crea-render-"));
-  let lastPercent = 0;
+  const begun = performance.now();
+  const stages = [];
+  let fallbackFrom = null,
+    decoder = "cpu";
+  let actualEncoder = "libx264",
+    pathName = "composizione",
+    lastPercent = 0;
+  const details = () => ({
+    elapsedSeconds: (performance.now() - begun) / 1000,
+    encoder: actualEncoder,
+    decoder,
+    fallbackFrom,
+    path: pathName,
+    stages,
+    totalSeconds: total,
+  });
   const report = (percent, message) => {
     lastPercent = Math.max(lastPercent, Math.min(99, Math.floor(percent)));
-    progress({ percent: lastPercent, message });
+    progress({
+      percent: lastPercent,
+      message,
+      processedSeconds: Math.min(total, (percent * total) / 99),
+      ...details(),
+    });
   };
   progress({ percent: 0, message: "Preparazione esportazione" });
-  const run = (args, offset = 0, duration = 0, phase = "Composizione") =>
+  const run = (
+    args,
+    offset = 0,
+    duration = 0,
+    phase = "Composizione",
+    units = total,
+  ) =>
     new Promise((resolve, reject) => {
+      report(lastPercent, phase);
       const child = spawn(
         binaries.ffmpeg,
         [
@@ -80,6 +114,7 @@ async function renderProject(
         ],
         { windowsHide: true, signal },
       );
+      const phaseStart = performance.now();
       let pending = "";
       child.stdout.on("data", (data) => {
         pending += data.toString();
@@ -90,8 +125,7 @@ async function renderProject(
             const seconds = Number(line.slice(12)) / 1e6;
             if (Number.isFinite(seconds) && duration)
               report(
-                ((offset + Math.min(duration, Math.max(0, seconds))) /
-                  (total * 2)) *
+                ((offset + Math.min(duration, Math.max(0, seconds))) / units) *
                   99,
                 phase,
               );
@@ -103,13 +137,224 @@ async function renderProject(
       child.once("error", (e) => {
         error = e;
       });
-      child.once("close", (code) =>
+      child.once("close", (code) => {
+        stages.push({
+          phase,
+          seconds: (performance.now() - phaseStart) / 1000,
+          encoder: actualEncoder,
+        });
         code === 0 && !error
           ? resolve()
-          : reject(error || Error(stderr || "Esportazione interrotta")),
-      );
+          : reject(error || Error(stderr || "Esportazione interrotta"));
+      });
     });
   try {
+    const enc = require("./encoders");
+    const requested = settings.encoder || "cpu";
+    if (requested !== "cpu" && !enc.candidates.some(([id]) => id === requested))
+      throw Error("Encoder non valido");
+    let encoder = requested;
+    if (
+      !settings.preserveOriginal &&
+      encoder !== "cpu" &&
+      !(await enc.detect(binaries.ffmpeg, cfg)).some((e) => e.id === encoder)
+    ) {
+      encoder = "cpu";
+      fallbackFrom = requested;
+      report(
+        0,
+        "GPU non disponibile: ripiego CPU verificato prima del rendering",
+      );
+    }
+    actualEncoder = encoder === "cpu" ? "libx264" : encoder;
+    if (
+      settings.cpuPreset &&
+      !["fast", "veryfast"].includes(settings.cpuPreset)
+    )
+      throw Error("Preset CPU non valido");
+    const videoArgs = () => [
+      ...enc.args(encoder, crf, settings.cpuPreset || "veryfast"),
+      "-g",
+      String(
+        settings.keyframeSeconds
+          ? Math.round(fps * settings.keyframeSeconds)
+          : 250,
+      ),
+      "-threads",
+      String(enc.threadBudget()),
+      "-pix_fmt",
+      cfg.pixelFormat,
+    ];
+    const single = simpleClip(p);
+    if (single) {
+      pathName = "diretto";
+      const { c, m } = single;
+      const target = path.join(dir, "direct.mp4");
+      const copy =
+        settings.preserveOriginal === true &&
+        (await canCopy(
+          c,
+          m,
+          cfg,
+          p,
+          binaries.ffprobe,
+          settings.keyframeSeconds,
+        ));
+      if (settings.preserveOriginal && !copy)
+        throw Error(
+          "Copia originale incompatibile: disattivala per applicare FPS, risoluzione o elaborazioni audio richieste",
+        );
+      if (copy) {
+        actualEncoder = "copy";
+        pathName = "copia flussi";
+        await run(
+          [
+            "-y",
+            "-i",
+            m.path,
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a:0?",
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+            target,
+          ],
+          0,
+          total,
+          "Copia flussi originali (nessuna ricodifica)",
+        );
+      } else {
+        let cuda = false;
+        if (
+          encoder === "h264_nvenc" &&
+          m.width === W &&
+          m.height === H &&
+          cfg.pixelFormat === "yuv420p"
+        ) {
+          try {
+            await require("node:util").promisify(execFile)(
+              binaries.ffmpeg,
+              [
+                "-v",
+                "error",
+                "-nostdin",
+                "-ss",
+                String(c.in),
+                "-hwaccel",
+                "cuda",
+                "-hwaccel_output_format",
+                "cuda",
+                "-i",
+                m.path,
+                "-frames:v",
+                "2",
+                "-an",
+                "-vf",
+                `fps=${fps},setsar=1`,
+                ...enc.args(encoder, crf),
+                "-pix_fmt",
+                "cuda",
+                "-f",
+                "null",
+                "-",
+              ],
+              { windowsHide: true, timeout: 15000, signal },
+            );
+            cuda = true;
+            decoder = "cuda";
+          } catch (e) {
+            if (signal?.aborted) throw e;
+            report(
+              0,
+              "Decodifica CUDA non disponibile: decodifica CPU e codifica NVIDIA",
+            );
+          }
+        }
+        const audible =
+          m.hasAudio && !c.muted && !p.trackMuted?.[c.track] && c.volume > 0;
+        const args = [
+          "-y",
+          "-ss",
+          String(c.in),
+          ...(cuda
+            ? ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"]
+            : []),
+          "-i",
+          m.path,
+        ];
+        if (!audible)
+          args.push(
+            "-f",
+            "lavfi",
+            "-i",
+            `anullsrc=r=48000:cl=stereo:d=${total}`,
+          );
+        args.push("-map", "0:v:0");
+        const vf = [
+          "tpad=stop_mode=clone:stop_duration=1",
+          `fps=${fps}`,
+          ...(cuda
+            ? []
+            : [
+                `scale=${W}:${H}:force_original_aspect_ratio=decrease`,
+                `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`,
+              ]),
+          "setsar=1",
+        ];
+        const codecArgs = videoArgs();
+        if (cuda) codecArgs[codecArgs.indexOf("-pix_fmt") + 1] = "cuda";
+        args.push("-vf", vf.join(","), ...codecArgs);
+        if (
+          m.hasAudio &&
+          !c.muted &&
+          !p.trackMuted?.[c.track] &&
+          c.volume > 0
+        ) {
+          const af = await audioFilters(c, m, binaries.ffmpeg);
+          args.push(
+            "-map",
+            "0:a:0",
+            "-af",
+            [af, `volume=${c.volume}`, "apad", `atrim=duration=${total}`]
+              .filter(Boolean)
+              .join(","),
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+          );
+        } else args.push("-map", "1:a:0", "-c:a", "aac", "-b:a", "192k");
+        args.push(
+          "-t",
+          String(Math.ceil(total * fps) / fps),
+          "-fps_mode",
+          "cfr",
+          "-movflags",
+          "+faststart",
+          target,
+        );
+        await run(args, 0, total, "Codifica diretta · " + actualEncoder);
+      }
+      if (signal?.aborted) throw Error("Esportazione annullata");
+      await fs.copyFile(target, output);
+      progress({
+        percent: 100,
+        message: "Esportazione completata",
+        ...details(),
+      });
+      return output;
+    }
+    if (settings.preserveOriginal)
+      throw Error(
+        "Copia originale disponibile solo per una clip intera senza modifiche",
+      );
     const rasters = new Map();
     for (const [i, c] of p.clips.entries())
       if (p.media.find((m) => m.id === c.mediaId).kind === "annotation") {
@@ -351,14 +596,7 @@ async function renderProject(
         "[outa]",
         "-t",
         String(d),
-        "-c:v",
-        "libx264",
-        "-preset",
-        "fast",
-        "-crf",
-        String(Math.max(0, crf - 6)),
-        "-threads",
-        "2",
+        ...videoArgs(),
         "-bf",
         "0",
         "-pix_fmt",
@@ -374,73 +612,158 @@ async function renderProject(
       await run(args, start, d);
       concat.push(`file '${part}'\nduration ${d}`);
       report(
-        ((start + d) / (total * 2)) * 99,
+        ((start + d) / total) * 99,
         `Composizione ${interval + 1}/${bounds.length - 1}`,
       );
     }
     await fs.writeFile(path.join(dir, "list.txt"), concat.join("\n"));
     const result = path.join(dir, "final.mp4");
-    const finishArgs = [
-      "-y",
-      "-f",
-      "concat",
-      "-safe",
-      "1",
-      "-i",
-      path.join(dir, "list.txt"),
-      "-t",
-      String(endFrame / fps),
-      "-vf",
-      `fps=${fps}`,
-      "-fps_mode",
-      "cfr",
-      "-c:v",
-      "libx264",
-      "-preset",
-      "fast",
-      "-crf",
-      String(crf),
-      "-threads",
-      "2",
-      "-pix_fmt",
-      cfg.pixelFormat,
-      "-c:a",
-      "aac",
-      "-b:a",
-      "192k",
-      "-movflags",
-      "+faststart",
-      result,
-    ];
-    const encoder = settings.encoder || "cpu";
-    const enc = require("./encoders");
-    if (encoder !== "cpu" && !enc.candidates.some(([id]) => id === encoder))
-      throw Error("Encoder non valido");
-    if (encoder !== "cpu") {
-      const at = finishArgs.indexOf("-c:v");
-      const hardware = [
-        ...finishArgs.slice(0, at),
-        ...enc.args(encoder, crf),
-        ...finishArgs.slice(at + 6),
-      ];
-      try {
-        await run(hardware, total, total, "Codifica GPU");
-      } catch (e) {
-        if (signal?.aborted) throw e;
-        lastPercent = Math.floor(99 / 2);
-        progress({
-          percent: lastPercent,
-          message: "GPU non disponibile: riavvio la codifica finale con CPU",
-        });
-        await run(finishArgs, total, total, "Codifica CPU (ripiego GPU)");
-      }
-    } else await run(finishArgs, total, total, "Codifica MP4 finale");
+    // Every interval is encoded once with the requested encoder/quality. PCM audio
+    // is continuous across boundaries and AAC is encoded only once here.
+    await run(
+      [
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "1",
+        "-i",
+        path.join(dir, "list.txt"),
+        "-t",
+        String(endFrame / fps),
+        "-c:v",
+        "copy",
+        "-bsf:v",
+        `setts=pts=N/(${fps}*TB):dts=N/(${fps}*TB):duration=1/(${fps}*TB)`,
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
+        result,
+      ],
+      0,
+      0,
+      "Assemblaggio MP4 (video senza ricodifica)",
+    );
     if (signal?.aborted) throw Error("Esportazione annullata");
     await fs.copyFile(result, output);
-    progress({ percent: 100, message: "Esportazione completata" });
+    progress({
+      percent: 100,
+      message: "Esportazione completata",
+      ...details(),
+    });
     return output;
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }
 }
-module.exports = { renderProject, encoding, tempo };
+function simpleClip(p) {
+  if (p.clips.length !== 1) return null;
+  const c = p.clips[0],
+    m = p.media.find((m) => m.id === c.mediaId);
+  const l = c.layout,
+    z = c.zoom;
+  if (
+    m.kind !== "video" ||
+    c.start !== 0 ||
+    (c.speed || 1) !== 1 ||
+    (c.effect && c.effect.type !== "none") ||
+    (l &&
+      (l.x !== 0 ||
+        l.y !== 0 ||
+        l.width !== 100 ||
+        l.height !== 100 ||
+        (l.content &&
+          (l.content.x !== 0 ||
+            l.content.y !== 0 ||
+            l.content.width !== 100 ||
+            l.content.height !== 100)))) ||
+    (z && (z.from !== 1 || z.to !== 1))
+  )
+    return null;
+  return { c, m };
+}
+async function canCopy(c, m, cfg, p, probe, keyframeSeconds) {
+  if (
+    c.in !== 0 ||
+    Math.abs(c.out - m.duration) > 0.001 ||
+    c.mono ||
+    c.muted ||
+    p.trackMuted?.[c.track] ||
+    c.volume !== 1 ||
+    c.voice?.noise ||
+    c.voice?.level
+  )
+    return false;
+  const { stdout } = await require("node:util").promisify(execFile)(
+    probe,
+    ["-v", "error", "-show_streams", "-of", "json", m.path],
+    { windowsHide: true },
+  );
+  const streams = JSON.parse(stdout).streams,
+    v = streams.find((s) => s.codec_type === "video"),
+    a = streams.find((s) => s.codec_type === "audio");
+  const rate = (value) => {
+    const [n, d = 1] = String(value).split("/").map(Number);
+    return n / d;
+  };
+  const compatible =
+    v?.codec_name === "h264" &&
+    (!a || a.codec_name === "aac") &&
+    v.width === cfg.width &&
+    v.height === cfg.height &&
+    v.pix_fmt === cfg.pixelFormat &&
+    (!v.sample_aspect_ratio ||
+      ["1:1", "N/A"].includes(v.sample_aspect_ratio)) &&
+    !v.tags?.rotate &&
+    !v.side_data_list?.some((d) => d.rotation) &&
+    Math.abs(rate(v.avg_frame_rate) - cfg.fps) < 1e-6 &&
+    Math.abs(rate(v.r_frame_rate) - cfg.fps) < 1e-6;
+  if (!compatible) return false;
+  // Average frame rate alone cannot prove CFR. Check actual packet cadence before
+  // allowing a stream copy to stand in for the requested FPS/keyframe settings.
+  const packets = await require("node:util").promisify(execFile)(
+    probe,
+    [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_packets",
+      "-show_entries",
+      "packet=pts_time,flags",
+      "-of",
+      "csv=p=0",
+      m.path,
+    ],
+    { windowsHide: true, maxBuffer: 64 * 1024 * 1024 },
+  );
+  const rows = packets.stdout
+      .trim()
+      .split("\n")
+      .map((line) => line.split(",")),
+    times = rows.map((r) => Number(r[0])).sort((a, b) => a - b),
+    step = 1 / cfg.fps;
+  if (
+    times.some(
+      (t, i) =>
+        !Number.isFinite(t) ||
+        (i && Math.abs(t - times[i - 1] - step) > 0.0001),
+    )
+  )
+    return false;
+  if (keyframeSeconds) {
+    const keys = rows
+      .filter((r) => r[1]?.includes("K"))
+      .map((r) => Number(r[0]))
+      .sort((a, b) => a - b);
+    if (keys.some((t, i) => i && t - keys[i - 1] > keyframeSeconds + step))
+      return false;
+    if (keys.length && times.at(-1) - keys.at(-1) > keyframeSeconds + step)
+      return false;
+  }
+  return true;
+}
+module.exports = { renderProject, encoding, tempo, simpleClip, canCopy };
