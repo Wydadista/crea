@@ -14,7 +14,7 @@
     <header>
       <div class="brand">
         <span class="brand-icon">A</span> AKhbar <b>STUDIO</b
-        ><span class="badge">DESKTOP · 0.3.1</span>
+        ><span class="badge">DESKTOP · 0.3.2</span>
       </div>
       <details id="fileMenu" class="file-menu">
         <summary>File ▾</summary>
@@ -56,22 +56,58 @@
         <div id="mediaPanel">
           <span class="eyebrow">IL TUO MATERIALE</span>
           <h2>Libreria media <span id="mediaCount">0</span></h2>
-          <button id="importBtn" class="import">＋ Importa file</button>
-          <p class="hint">Trascina file su qualsiasi traccia.</p>
-          <label
-            >Visualizzazione<select id="mediaView">
-              <option value="list">Elenco</option>
-              <option value="grid">Griglia</option>
-            </select></label
-          >
-          <label id="mediaColumnsLabel"
-            >Colonne<select id="mediaColumns">
-              <option>2</option>
-              <option selected>3</option>
-              <option>4</option>
-              <option>5</option>
-            </select></label
-          >
+          <div class="media-toolbar" aria-label="Comandi libreria media">
+            <button
+              id="importBtn"
+              class="import"
+              title="Importa file o trascinali qui"
+            >
+              ＋ Importa file
+            </button>
+            <div class="media-views" role="group" aria-label="Visualizzazione">
+              <button
+                id="mediaGrid"
+                type="button"
+                title="Griglia"
+                aria-label="Vista griglia"
+                aria-pressed="true"
+              >
+                ▦
+              </button>
+              <button
+                id="mediaListView"
+                type="button"
+                title="Elenco"
+                aria-label="Vista elenco"
+                aria-pressed="false"
+              >
+                ☷
+              </button>
+            </div>
+            <div
+              id="mediaColumnsControl"
+              role="group"
+              aria-label="Numero di colonne"
+            >
+              <button
+                id="mediaColumnsMinus"
+                type="button"
+                aria-label="Rimuovi una colonna"
+              >
+                −
+              </button>
+              <output id="mediaColumns" aria-live="polite" aria-label="Colonne"
+                >3</output
+              >
+              <button
+                id="mediaColumnsPlus"
+                type="button"
+                aria-label="Aggiungi una colonna"
+              >
+                +
+              </button>
+            </div>
+          </div>
           <div id="mediaList" class="media-list"></div>
           <div id="libraryEmpty" class="library-empty">
             <div>▧</div>
@@ -163,7 +199,7 @@
             <button id="alignHorizontal">Centra orizzontalmente</button
             ><button id="alignVertical">Centra verticalmente</button>
           </div>
-          <label hidden hidden hidden hidden class="check"
+          <label hidden class="check"
             ><input id="lockAspect" type="checkbox" checked /> Mantieni
             proporzioni</label
           >
@@ -198,24 +234,15 @@
                 /></label>
               </div>
               <label
-                hidden
-                hidden
-                hidden
-                hidden
-                hidden
-                hidden
-                hidden
-                hidden
-                hidden
-                hidden
-                hidden
-                hidden
-                >Velocità × (0,1–16; 0 ripristina 1×)<input
-                  id="clipSpeed"
-                  type="text"
-                  inputmode="decimal"
-                  maxlength="16"
-                  aria-label="Velocità, virgola o punto decimale" /></label
+                >Velocità<span class="speed-control"
+                  ><input
+                    id="clipSpeed"
+                    type="text"
+                    inputmode="decimal"
+                    maxlength="16"
+                    aria-label="Velocità della clip"
+                  /><span aria-hidden="true">×</span></span
+                ></label
               ><button hidden id="selectSourceSegments">
                 Seleziona segmenti della sorgente</button
               ><button id="resetSpeed">Ripristina velocità originale</button
@@ -346,7 +373,7 @@
                 nell’anteprima.
               </p>
               <div class="form-grid">
-                <label hidden hidden hidden hidden
+                <label hidden
                   >X %<input
                     id="effectX"
                     type="number"
@@ -373,7 +400,7 @@
           <details id="annotationPanel" open>
             <summary>Testo e indicatori</summary>
             <div class="control-group">
-              <label hidden hidden hidden
+              <label hidden
                 >Larghezza riquadro testo %<input
                   id="textWidth"
                   type="number"
@@ -514,7 +541,13 @@
           sulla linea verde
         </div>
         <div class="zoom-controls">
-          <button id="fitTimeline">Adatta tutto alla timeline</button
+          <button
+            id="compactTimeline"
+            title="Riduci o ripristina l’altezza della timeline"
+            aria-pressed="false"
+          >
+            ↕ Compatta</button
+          ><button id="fitTimeline">Adatta tutto alla timeline</button
           ><button id="zoomOut">−</button
           ><input
             id="zoom"
@@ -834,6 +867,37 @@
         ><button value="save" class="primary">Salva</button>
       </form>
     </dialog>
+    <div id="trackContextMenu" hidden>
+      <button id="deleteTrack">Elimina traccia</button>
+    </div>
+    <dialog id="deleteTrackDialog">
+      <form method="dialog" id="deleteTrackForm">
+        <h2>Elimina traccia</h2>
+        <p id="deleteTrackMessage"></p>
+        <button value="cancel">Annulla</button
+        ><button value="delete" class="danger">Elimina</button>
+      </form>
+    </dialog>
+    <dialog id="speedDialog">
+      <form method="dialog" id="speedForm">
+        <h2>Velocità della clip</h2>
+        <label
+          >Velocità<span class="speed-control"
+            ><input
+              id="speedDialogValue"
+              type="text"
+              inputmode="decimal"
+              maxlength="16"
+              aria-label="Velocità della clip selezionata"
+            /><span aria-hidden="true">×</span></span
+          ></label
+        >
+        <p class="hint">1× è la velocità normale. Valori da 0,1× a 16×.</p>
+        <p id="speedError" role="alert"></p>
+        <button value="cancel" formnovalidate>Annulla</button
+        ><button value="apply" class="primary">Applica</button>
+      </form>
+    </dialog>
     <dialog id="sourceDialog">
       <form method="dialog">
         <h2>ANTEPRIMA SORGENTE · <span id="sourceName"></span></h2>
@@ -868,6 +932,8 @@
       <button data-action="split">✂ Dividi al cursore</button
       ><button data-action="group">▣ Raggruppa elementi selezionati</button
       ><button data-action="ungroup">Separa gruppo</button
+      ><button data-action="set-speed">
+        Velocità · <span id="contextSpeedValue">1×</span></button
       ><button data-action="speed">Ripristina velocità a 1×</button
       ><button data-action="delete">Elimina selezione</button>
     </div>

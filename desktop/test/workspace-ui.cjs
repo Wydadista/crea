@@ -46,16 +46,13 @@ const { _electron: electron } = require("playwright"),
       }));
       renderLibrary();
     });
-    await page.locator("#mediaView").selectOption("grid");
-    await page.locator("#mediaColumns").selectOption("3");
-    const positions = await page
-      .locator(".media-card")
-      .evaluateAll((els) =>
-        els.map((el) => ({
-          x: Math.round(el.getBoundingClientRect().x),
-          y: Math.round(el.getBoundingClientRect().y),
-        })),
-      );
+    await page.locator("#mediaGrid").click();
+    const positions = await page.locator(".media-card").evaluateAll((els) =>
+      els.map((el) => ({
+        x: Math.round(el.getBoundingClientRect().x),
+        y: Math.round(el.getBoundingClientRect().y),
+      })),
+    );
     assert.equal(new Set(positions.map((p) => p.x)).size, 3);
     assert.equal(new Set(positions.map((p) => p.y)).size, 3);
     await page.evaluate(() => {
@@ -70,18 +67,15 @@ const { _electron: electron } = require("playwright"),
       draggedElement = "text";
       const data = new DataTransfer();
       data.setData("application/akhbar-element", "text");
-      document
-        .getElementById("track0")
-        .dispatchEvent(
-          new DragEvent("drop", {
-            dataTransfer: data,
-            clientX:
-              document.getElementById("track0").getBoundingClientRect().left +
-              80,
-            bubbles: true,
-            cancelable: true,
-          }),
-        );
+      document.getElementById("track0").dispatchEvent(
+        new DragEvent("drop", {
+          dataTransfer: data,
+          clientX:
+            document.getElementById("track0").getBoundingClientRect().left + 80,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
       draggedElement = null;
     });
     assert.equal(await page.evaluate(() => project.trackCount), 2);

@@ -9,8 +9,8 @@ let workspacePrefs = {
   rulerColor: "#335d80",
 };
 let mediaColumns = Math.max(
-  2,
-  Math.min(5, Number(localStorage.getItem("akhbar-media-columns")) || 3),
+  1,
+  Math.floor(Number(localStorage.getItem("akhbar-media-columns")) || 3),
 );
 let draggedElement = null;
 
@@ -25,7 +25,7 @@ let project = Timeline.empty(),
   future = [],
   exportBusy = false,
   exportCancelled = false;
-let mediaView = localStorage.getItem("akhbar-media-view") || "list";
+let mediaView = localStorage.getItem("akhbar-media-view") || "grid";
 let rippleFamily = localStorage.getItem("akhbar-family-ripple") === "true";
 let fitTimeline = false;
 const thumbCache = new Map();
@@ -189,7 +189,10 @@ function renderLibrary() {
   const list = $("mediaList");
   list.classList.toggle("grid", mediaView === "grid");
   list.style.setProperty("--media-columns", String(mediaColumns));
-  $("mediaColumnsLabel").hidden = mediaView !== "grid";
+  $("mediaGrid").setAttribute("aria-pressed", String(mediaView === "grid"));
+  $("mediaListView").setAttribute("aria-pressed", String(mediaView === "list"));
+  $("mediaColumns").textContent = String(mediaColumns);
+  $("mediaColumnsMinus").disabled = mediaColumns <= 1;
   list.replaceChildren();
   const actual = project.media.filter(
     (m) => !["annotation", "effect"].includes(m.kind),
@@ -298,6 +301,14 @@ function addMedia(id, start, track) {
   focusNode(c.id);
   return c;
 }
+$("importBtn").ondragover = (e) => {
+  if (!e.dataTransfer.types.includes("Files")) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "copy";
+  $("importBtn").classList.add("dragover");
+};
+$("importBtn").ondragleave = () => $("importBtn").classList.remove("dragover");
+$("importBtn").ondrop = () => $("importBtn").classList.remove("dragover");
 window.addEventListener("dragover", (e) => e.preventDefault());
 window.addEventListener(
   "drop",
@@ -718,6 +729,7 @@ function trimDrag(e, c, side) {
 }
 function bindTrack(track) {
   const target = $("track" + track);
+  target.oncontextmenu = (e) => showTrackContext(e, track);
   let ghost;
   const clear = () => {
     ghost?.remove();
@@ -950,6 +962,7 @@ function properties() {
   }))
     $(id).value =
       typeof value === "number" ? Math.round(value * 1000) / 1000 : value;
+  $("contextSpeedValue").textContent = speedLabel(c.speed || 1);
   $("visualZoom").value = c.zoom?.from || 1;
   $("volumeValue").textContent = Math.round(c.volume * 100) + "%";
   $("trimIn").disabled = all.length > 1;
@@ -1051,6 +1064,19 @@ for (const id of ["trimIn", "trimOut"])
       c.in = Number($("trimIn").value);
       c.out = Number($("trimOut").value);
     });
+function speedLabel(speed) {
+  return String(Math.round(speed * 1000) / 1000).replace(".", ",") + "×";
+}
+$("speedForm").onsubmit = (e) => {
+  if (e.submitter?.value !== "apply") return;
+  e.preventDefault();
+  try {
+    const speed = Timeline.parseSpeed($("speedDialogValue").value);
+    if (changeSpeed(speed)) $("speedDialog").close();
+  } catch (error) {
+    $("speedError").textContent = error.message;
+  }
+};
 function changeSpeed(speed, includeFamily = false) {
   if (!selection.size) return;
   pause();
@@ -1064,6 +1090,7 @@ function changeSpeed(speed, includeFamily = false) {
     selection = new Set(ids);
     resetPlayers();
     changed();
+    return true;
   } catch (e) {
     toast(e.message);
     properties();
@@ -1230,8 +1257,52 @@ $("deleteBtn").onclick = remove;
 $("deleteTool").onclick = remove;
 $("undoBtn").onclick = () => undo(history, future);
 $("redoBtn").onclick = () => undo(future, history);
+let contextTrack = null;
+function showTrackContext(e, track) {
+  e.preventDefault();
+  e.stopPropagation();
+  $("contextMenu").hidden = true;
+  contextTrack = track;
+  const menu = $("trackContextMenu");
+  $("deleteTrack").textContent = "Elimina traccia " + (track + 1);
+  menu.hidden = false;
+  menu.style.left = Math.min(e.clientX, innerWidth - 210) + "px";
+  menu.style.top = Math.min(e.clientY, innerHeight - 50) + "px";
+}
+function deleteTimelineTrack(track) {
+  pause();
+  checkpoint();
+  const active = Number($("activeTrack").value);
+  Timeline.removeTrack(project, track);
+  selection = new Set(
+    [...selection].filter((id) => project.clips.some((c) => c.id === id)),
+  );
+  resetPlayers();
+  changed();
+  $("activeTrack").value = Math.min(
+    active > track ? active - 1 : active,
+    Timeline.trackCount(project) - 1,
+  );
+}
+$("deleteTrack").onclick = () => {
+  $("trackContextMenu").hidden = true;
+  const count = project.clips.filter((c) => c.track === contextTrack).length;
+  if (!count) return deleteTimelineTrack(contextTrack);
+  $("deleteTrackMessage").textContent =
+    `Eliminare la traccia ${contextTrack + 1} e le sue ${count} clip? I file originali rimangono nella libreria. Puoi annullare l’eliminazione con Annulla.`;
+  $("deleteTrackDialog").showModal();
+};
+$("deleteTrackForm").onsubmit = (e) => {
+  if (e.submitter?.value === "delete") deleteTimelineTrack(contextTrack);
+};
+window.addEventListener("pointerdown", (e) => {
+  if (!$("trackContextMenu").contains(e.target))
+    $("trackContextMenu").hidden = true;
+});
 function showContext(x, y) {
+  $("trackContextMenu").hidden = true;
   const menu = $("contextMenu");
+  $("contextSpeedValue").textContent = speedLabel(first()?.speed || 1);
   menu.hidden = false;
   menu.style.left = Math.min(x, innerWidth - 280) + "px";
   menu.style.top = Math.min(y, innerHeight - 220) + "px";
@@ -1243,6 +1314,12 @@ for (const button of $("contextMenu").querySelectorAll("button"))
     if (a === "split") split();
     if (a === "group") group();
     if (a === "ungroup") editGroup(false);
+    if (a === "set-speed") {
+      $("speedDialogValue").value = first()?.speed || 1;
+      $("speedError").textContent = "";
+      $("speedDialog").showModal();
+      $("speedDialogValue").select();
+    }
     if (a === "speed") changeSpeed(null, true);
     if (a === "delete") remove();
   };
@@ -2488,6 +2565,7 @@ window.onbeforeunload = (e) => {
   }
 };
 window.onresize = () => {
+  applyPanels();
   renderTimeline();
   draw();
 };
@@ -2702,6 +2780,7 @@ function ensureTrackRows() {
         el("small", "", "Video · immagini · audio · testi · effetti"),
       );
       label.onclick = () => ($("activeTrack").value = t);
+      label.oncontextmenu = (e) => showTrackContext(e, t);
       const mute = el("button", "track-mute", "♪");
       mute.title = "Silenzia traccia";
       mute.setAttribute("aria-label", "Silenzia traccia " + (t + 1));
@@ -2800,18 +2879,44 @@ $("newTrackDrop").ondrop = (e) => {
   );
 };
 // Persist workspace layout independently of project content.
-let panelLayout = { library: 265, properties: 235, timeline: 288 };
+let panelLayout = { library: 265, properties: 235, timeline: 220 };
 try {
   panelLayout = {
     ...panelLayout,
     ...JSON.parse(localStorage.getItem("crea-panels") || "{}"),
   };
 } catch {}
+// Migrate the old tall default once; subsequent adjustments stay as chosen.
+if (!localStorage.getItem("akhbar-compact-timeline")) {
+  panelLayout.timeline = Math.min(panelLayout.timeline, 220);
+  localStorage.setItem("akhbar-compact-timeline", "true");
+  localStorage.setItem("crea-panels", JSON.stringify(panelLayout));
+}
+let expandedTimelineHeight = 320;
+$("compactTimeline").onclick = () => {
+  if (panelLayout.timeline > 180) {
+    expandedTimelineHeight = panelLayout.timeline;
+    panelLayout.timeline = 180;
+  } else panelLayout.timeline = expandedTimelineHeight;
+  applyPanels();
+  localStorage.setItem("crea-panels", JSON.stringify(panelLayout));
+};
 function applyPanels() {
   const root = document.documentElement;
+  panelLayout.library = Math.max(265, panelLayout.library);
   root.style.setProperty("--library-width", panelLayout.library + "px");
   root.style.setProperty("--properties-width", panelLayout.properties + "px");
+  panelLayout.timeline = Math.max(
+    180,
+    Math.min(panelLayout.timeline, Math.max(180, innerHeight - 350)),
+  );
   root.style.setProperty("--timeline-height", panelLayout.timeline + "px");
+  $("compactTimeline").setAttribute(
+    "aria-pressed",
+    String(panelLayout.timeline <= 180),
+  );
+  $("compactTimeline").textContent =
+    panelLayout.timeline <= 180 ? "↕ Espandi" : "↕ Compatta";
 }
 function panelHandle(parent, cls, key, sign, min, max) {
   const h = el("div", "panel-resizer " + cls);
@@ -2845,7 +2950,7 @@ panelHandle(
   "right",
   "library",
   1,
-  180,
+  265,
   500,
 );
 panelHandle(
@@ -2861,11 +2966,11 @@ panelHandle(
   "top",
   "timeline",
   -1,
-  200,
+  180,
   Math.max(220, innerHeight - 350),
 );
 $("resetPanels").onclick = () => {
-  panelLayout = { library: 265, properties: 235, timeline: 288 };
+  panelLayout = { library: 265, properties: 235, timeline: 220 };
   applyPanels();
   localStorage.removeItem("crea-panels");
 };
@@ -2981,22 +3086,46 @@ function showSource(m) {
     m.kind === "image" ? "img" : m.kind === "audio" ? "audio" : "video",
   );
   player.src = m.url;
+  player.addEventListener("loadedmetadata", fitSourcePreview);
+  player.addEventListener("load", fitSourcePreview);
   if (m.kind !== "image") player.controls = true;
   $("sourcePlayer").replaceChildren(player);
   $("sourceDialog").showModal();
+  fitSourcePreview();
 }
+function fitSourcePreview() {
+  const box = $("sourcePlayer"),
+    player = box.querySelector("video,img");
+  if (!player) return;
+  const width = player.videoWidth || player.naturalWidth;
+  const height = player.videoHeight || player.naturalHeight;
+  if (!width || !height) return;
+  const ratio = Math.min(
+    0.3,
+    box.clientWidth / width,
+    box.clientHeight / height,
+  );
+  player.style.width = width * ratio + "px";
+  player.style.height = height * ratio + "px";
+}
+new ResizeObserver(fitSourcePreview).observe($("sourcePlayer"));
 $("sourceDialog").onclose = () => {
+  if ($("sourceDialog").open) return;
   $("sourcePlayer")
     .querySelectorAll("video,audio")
     .forEach((p) => p.pause());
   $("sourcePlayer").replaceChildren();
 };
-$("mediaView").value = mediaView;
-$("mediaView").onchange = () => {
-  mediaView = $("mediaView").value;
-  localStorage.setItem("akhbar-media-view", mediaView);
-  renderLibrary();
-};
+for (const [id, view] of [
+  ["mediaGrid", "grid"],
+  ["mediaListView", "list"],
+]) {
+  $(id).onclick = () => {
+    mediaView = view;
+    localStorage.setItem("akhbar-media-view", view);
+    renderLibrary();
+  };
+}
 function libraryPanel(elements) {
   $("mediaPanel").hidden = elements;
   $("elementsPanel").hidden = !elements;
@@ -3324,12 +3453,16 @@ setInterval(() => {
 }, 700);
 
 // Fixed column count with tiles that can shrink to the actual panel width.
-$("mediaColumns").value = String(mediaColumns);
-$("mediaColumns").onchange = () => {
-  mediaColumns = Number($("mediaColumns").value);
-  localStorage.setItem("akhbar-media-columns", String(mediaColumns));
-  renderLibrary();
-};
+for (const [id, delta] of [
+  ["mediaColumnsMinus", -1],
+  ["mediaColumnsPlus", 1],
+]) {
+  $(id).onclick = () => {
+    mediaColumns = Math.max(1, mediaColumns + delta);
+    localStorage.setItem("akhbar-media-columns", String(mediaColumns));
+    renderLibrary();
+  };
+}
 
 function insertElement(type, start, track) {
   if (!["text", "arrow", "circle", "blur", "pixel"].includes(type))

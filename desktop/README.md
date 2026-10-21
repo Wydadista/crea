@@ -19,7 +19,7 @@ Chiudere l'app prima di creare l'installer:
 npm run build:win
 ```
 
-Risultato: `dist/AKhbar-studio-0.3.1-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
+Risultato: `dist/AKhbar-studio-0.3.2-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
 
 ```powershell
 npm run build:release

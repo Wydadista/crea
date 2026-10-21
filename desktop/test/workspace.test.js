@@ -57,3 +57,36 @@ test("inserting above a target preserves all clip times, mute states, heights an
   assert.deepEqual(p.trackMuted, [false, false, true]);
   assert.deepEqual(p.trackHeights, [100, 100, 180]);
 });
+test("deleting a track preserves other clip times, mute states and speed references", () => {
+  const p = T.empty();
+  T.addTrack(p);
+  T.addTrack(p);
+  p.trackHeights = [100, 120, 160];
+  p.trackMuted = [true, false, true];
+  p.clips = [
+    { id: "a", track: 0, start: 7 },
+    { id: "b", track: 1, start: 9 },
+    { id: "c", track: 2, start: 13, speedHomeTrack: 2 },
+    { id: "d", track: 0, start: 20, speedHomeTrack: 1 },
+  ];
+  T.removeTrack(p, 1);
+  assert.equal(p.trackCount, 2);
+  assert.deepEqual(
+    p.clips.map((c) => [c.id, c.track, c.start]),
+    [
+      ["a", 0, 7],
+      ["c", 1, 13],
+      ["d", 0, 20],
+    ],
+  );
+  assert.deepEqual(p.trackHeights, [100, 160]);
+  assert.deepEqual(p.trackMuted, [true, true]);
+  assert.equal(p.clips[1].speedHomeTrack, 1);
+  assert.equal(p.clips[2].speedHomeTrack, undefined);
+  assert.throws(() => T.removeTrack(p, 9));
+  T.removeTrack(p, 1);
+  T.removeTrack(p, 0);
+  assert.equal(p.trackCount, 1);
+  assert.deepEqual(p.clips, []);
+  assert.deepEqual(p.trackHeights, [100]);
+});

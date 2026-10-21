@@ -40,6 +40,26 @@
       p.trackCount = count + 1;
       return index;
     },
+    removeTrack(p, index) {
+      const count = api.trackCount(p);
+      if (!Number.isInteger(index) || index < 0 || index >= count)
+        throw Error("Traccia non valida");
+      p.clips = p.clips.filter((c) => c.track !== index);
+      for (const c of p.clips) {
+        if (c.track > index) c.track--;
+        if (c.speedHomeTrack === index) delete c.speedHomeTrack;
+        else if (c.speedHomeTrack > index) c.speedHomeTrack--;
+      }
+      p.trackHeights ||= Array(count).fill(100);
+      p.trackMuted ||= Array(count).fill(false);
+      p.trackHeights.splice(index, 1);
+      p.trackMuted.splice(index, 1);
+      p.trackCount = Math.max(1, count - 1);
+      if (count === 1) {
+        p.trackHeights = [100];
+        p.trackMuted = [false];
+      }
+    },
     addTrack(p) {
       if (api.trackCount(p) >= api.MAX_TRACKS)
         throw Error("Limite di 128 tracce raggiunto");
