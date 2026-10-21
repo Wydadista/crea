@@ -1,6 +1,6 @@
 {
   "name": "akhbar-studio",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Editor video desktop semplice con timeline e registrazione schermo",
   "author": "AKhbar studio",
   "main": "src/main.js",

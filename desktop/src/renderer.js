@@ -3,6 +3,17 @@ const $ = (id) => document.getElementById(id),
   uid = () => crypto.randomUUID(),
   clone = (x) => JSON.parse(JSON.stringify(x));
 let previewFocus = null;
+let workspacePrefs = {
+  imageDuration: 5,
+  freezeDuration: 5,
+  rulerColor: "#335d80",
+};
+let mediaColumns = Math.max(
+  2,
+  Math.min(5, Number(localStorage.getItem("akhbar-media-columns")) || 3),
+);
+let draggedElement = null;
+
 let project = Timeline.empty(),
   selection = new Set(),
   time = 0,
@@ -38,6 +49,8 @@ function thumbnail(m, at, image) {
     })
     .catch(() => {});
 }
+let cleanProjectJSON = JSON.stringify(project),
+  transitionBusy = false;
 const videoPool = new Map();
 const transport = new AudioTransport((c, m, page) =>
   studio.audioData(c, m, page),
@@ -175,6 +188,8 @@ function requestWave(m) {
 function renderLibrary() {
   const list = $("mediaList");
   list.classList.toggle("grid", mediaView === "grid");
+  list.style.setProperty("--media-columns", String(mediaColumns));
+  $("mediaColumnsLabel").hidden = mediaView !== "grid";
   list.replaceChildren();
   const actual = project.media.filter(
     (m) => !["annotation", "effect"].includes(m.kind),
@@ -265,7 +280,7 @@ function addMedia(id, start, track) {
     start: Math.max(0, start),
     track,
     in: 0,
-    out: m.duration,
+    out: m.kind === "image" ? workspacePrefs.imageDuration : m.duration,
     speed: 1,
     volume: 1,
     mono: true,
@@ -288,6 +303,7 @@ window.addEventListener(
   "drop",
   safe(async (e) => {
     e.preventDefault();
+    if (e.dataTransfer.getData("application/akhbar-element")) return;
     if (e.dataTransfer.files.length)
       await imported(
         await studio.importPaths(
@@ -298,9 +314,9 @@ window.addEventListener(
       );
   }),
 );
-function annotation(type) {
+function annotation(type, placement) {
   pause();
-  checkpoint();
+  if (!placement) checkpoint();
   const m = {
     id: uid(),
     name:
@@ -316,8 +332,8 @@ function annotation(type) {
   const c = {
     id: uid(),
     mediaId: m.id,
-    start: time,
-    track: Number($("activeTrack").value),
+    start: placement?.start ?? time,
+    track: placement?.track ?? Number($("activeTrack").value),
     in: 0,
     out: 5,
     speed: 1,
@@ -712,7 +728,9 @@ function bindTrack(track) {
     e.preventDefault();
     clear();
     target.classList.add("dragover");
-    const m = project.media.find((m) => m.id === draggedMedia);
+    const m = draggedElement
+      ? { duration: 5 }
+      : project.media.find((m) => m.id === draggedMedia);
     if (!m) return;
     const start = Math.max(
       0,
@@ -741,13 +759,37 @@ function bindTrack(track) {
       width: Timeline.duration(c) * scale + "px",
       height: r.height - 8 + "px",
     });
-    ghost.classList.toggle("invalid", !Timeline.canPlace(project.clips, [c]));
+    ghost.classList.toggle(
+      "invalid",
+      draggedElement
+        ? Timeline.trackCount(project) >= Timeline.MAX_TRACKS
+        : !Timeline.canPlace(project.clips, [c]),
+    );
+    if (draggedElement) {
+      ghost.classList.add("element-drop");
+      ghost.textContent = "Nuova traccia sopra · " + fmt(c.start);
+    }
     document.body.append(ghost);
   };
   target.ondragleave = clear;
   target.ondrop = (e) => {
     e.preventDefault();
     clear();
+    const element = e.dataTransfer.getData("application/akhbar-element");
+    if (element) {
+      e.stopPropagation();
+      safe(() =>
+        insertElement(
+          element,
+          Math.max(
+            0,
+            (e.clientX - target.getBoundingClientRect().left) / scale,
+          ),
+          track + 1,
+        ),
+      )();
+      return;
+    }
     const id = e.dataTransfer.getData("application/crea-media");
     if (id) {
       e.stopPropagation();
@@ -914,12 +956,14 @@ function properties() {
   $("trimOut").disabled = all.length > 1;
   $("muteClip").checked = !!c.muted;
   $("monoClip").checked = !!c.mono;
+  $("audioMode").value = c.mono ? "mono" : "stereo";
   $("noiseCompare").setAttribute("aria-pressed", String(!!c.voice?.bypass));
   $("noiseCompare").textContent = c.voice?.bypass
     ? "Originale attivo · ascolta elaborato"
     : "Ascolta originale (prima/dopo)";
   const annotation = m.kind === "annotation";
   $("annotationPanel").hidden = !annotation;
+  document.querySelector(".align-actions").hidden = m.kind === "audio";
   $("layoutPanel").hidden = annotation || ["audio", "effect"].includes(m.kind);
   $("effectsPanel").hidden = annotation || m.kind === "audio";
   const l = c.layout || { x: 0, y: 0, width: 100, height: 100 },
@@ -1640,7 +1684,11 @@ $("previewCanvas").onpointerdown = (e) => {
       }
       const next = handle
         ? Timeline.resizeBox(initial, handle, dx, dy, !c.aspectUnlocked)
-        : { ...initial, x: initial.x + dx, y: initial.y + dy };
+        : snapPreviewBox(
+            { ...initial, x: initial.x + dx, y: initial.y + dy },
+            r,
+          );
+      if (handle) $("alignGuides").replaceChildren();
       if (handle && !c.aspectUnlocked) {
         const original =
           mediaOf(c).kind === "effect"
@@ -1702,6 +1750,7 @@ $("previewCanvas").onpointerdown = (e) => {
       draw();
     },
     (ev) => {
+      $("alignGuides").replaceChildren();
       if (ev.type === "pointercancel" && dirty) {
         delete c.layout;
         Object.assign(c, old);
@@ -1713,75 +1762,115 @@ $("previewCanvas").onpointerdown = (e) => {
     },
   );
 };
-$("saveProject").onclick = safe(async () => {
-  if (await studio.saveProject(project))
-    toast("Progetto salvato con i materiali nella cartella dedicata.");
-});
-$("openProject").onclick = safe(async () => {
-  if (recorder || finishing)
-    throw Error("Termina la registrazione prima di aprire un altro progetto");
-  if (
-    project.clips.length &&
-    !confirm("Aprire il progetto e sostituire il montaggio non salvato?")
-  )
-    return;
-  const result = await studio.openProject();
-  if (!result) return;
-  pause();
-  project = Timeline.validate(result);
-  waveEpoch++;
-  waves.clear();
-  waveQueue = Promise.resolve();
-  selection.clear();
-  time = 0;
-  history = [];
-  future = [];
-  resetPlayers();
-  render();
-  for (const m of project.media) requestWave(m);
-  toast("Progetto aperto.");
-});
-const keyName = (k) =>
-  k === " " ? "Spazio" : k === "Delete" ? "Canc" : k.toUpperCase();
+$("saveProject").onclick = safe(() => saveCurrent());
+$("openProject").onclick = safe(() =>
+  transitionProject(async () => {
+    const data = await studio.openProject();
+    if (data) applyOpened(data);
+  }),
+);
+const defaultKeys = {
+  split: ["s", "h"],
+  play: ["space"],
+  delete: ["delete", "backspace"],
+};
+const normalizeShortcut = (value) =>
+  String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/\s*\+\s*/g, "+")
+    .replace(/^canc$/, "delete")
+    .replace(/^spazio$/, "space");
+for (const action of Object.keys(defaultKeys)) {
+  const old = keys[action];
+  keys[action] = Array.isArray(old)
+    ? old.map(normalizeShortcut)
+    : old === " "
+      ? ["space"]
+      : old
+        ? [normalizeShortcut(old)]
+        : defaultKeys[action];
+}
+// Adopt helpful alternate defaults when migrating the previous single-key defaults.
+if (keys.split.length === 1 && keys.split[0] === "s") keys.split.push("h");
+if (keys.delete.length === 1 && keys.delete[0] === "delete")
+  keys.delete.push("backspace");
+function eventShortcut(e) {
+  return [
+    e.ctrlKey || e.metaKey ? "ctrl" : null,
+    e.altKey ? "alt" : null,
+    e.shiftKey ? "shift" : null,
+    e.key === " " ? "space" : e.key.toLowerCase(),
+  ]
+    .filter(Boolean)
+    .join("+");
+}
 function showKeys() {
-  for (const name of ["split", "play", "delete"])
-    $("key" + name[0].toUpperCase() + name.slice(1)).value = keyName(
-      keys[name],
-    );
+  for (const action of Object.keys(defaultKeys))
+    $("key" + action[0].toUpperCase() + action.slice(1)).value = keys[action]
+      .map((k) => (k === "delete" ? "Canc" : k === "space" ? "Spazio" : k))
+      .join("; ");
 }
 $("keysBtn").onclick = () => {
   showKeys();
   $("keysDialog").showModal();
 };
-for (const name of ["split", "play", "delete"])
-  $("key" + name[0].toUpperCase() + name.slice(1)).onkeydown = (e) => {
-    e.preventDefault();
-    if (
-      e.ctrlKey ||
-      e.altKey ||
-      e.metaKey ||
-      ["Tab", "Escape", "Enter", "Shift", "Control", "Alt", "Meta"].includes(
-        e.key,
+for (const action of Object.keys(defaultKeys))
+  $("key" + action[0].toUpperCase() + action.slice(1)).onchange = safe(() => {
+    const field = $("key" + action[0].toUpperCase() + action.slice(1)),
+      values = [
+        ...new Set(
+          field.value.split(";").map(normalizeShortcut).filter(Boolean),
+        ),
+      ];
+    if (!values.length) throw Error("Indica almeno un tasto");
+    const reserved = [
+      "ctrl+s",
+      "ctrl+shift+s",
+      "ctrl+o",
+      "ctrl+n",
+      "ctrl+w",
+      "ctrl+z",
+      "ctrl+shift+z",
+      "ctrl+a",
+      "ctrl+g",
+      "ctrl+shift+g",
+    ];
+    for (const value of values) {
+      if (reserved.includes(value))
+        throw Error("Combinazione riservata: " + value);
+      if (
+        Object.entries(keys).some(
+          ([other, list]) => other !== action && list.includes(value),
+        )
       )
-    )
-      return;
-    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-    if (Object.entries(keys).some(([n, k]) => n !== name && k === key))
-      return toast("Tasto già assegnato");
-    keys[name] = key;
+        throw Error("Tasto già assegnato: " + value);
+    }
+    keys[action] = values;
     localStorage.setItem("crea-keys", JSON.stringify(keys));
     showKeys();
-  };
+  });
 $("resetKeys").onclick = () => {
-  keys = { split: "s", play: " ", delete: "Delete" };
+  keys = clone(defaultKeys);
   localStorage.setItem("crea-keys", JSON.stringify(keys));
   showKeys();
 };
 document.onkeydown = (e) => {
+  if (
+    (e.ctrlKey || e.metaKey) &&
+    ["n", "o", "w"].includes(e.key.toLowerCase()) &&
+    !document.querySelector("dialog[open]")
+  ) {
+    e.preventDefault();
+    if (e.key.toLowerCase() === "o") $("openProject").click();
+    else safe(() => transitionProject(emptyWorkspace))();
+    return;
+  }
+
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && !exportBusy) {
     e.preventDefault();
     document.activeElement.blur();
-    $("saveProject").click();
+    e.shiftKey ? safe(() => saveCurrent(true))() : $("saveProject").click();
     return;
   }
   if (
@@ -1791,6 +1880,16 @@ document.onkeydown = (e) => {
   )
     return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  const match = Object.keys(keys).find((action) =>
+    keys[action].includes(eventShortcut(e)),
+  );
+  if (match) {
+    e.preventDefault();
+    if (match === "split") split();
+    else if (match === "delete") remove();
+    else playing || preparing ? pause() : play();
+    return;
+  }
   if (e.ctrlKey || e.metaKey) {
     if (k === "z") {
       e.preventDefault();
@@ -1811,19 +1910,6 @@ document.onkeydown = (e) => {
       e.shiftKey ? editGroup(false) : group();
     }
     return;
-  }
-  if (e.altKey) return;
-  if (k === keys.split) {
-    e.preventDefault();
-    split();
-  }
-  if (k === keys.play) {
-    e.preventDefault();
-    playing || preparing ? pause() : play();
-  }
-  if (k === keys.delete) {
-    e.preventDefault();
-    remove();
   }
 };
 async function exportProject(settings) {
@@ -1859,6 +1945,9 @@ $("exportBtn").onclick = () => {
   pause();
   updatePreviewView();
   $("exportResultActions").hidden = true;
+  $("exportPath").textContent =
+    exportOutputPath ||
+    `${workspacePrefs.exports || "Download"} · nome automatico`;
   $("exportDialog").showModal();
 };
 $("exportQuality").oninput = () => {
@@ -1906,12 +1995,6 @@ $("doExport").onclick = safe(async () => {
       preserveOriginal: $("preserveOriginal").checked,
       keyframeSeconds: Number($("exportKeyframe").value),
     };
-    if (!exportOutputPath) {
-      exportOutputPath = await studio.chooseExport();
-      if (!exportOutputPath) return;
-      $("exportPath").textContent = exportOutputPath;
-      s.outputPath = exportOutputPath;
-    }
     $("exportStatus").textContent = "Preparazione testi e indicatori…";
     const out = await exportProject(s);
     if (exportCancelled) throw Error("Esportazione annullata");
@@ -1920,6 +2003,7 @@ $("doExport").onclick = safe(async () => {
       ? "Salvato in " + result
       : "Esportazione annullata";
     if (result) {
+      $("exportPath").textContent = result;
       $("exportResultActions").hidden = false;
       toast("Video MP4 esportato.");
     }
@@ -2423,9 +2507,9 @@ studio
 render();
 
 // Independent compositing effects have their own timeline interval and no source media.
-function addEffect(type) {
+function addEffect(type, placement) {
   pause();
-  checkpoint();
+  if (!placement) checkpoint();
   const m = {
     id: uid(),
     kind: "effect",
@@ -2436,8 +2520,8 @@ function addEffect(type) {
   const c = {
     id: uid(),
     mediaId: m.id,
-    track: Number($("activeTrack").value),
-    start: time,
+    track: placement?.track ?? Number($("activeTrack").value),
+    start: placement?.start ?? time,
     in: 0,
     out: 5,
     speed: 1,
@@ -2688,6 +2772,20 @@ $("newTrackDrop").ondrop = (e) => {
   e.preventDefault();
   e.stopPropagation();
   $("newTrackDrop").classList.remove("dragover");
+  const element = e.dataTransfer.getData("application/akhbar-element");
+  if (element) {
+    safe(() =>
+      insertElement(
+        element,
+        Math.max(
+          0,
+          (e.clientX - $("ruler").getBoundingClientRect().left) / scale,
+        ),
+        Timeline.trackCount(project),
+      ),
+    )();
+    return;
+  }
   const id = e.dataTransfer.getData("application/crea-media");
   if (!id) return;
   if (Timeline.trackCount(project) >= Timeline.MAX_TRACKS)
@@ -2778,7 +2876,7 @@ setInterval(() => {
       .autosave(project)
       .catch((e) => toast("Salvataggio automatico non riuscito: " + e.message));
 }, 60000);
-function applyOpened(data) {
+function applyOpened(data, recovered = false) {
   if (!data) return;
   pause();
   project = Timeline.validate(data);
@@ -2792,23 +2890,26 @@ function applyOpened(data) {
   resetPlayers();
   render();
   for (const m of project.media) requestWave(m);
+  cleanProjectJSON = recovered ? "" : JSON.stringify(project);
+  exportOutputPath = null;
+  updateProjectTitle();
 }
 studio.onProjectFile(() =>
-  safe(async () => {
-    if (recorder || finishing)
-      throw Error("Termina la registrazione prima di aprire un altro progetto");
-    if (
-      project.clips.length &&
-      !confirm("Aprire il progetto e sostituire il montaggio corrente?")
-    )
-      return;
-    applyOpened(await studio.projectFile());
-  })(),
+  safe(() =>
+    transitionProject(async () => {
+      const data = await studio.projectFile();
+      if (data) applyOpened(data);
+    }),
+  )(),
 );
 safe(async () => {
   const file = await studio.projectFile();
   if (file) applyOpened(file);
-  else applyOpened(await studio.recover());
+  else {
+    const recovery = await studio.recover();
+    if (recovery) applyOpened(recovery, true);
+    else cleanProjectJSON = JSON.stringify(project);
+  }
 })();
 setInterval(() => {
   let peak = 0;
@@ -2988,7 +3089,7 @@ $("freezeFrame").onclick = safe(async () => {
     start: atTime,
     track,
     in: 0,
-    out: 5,
+    out: workspacePrefs.freezeDuration,
     speed: 1,
     volume: 0,
   };
@@ -3004,7 +3105,7 @@ $("freezeFrame").onclick = safe(async () => {
   selection = new Set([id]);
   render();
   toast(
-    "Fermo immagine inserito su una nuova traccia; durata regolabile con i bordi o le proprietà.",
+    "Fermo immagine inserito su una nuova traccia; durata regolabile trascinando i bordi.",
   );
 });
 let exportOutputPath = null;
@@ -3015,23 +3116,50 @@ $("chooseExportPath").onclick = safe(async () => {
     $("exportPath").textContent = path;
   }
 });
+function applyPreferences(p) {
+  workspacePrefs = { ...workspacePrefs, ...p };
+  document.documentElement.style.setProperty(
+    "--ruler-color",
+    workspacePrefs.rulerColor,
+  );
+  for (const key of ["projects", "recordings", "exports"])
+    $(key + "Directory").value = p[key] || "";
+  $("imageDuration").value = String(workspacePrefs.imageDuration).replace(
+    ".",
+    ",",
+  );
+  $("freezeDuration").value = String(workspacePrefs.freezeDuration).replace(
+    ".",
+    ",",
+  );
+  $("rulerColor").value = workspacePrefs.rulerColor;
+}
+const preferencesReady = studio.preferences().then(applyPreferences);
 $("settingsBtn").onclick = safe(async () => {
-  const p = await studio.preferences();
-  $("projectsDirectory").value = p.projects;
-  $("exportsDirectory").value = p.exports;
+  await preferencesReady;
+  applyPreferences(await studio.preferences());
+  $("settingsStatus").textContent = "";
   $("settingsDialog").showModal();
 });
-for (const [id, key] of [
-  ["Projects", "projects"],
-  ["Exports", "exports"],
-])
-  $("choose" + id + "Directory").onclick = safe(async () => {
-    const dir = await studio.chooseDirectory();
-    if (dir) {
-      const p = await studio.setPreferences({ [key]: dir });
-      $(key + "Directory").value = p[key];
-    }
+for (const key of ["projects", "recordings", "exports"])
+  $("choose" + key[0].toUpperCase() + key.slice(1) + "Directory").onclick =
+    safe(async () => {
+      const dir = await studio.chooseDirectory();
+      if (dir) {
+        workspacePrefs = await studio.setPreferences({ [key]: dir });
+        $(key + "Directory").value = dir;
+        $("settingsStatus").textContent = "Cartella memorizzata.";
+      }
+    });
+$("saveSettings").onclick = safe(async () => {
+  const p = await studio.setPreferences({
+    imageDuration: $("imageDuration").value,
+    freezeDuration: $("freezeDuration").value,
+    rulerColor: $("rulerColor").value,
   });
+  applyPreferences(p);
+  $("settingsStatus").textContent = "Impostazioni salvate.";
+});
 $("noiseCompare").onclick = () => {
   const c = first();
   if (!c) return;
@@ -3068,3 +3196,291 @@ $("noiseModerate").onclick = () =>
       bypass: false,
     };
   });
+
+// Project lifecycle. UI-only selections/zoom are not unsaved project changes.
+function isProjectDirty() {
+  return JSON.stringify(project) !== cleanProjectJSON;
+}
+async function updateProjectTitle() {
+  const info = await studio.projectInfo();
+  $("projectTitle").textContent = info.name || "Progetto senza nome";
+  $("dirtyStatus").textContent = isProjectDirty()
+    ? "Modifiche non salvate"
+    : "Salvato";
+}
+function askProjectName(initial) {
+  return new Promise((resolve) => {
+    const dialog = $("projectNameDialog");
+    dialog.returnValue = "";
+    $("projectNameInput").value = initial || "Montaggio";
+    dialog.addEventListener(
+      "close",
+      () =>
+        resolve(
+          dialog.returnValue === "save" ? $("projectNameInput").value : null,
+        ),
+      { once: true },
+    );
+    dialog.showModal();
+    $("projectNameInput").select();
+  });
+}
+let saveBusy = false;
+async function saveCurrent(saveAs = false) {
+  if (saveBusy) return false;
+  saveBusy = true;
+  try {
+    const info = await studio.projectInfo();
+    let options = { saveAs };
+    if (saveAs || !info.path) {
+      const name = await askProjectName(info.name);
+      if (name === null) return false;
+      options.name = name;
+    }
+    const snapshot = JSON.stringify(project),
+      data = JSON.parse(snapshot);
+    const saved = await studio.saveProject(data, options);
+    if (saved) {
+      cleanProjectJSON = snapshot;
+      await updateProjectTitle();
+      toast("Progetto salvato con i materiali.");
+    }
+    return saved;
+  } finally {
+    saveBusy = false;
+  }
+}
+async function transitionProject(action) {
+  if (transitionBusy) return;
+  transitionBusy = true;
+  try {
+    if (recorder || finishing || exportBusy)
+      throw Error(
+        "Termina la registrazione o l’esportazione prima di cambiare progetto",
+      );
+    if (isProjectDirty()) {
+      const choice = await studio.confirmUnsaved();
+      if (choice === "cancel") return;
+      if (choice === "save" && !(await saveCurrent())) return;
+    }
+    pause();
+    await action();
+  } finally {
+    transitionBusy = false;
+  }
+}
+async function emptyWorkspace() {
+  await studio.resetProject();
+  applyOpened(Timeline.empty());
+  previewFocus = null;
+  $("sourcePlayer").replaceChildren();
+  $("exportPath").textContent = "Destinazione automatica dalle Impostazioni";
+  toast("Progetto chiuso. Pronto per un nuovo progetto.");
+}
+$("fileNew").onclick = $("fileClose").onclick = safe(() =>
+  transitionProject(emptyWorkspace),
+);
+$("fileOpen").onclick = () => $("openProject").click();
+$("fileSave").onclick = safe(() => saveCurrent());
+$("fileSaveAs").onclick = safe(() => saveCurrent(true));
+$("fileExport").onclick = () => $("exportBtn").click();
+$("fileMenu").addEventListener(
+  "toggle",
+  safe(async () => {
+    if (!$("fileMenu").open) return;
+    const files = await studio.recentProjects(),
+      list = $("recentProjects");
+    list.replaceChildren();
+    if (!files.length) list.append(el("small", "", "Nessun progetto recente"));
+    for (const file of files) {
+      const button = el("button", "", file.split(/[\\/]/).pop());
+      button.title = file;
+      button.onclick = safe(() => {
+        $("fileMenu").open = false;
+        return transitionProject(async () => {
+          const data = await studio.openProject(file);
+          if (data) applyOpened(data);
+        });
+      });
+      list.append(button);
+    }
+  }),
+);
+$("fileMenu")
+  .querySelectorAll("button")
+  .forEach((button) =>
+    button.addEventListener("click", () => ($("fileMenu").open = false)),
+  );
+document.addEventListener("pointerdown", (e) => {
+  if (!$("fileMenu").contains(e.target)) $("fileMenu").open = false;
+});
+studio.onCloseRequest(() =>
+  safe(() => transitionProject(() => studio.quitApproved()))(),
+);
+setInterval(() => {
+  $("dirtyStatus").textContent = isProjectDirty()
+    ? "Modifiche non salvate"
+    : "Salvato";
+}, 700);
+
+// Fixed column count with tiles that can shrink to the actual panel width.
+$("mediaColumns").value = String(mediaColumns);
+$("mediaColumns").onchange = () => {
+  mediaColumns = Number($("mediaColumns").value);
+  localStorage.setItem("akhbar-media-columns", String(mediaColumns));
+  renderLibrary();
+};
+
+function insertElement(type, start, track) {
+  if (!["text", "arrow", "circle", "blur", "pixel"].includes(type))
+    throw Error("Elemento non disponibile");
+  if (Timeline.trackCount(project) >= Timeline.MAX_TRACKS)
+    throw Error("Limite tracce raggiunto");
+  pause();
+  checkpoint();
+  Timeline.insertTrack(project, track);
+  const placement = { start, track };
+  if (["blur", "pixel"].includes(type)) addEffect(type, placement);
+  else annotation(type, placement);
+  $("activeTrack").value = track;
+}
+for (const [id, type] of [
+  ["addText", "text"],
+  ["addArrow", "arrow"],
+  ["addCircle", "circle"],
+  ["addBlur", "blur"],
+  ["addPixel", "pixel"],
+]) {
+  const button = $(id);
+  button.draggable = true;
+  button.title = "Trascina nella timeline: nuova traccia sopra la destinazione";
+  button.ondragstart = (e) => {
+    draggedElement = type;
+    e.dataTransfer.setData("application/akhbar-element", type);
+    e.dataTransfer.effectAllowed = "copy";
+  };
+  button.ondragend = () => {
+    draggedElement = null;
+    document.querySelectorAll(".drop-ghost").forEach((n) => n.remove());
+  };
+}
+
+// Position guides are editor overlays only and never enter exported rasters.
+function showAlignGuides(lines, rect) {
+  const layer = $("alignGuides"),
+    stage = document.querySelector(".stage"),
+    sr = stage.getBoundingClientRect();
+  layer.replaceChildren();
+  for (const line of lines) {
+    const n = el("div", "align-guide " + line.axis);
+    if (line.axis === "x")
+      Object.assign(n.style, {
+        left:
+          rect.left -
+          sr.left +
+          stage.scrollLeft +
+          (rect.width * line.at) / 100 +
+          "px",
+        top: rect.top - sr.top + stage.scrollTop + "px",
+        height: rect.height + "px",
+      });
+    else
+      Object.assign(n.style, {
+        top:
+          rect.top -
+          sr.top +
+          stage.scrollTop +
+          (rect.height * line.at) / 100 +
+          "px",
+        left: rect.left - sr.left + stage.scrollLeft + "px",
+        width: rect.width + "px",
+      });
+    layer.append(n);
+  }
+}
+function snapPreviewBox(box, rect) {
+  const lines = [];
+  for (const [axis, size, pixels] of [
+    ["x", "width", rect.width],
+    ["y", "height", rect.height],
+  ]) {
+    const targets = [0, 50, 100];
+    for (const c of Timeline.active(project.clips, previewTime()))
+      if (!selection.has(c.id)) {
+        const other = previewBox(c);
+        if (other)
+          targets.push(
+            other[axis],
+            other[axis] + other[size] / 2,
+            other[axis] + other[size],
+          );
+      }
+    let best = null;
+    for (const at of targets)
+      for (const delta of [0, box[size] / 2, box[size]]) {
+        const diff = at - (box[axis] + delta);
+        if (
+          Math.abs(diff) <= 600 / Math.max(1, pixels) &&
+          (!best || Math.abs(diff) < Math.abs(best.diff))
+        )
+          best = { diff, at };
+      }
+    if (best) {
+      box[axis] += best.diff;
+      lines.push({ axis, at: best.at });
+    }
+  }
+  showAlignGuides(lines, rect);
+  return box;
+}
+function centerSelection(axis) {
+  edit((c) => {
+    const b = previewBox(c);
+    if (!b) return;
+    const shift = 50 - b[axis] - b[axis === "x" ? "width" : "height"] / 2;
+    if (mediaOf(c).kind === "effect")
+      c.effect = { ...c.effect, [axis]: Math.max(0, c.effect[axis] + shift) };
+    else
+      c.layout = {
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        ...c.layout,
+        [axis]: (c.layout?.[axis] || 0) + shift,
+      };
+  });
+}
+$("alignHorizontal").onclick = () => centerSelection("x");
+$("alignVertical").onclick = () => centerSelection("y");
+$("audioMode").onchange = () =>
+  edit((c) => {
+    c.mono = $("audioMode").value === "mono";
+  });
+for (const id of [
+  "clipStart",
+  "clipTrack",
+  "trimIn",
+  "trimOut",
+  "clipVolume",
+  "muteClip",
+  "monoClip",
+  "voiceLevel",
+  "layoutX",
+  "layoutY",
+  "layoutW",
+  "layoutH",
+  "zoomFrom",
+  "zoomTo",
+  "zoomX",
+  "zoomY",
+  "effectX",
+  "effectY",
+  "effectW",
+  "effectH",
+  "annotationX",
+  "annotationY",
+  "textWidth",
+]) {
+  $(id).closest("label").hidden = true;
+}

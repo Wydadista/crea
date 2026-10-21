@@ -31,8 +31,15 @@ contextBridge.exposeInMainWorld("studio", {
   finishRecording: (duration) =>
     ipcRenderer.invoke("recording-finish", duration),
   abortRecording: () => ipcRenderer.invoke("recording-abort"),
-  saveProject: (project) => ipcRenderer.invoke("save-project", project),
-  openProject: () => ipcRenderer.invoke("open-project"),
+  saveProject: (project, options) =>
+    ipcRenderer.invoke("save-project", project, options),
+  projectInfo: () => ipcRenderer.invoke("project-info"),
+  recentProjects: () => ipcRenderer.invoke("recent-projects"),
+  confirmUnsaved: () => ipcRenderer.invoke("confirm-unsaved"),
+  resetProject: () => ipcRenderer.invoke("reset-project"),
+  quitApproved: () => ipcRenderer.invoke("quit-approved"),
+  onCloseRequest: (fn) => ipcRenderer.on("close-request", () => fn()),
+  openProject: (file) => ipcRenderer.invoke("open-project", file),
   openExport: (kind) => ipcRenderer.invoke("open-export", kind),
   exportVideo: (project, settings) =>
     ipcRenderer.invoke("export", project, settings),

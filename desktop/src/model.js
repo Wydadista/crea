@@ -19,6 +19,27 @@
         p.trackHeights?.length || 0,
         p.trackMuted?.length || 0,
       ),
+    insertTrack(p, index) {
+      const count = api.trackCount(p);
+      if (
+        count >= api.MAX_TRACKS ||
+        !Number.isInteger(index) ||
+        index < 0 ||
+        index > count
+      )
+        throw Error("Impossibile inserire la traccia");
+      p.trackHeights ||= Array(count).fill(100);
+      p.trackMuted ||= Array(count).fill(false);
+      p.trackHeights.splice(index, 0, 100);
+      p.trackMuted.splice(index, 0, false);
+      for (const c of p.clips) {
+        if (c.track >= index) c.track++;
+        if (c.speedHomeTrack !== undefined && c.speedHomeTrack >= index)
+          c.speedHomeTrack++;
+      }
+      p.trackCount = count + 1;
+      return index;
+    },
     addTrack(p) {
       if (api.trackCount(p) >= api.MAX_TRACKS)
         throw Error("Limite di 128 tracce raggiunto");

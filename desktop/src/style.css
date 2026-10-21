@@ -1537,3 +1537,250 @@ header button {
   overflow: auto;
   min-height: 0;
 }
+/* Compact workspace and a single settings entry. */
+header {
+  gap: 10px;
+  padding: 10px 16px;
+}
+header .brand {
+  white-space: nowrap;
+}
+header .project-name {
+  flex: 1;
+  min-width: 80px;
+}
+#projectTitle {
+  display: block;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#dirtyStatus {
+  font-size: 10px;
+  color: #a8b5c4;
+  display: block;
+}
+.file-menu {
+  position: relative;
+  overflow: visible;
+  background: none;
+  box-shadow: none;
+  margin: 0;
+  flex-shrink: 0;
+}
+.file-menu > summary {
+  padding: 9px 14px;
+  border-radius: 6px;
+  background: #303b49;
+  list-style: none;
+  color: white;
+  font-size: 13px;
+}
+.file-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 245px;
+  padding: 8px;
+  background: #252d38;
+  border: 1px solid #526477;
+  box-shadow: 0 12px 30px #0009;
+  z-index: 1000;
+  border-radius: 8px;
+}
+.file-dropdown button {
+  display: block;
+  text-align: left;
+  width: 100%;
+  padding: 9px 12px;
+  background: transparent;
+  border: 0;
+  color: #edf2f7;
+}
+.file-dropdown button:hover {
+  background: #3a4b60;
+}
+.file-dropdown details {
+  margin: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.file-dropdown summary {
+  font-size: 12px;
+  background: transparent;
+  padding: 9px 12px;
+}
+.file-dropdown hr {
+  border: 0;
+  border-top: 1px solid #455060;
+}
+#recentProjects {
+  max-height: 260px;
+  overflow: auto;
+}
+#recentProjects button {
+  font-size: 11px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+#mediaList.grid {
+  display: grid !important;
+  grid-template-columns: repeat(
+    var(--media-columns, 3),
+    minmax(0, 1fr)
+  ) !important;
+  grid-auto-flow: row;
+  align-content: start;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+}
+#mediaList.grid .media-card {
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  padding: 5px;
+  gap: 4px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+#mediaList.grid .media-thumb {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16/9;
+  object-fit: contain;
+  min-width: 0;
+}
+#mediaList.grid .media-meta {
+  width: 100%;
+  min-width: 0;
+  flex: initial;
+}
+#mediaList.grid .media-card strong {
+  font-size: 10px;
+  line-height: 1.3;
+}
+#mediaList.grid .media-card small {
+  font-size: 9px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  margin-top: 2px;
+}
+#mediaList.grid .media-card button {
+  padding: 0;
+  font-size: 15px;
+}
+#mediaColumnsLabel {
+  margin-bottom: 8px;
+}
+#mediaColumns {
+  max-width: 85px;
+}
+.annotation-tools button {
+  cursor: grab;
+}
+.annotation-tools button:active {
+  cursor: grabbing;
+}
+.timeline-toolbar .timeline-tips {
+  display: none;
+}
+.timeline-toolbar {
+  padding: 8px 12px;
+  gap: 8px;
+}
+.timeline-toolbar button {
+  padding: 6px 9px;
+  font-size: 11px;
+}
+#freezeFrame {
+  font-size: 19px;
+  padding: 4px 10px;
+}
+.range-tools[hidden] {
+  display: none !important;
+}
+#ruler {
+  height: 44px !important;
+  background: var(--ruler-color, #335d80) !important;
+  border-bottom: 2px solid #8eb5d4 !important;
+  z-index: 5;
+  box-shadow: 0 2px 8px #0005;
+}
+#ruler .tick {
+  font-size: 12px !important;
+  color: #fff !important;
+  font-weight: 600;
+  top: 10px !important;
+}
+.ruler-label {
+  height: 44px !important;
+  background: var(--ruler-color, #335d80);
+  color: #fff;
+}
+#playhead {
+  top: 44px !important;
+}
+#recordRangeOverlay {
+  display: none !important;
+}
+#alignGuides {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  z-index: 60;
+}
+.align-guide {
+  position: absolute;
+  background: #ff63cd;
+  box-shadow: 0 0 3px #ff63cd;
+  pointer-events: none;
+}
+.align-guide.x {
+  width: 1px;
+}
+.align-guide.y {
+  height: 1px;
+}
+.align-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 8px 0 16px;
+}
+.align-actions button {
+  font-size: 11px;
+  flex: 1;
+  padding: 8px;
+}
+.element-drop {
+  border: 2px dashed #83ecb8 !important;
+  background: #2fbd882a;
+  color: #c9ffe8;
+  font-size: 11px;
+  padding: 4px;
+  overflow: hidden;
+}
+#settingsDialog {
+  max-height: 90vh;
+  overflow: auto;
+  width: 560px;
+}
+#settingsDialog h3 {
+  padding-top: 12px;
+  border-top: 1px solid #43505f;
+}
+#settingsDialog label {
+  margin-top: 10px;
+}
+.properties summary {
+  font-size: 12px;
+}
+.properties .hint {
+  font-size: 10px;
+}

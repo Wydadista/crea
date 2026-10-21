@@ -165,7 +165,18 @@
           this.onbuffering?.(s.start);
           return;
         }
-        node.start(when, s.offset, s.stop - s.start);
+        // Floating point cancellation at cuts/pages may produce -3.55e-15.
+        // Clamp numerical residue only; reject a genuinely invalid source offset.
+        const offset = s.offset < 0 && s.offset > -1e-7 ? 0 : s.offset;
+        if (!Number.isFinite(offset) || offset < 0)
+          throw Error("Offset audio non valido");
+        const duration = Math.min(s.stop - s.start, buffer.duration - offset);
+        if (duration <= 0) {
+          node.disconnect();
+          gain.disconnect();
+          return;
+        }
+        node.start(Math.max(0, when), offset, duration);
         this.nodes.add(node);
         node.onended = () => {
           this.nodes.delete(node);
@@ -175,7 +186,7 @@
         this.scheduled.push({
           id: s.c.id,
           when,
-          offset: s.offset + s.page * this.pageSeconds,
+          offset: offset + s.page * this.pageSeconds,
           duration: s.stop - s.start,
           start: s.start,
         });

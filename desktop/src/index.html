@@ -14,18 +14,33 @@
     <header>
       <div class="brand">
         <span class="brand-icon">A</span> AKhbar <b>STUDIO</b
-        ><span class="badge">DESKTOP · 0.3</span>
+        ><span class="badge">DESKTOP · 0.3.1</span>
       </div>
+      <details id="fileMenu" class="file-menu">
+        <summary>File ▾</summary>
+        <div class="file-dropdown">
+          <button id="fileNew">Nuovo progetto</button
+          ><button id="fileOpen">Apri progetto…</button>
+          <details>
+            <summary>Progetti recenti ▸</summary>
+            <div id="recentProjects"></div>
+          </details>
+          <hr />
+          <button id="fileSave">Salva</button
+          ><button id="fileSaveAs">Salva con nome…</button>
+          <button id="fileExport">Esporta…</button>
+          <hr />
+          <button id="fileClose">Chiudi progetto</button>
+        </div>
+      </details>
       <div class="project-name">
-        Monta a modo tuo<span>Tracce progressive · Aggancio preciso</span>
+        <span id="projectTitle">Progetto senza nome</span
+        ><small id="dirtyStatus"></small>
       </div>
-      <button id="openProject">Apri</button
-      ><button id="saveProject">Salva progetto</button
-      ><button id="resetPanels">Ripristina pannelli</button
-      ><button id="settingsBtn">⚙ Impostazioni</button
-      ><button id="settingsBtn">⚙ Impostazioni</button
-      ><button id="keysBtn">⌨ Comandi</button
-      ><button id="recordBtn" class="record"><i></i> Registra schermo</button
+      <button id="openProject" hidden>Apri</button
+      ><button id="saveProject" hidden>Salva</button>
+      <button id="settingsBtn">⚙ Impostazioni</button>
+      <button id="recordBtn" class="record"><i></i> Registra</button
       ><button id="exportBtn" class="primary">↗ Esporta</button>
     </header>
     <main>
@@ -47,6 +62,14 @@
             >Visualizzazione<select id="mediaView">
               <option value="list">Elenco</option>
               <option value="grid">Griglia</option>
+            </select></label
+          >
+          <label id="mediaColumnsLabel"
+            >Colonne<select id="mediaColumns">
+              <option>2</option>
+              <option selected>3</option>
+              <option>4</option>
+              <option>5</option>
             </select></label
           >
           <div id="mediaList" class="media-list"></div>
@@ -95,6 +118,7 @@
           ><span>Zoom timeline sulla linea verde</span>
         </div>
         <div class="stage">
+          <div id="alignGuides" aria-hidden="true"></div>
           <div id="previewSurface">
             <canvas id="previewCanvas" width="1280" height="720"></canvas>
           </div>
@@ -135,12 +159,16 @@
         </div>
         <div id="clipProperties" hidden>
           <p id="selectedName" class="selected-name"></p>
-          <label class="check"
+          <div class="align-actions">
+            <button id="alignHorizontal">Centra orizzontalmente</button
+            ><button id="alignVertical">Centra verticalmente</button>
+          </div>
+          <label hidden hidden hidden hidden class="check"
             ><input id="lockAspect" type="checkbox" checked /> Mantieni
             proporzioni</label
           >
           <details open>
-            <summary>Tempo, velocità e audio</summary>
+            <summary>Velocità e audio</summary>
             <div class="control-group">
               <div class="form-grid">
                 <label
@@ -170,13 +198,25 @@
                 /></label>
               </div>
               <label
+                hidden
+                hidden
+                hidden
+                hidden
+                hidden
+                hidden
+                hidden
+                hidden
+                hidden
+                hidden
+                hidden
+                hidden
                 >Velocità × (0,1–16; 0 ripristina 1×)<input
                   id="clipSpeed"
                   type="text"
                   inputmode="decimal"
                   maxlength="16"
                   aria-label="Velocità, virgola o punto decimale" /></label
-              ><button id="selectSourceSegments">
+              ><button hidden id="selectSourceSegments">
                 Seleziona segmenti della sorgente</button
               ><button id="resetSpeed">Ripristina velocità originale</button
               ><label
@@ -184,6 +224,11 @@
                 ><input id="clipVolume" type="range" min="0" max="100" /></label
               ><label
                 ><input type="checkbox" id="muteClip" /> Silenzia clip</label
+              ><label
+                >Audio<select id="audioMode">
+                  <option value="mono">Mono</option>
+                  <option value="stereo">Stereo</option>
+                </select></label
               ><label
                 ><input type="checkbox" id="monoClip" /> Converti in mono
                 (reversibile)</label
@@ -205,11 +250,11 @@
                 Riduzione leggera · 25%</button
               ><button id="noiseCompare" type="button" aria-pressed="false">
                 Ascolta originale (prima/dopo)</button
-              ><button id="splitBtn">✂ Dividi · S</button>
+              ><button hidden id="splitBtn">✂ Dividi · S</button>
             </div>
           </details>
           <details id="layoutPanel">
-            <summary>Posizione, dimensioni e zoom</summary>
+            <summary>Inquadratura</summary>
             <div class="control-group">
               <label
                 >Ingrandimento<input
@@ -223,10 +268,6 @@
               <p class="hint">
                 Trascina l’immagine per inquadrare; usa la maniglia in basso a
                 destra per ingrandire.
-              </p>
-              <p class="hint">
-                Percentuali del fotogramma. Riduci larghezza/altezza per vedere
-                il video sottostante.
               </p>
               <div class="form-grid">
                 <label
@@ -305,7 +346,7 @@
                 nell’anteprima.
               </p>
               <div class="form-grid">
-                <label
+                <label hidden hidden hidden hidden
                   >X %<input
                     id="effectX"
                     type="number"
@@ -332,7 +373,7 @@
           <details id="annotationPanel" open>
             <summary>Testo e indicatori</summary>
             <div class="control-group">
-              <label
+              <label hidden hidden hidden
                 >Larghezza riquadro testo %<input
                   id="textWidth"
                   type="number"
@@ -433,9 +474,15 @@
               <option value="1">2 · Centrale</option>
               <option value="0" selected>1 · Inferiore</option>
             </select></label
-          ><button id="freezeFrame">Crea fermo immagine</button>
+          ><button
+            id="freezeFrame"
+            title="Crea fermo immagine"
+            aria-label="Crea fermo immagine"
+          >
+            ▣
+          </button>
         </div>
-        <div class="range-tools">
+        <div class="range-tools" hidden>
           <label
             >Intervallo da (s)<input
               id="rangeStart"
@@ -583,7 +630,9 @@
           qualità encoder)</label
         >
         <button id="chooseExportPath" type="button">Scegli destinazione…</button
-        ><output id="exportPath">Destinazione da scegliere</output>
+        ><output id="exportPath"
+          >Cartella Esportazioni configurata nelle impostazioni</output
+        >
         <p id="gpuStatus" class="hint"></p>
         <progress id="exportProgress" value="0" max="100"></progress>
         <p id="exportEngine">Encoder da verificare all’avvio</p>
@@ -714,14 +763,75 @@
     </dialog>
     <dialog id="settingsDialog">
       <form method="dialog">
-        <h2>Cartelle predefinite</h2>
+        <div class="modal-title">
+          <h2>Impostazioni</h2>
+          <button class="close">×</button>
+        </div>
+        <h3>Cartelle di destinazione</h3>
         <label>Progetti<input id="projectsDirectory" readonly /></label
         ><button id="chooseProjectsDirectory" type="button">
-          Scegli cartella progetti</button
-        ><label>Esportazioni<input id="exportsDirectory" readonly /></label
+          Scegli cartella progetti
+        </button>
+        <label>Registrazioni<input id="recordingsDirectory" readonly /></label
+        ><button id="chooseRecordingsDirectory" type="button">
+          Scegli cartella registrazioni
+        </button>
+        <label>Esportazioni<input id="exportsDirectory" readonly /></label
         ><button id="chooseExportsDirectory" type="button">
-          Scegli cartella esportazioni</button
+          Scegli cartella esportazioni
+        </button>
+        <p class="hint">
+          Le destinazioni restano memorizzate: non è necessario sceglierle a
+          ogni registrazione o esportazione.
+        </p>
+        <h3>Durate iniziali</h3>
+        <div class="form-grid">
+          <label
+            >Immagini · secondi<input
+              id="imageDuration"
+              type="text"
+              inputmode="decimal"
+              value="5" /></label
+          ><label
+            >Fermo immagine · secondi<input
+              id="freezeDuration"
+              type="text"
+              inputmode="decimal"
+              value="5"
+          /></label>
+        </div>
+        <label
+          >Colore del righello timeline<input
+            id="rulerColor"
+            type="color"
+            value="#335d80"
+        /></label>
+        <h3>Interfaccia e tasti</h3>
+        <button id="keysBtn" type="button">
+          ⌨ Comandi e tasti alternativi</button
+        ><button id="resetPanels" type="button">Ripristina pannelli</button>
+        <p id="settingsStatus" class="hint"></p>
+        <button id="saveSettings" type="button" class="primary">
+          Salva impostazioni</button
         ><button>Chiudi</button>
+      </form>
+    </dialog>
+    <dialog id="projectNameDialog">
+      <form method="dialog">
+        <h2>Nome del progetto</h2>
+        <label
+          >Nome<input
+            id="projectNameInput"
+            maxlength="100"
+            required
+            value="Montaggio"
+        /></label>
+        <p class="hint">
+          La cartella viene creata nella destinazione Progetti indicata nelle
+          Impostazioni.
+        </p>
+        <button value="cancel" formnovalidate>Annulla</button
+        ><button value="save" class="primary">Salva</button>
       </form>
     </dialog>
     <dialog id="sourceDialog">
@@ -738,12 +848,15 @@
           <h2>I tuoi comandi</h2>
           <button class="close">×</button>
         </div>
-        <label>Dividi<input id="keySplit" readonly /></label
-        ><label>Riproduci / pausa<input id="keyPlay" readonly /></label
-        ><label>Elimina<input id="keyDelete" readonly /></label>
+        <label>Dividi<input id="keySplit" placeholder="S; H" /></label
+        ><label>Riproduci / pausa<input id="keyPlay" /></label
+        ><label>Elimina<input id="keyDelete" /></label>
         <p class="hint">
-          Ctrl+A seleziona tutte le clip. Ctrl/Shift+clic seleziona più clip.
-          Ctrl+G raggruppa, Ctrl+Shift+G separa. Ctrl+Z annulla. Ctrl+S salva.
+          Più tasti per la stessa azione: separali con punto e virgola, ad
+          esempio S; H oppure Canc; Backspace. Sono possibili combinazioni come
+          Ctrl+Shift+K. Ctrl+A seleziona tutte le clip. Ctrl/Shift+clic
+          seleziona più clip. Ctrl+G raggruppa, Ctrl+Shift+G separa. Ctrl+Z
+          annulla. Ctrl+S salva.
         </p>
         <button id="resetKeys" type="button">Ripristina predefiniti</button>
       </form>

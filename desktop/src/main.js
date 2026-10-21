@@ -43,15 +43,32 @@ async function preferences() {
   return {
     projects: path.join(app.getPath("documents"), "AKhbar studio"),
     exports: app.getPath("downloads"),
+    recordings: path.join(
+      app.getPath("documents"),
+      "AKhbar studio",
+      "Registrazioni",
+    ),
+    imageDuration: 5,
+    freezeDuration: 5,
+    rulerColor: "#335d80",
     ...saved,
   };
 }
 ipcMain.handle("preferences", preferences);
 ipcMain.handle("set-preferences", async (_e, values) => {
   const current = await preferences();
-  for (const key of ["projects", "exports"])
+  for (const key of ["projects", "exports", "recordings"])
     if (typeof values[key] === "string" && path.isAbsolute(values[key]))
       current[key] = values[key];
+  for (const key of ["imageDuration", "freezeDuration"])
+    if (values[key] !== undefined) {
+      const value = Number(String(values[key]).replace(",", "."));
+      if (!Number.isFinite(value) || value < 0.01 || value > 86400)
+        throw Error("Durata: da 0,01 a 86400 secondi");
+      current[key] = value;
+    }
+  if (/^#[0-9a-f]{6}$/i.test(values.rulerColor || ""))
+    current.rulerColor = values.rulerColor;
   await atomic(preferencesFile(), current);
   return current;
 });
@@ -155,6 +172,12 @@ app.whenReady().then(() => {
       backgroundThrottling: false,
     },
   });
+  win.on("close", (event) => {
+    if (!allowClose) {
+      event.preventDefault();
+      win.webContents.send("close-request");
+    }
+  });
   win.setMenuBarVisibility(false);
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (event) => event.preventDefault());
@@ -247,10 +270,7 @@ ipcMain.handle("recording-begin", async (_e, settings) => {
   if (recordingFile) throw Error("Registrazione già attiva");
   const prefs = await preferences();
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "akhbar-record-"));
-  const folder = path.join(
-    projectPath ? path.dirname(projectPath) : prefs.projects,
-    "Registrazioni",
-  );
+  const folder = prefs.recordings;
   const name = safeName(settings.name),
     counters = prefs.recordingCounters || {};
   const output = await reserveRecording(
@@ -463,81 +483,149 @@ async function loadProject(file) {
     throw Error("File originali mancanti: " + missing.join(", "));
   return project;
 }
-ipcMain.handle("save-project", async (_e, project) => {
+async function rememberProject(file) {
+  const prefs = await preferences();
+  const recent = [
+    file,
+    ...(prefs.recentProjects || []).filter(
+      (p) =>
+        typeof p === "string" &&
+        path.resolve(p).toLowerCase() !== path.resolve(file).toLowerCase(),
+    ),
+  ].slice(0, 12);
+  await atomic(preferencesFile(), { ...prefs, recentProjects: recent });
+}
+ipcMain.handle("project-info", () => ({
+  path: projectPath,
+  name: projectPath ? path.basename(projectPath, ".creastudio") : null,
+}));
+ipcMain.handle(
+  "recent-projects",
+  async () => (await preferences()).recentProjects || [],
+);
+ipcMain.handle("confirm-unsaved", async () => {
+  const r = await dialog.showMessageBox(win, {
+    type: "question",
+    buttons: ["Salva", "Scarta modifiche", "Annulla"],
+    defaultId: 0,
+    cancelId: 2,
+    message: "Il progetto contiene modifiche non salvate.",
+    detail: "Vuoi salvarle prima di continuare?",
+  });
+  return ["save", "discard", "cancel"][r.response];
+});
+let autosaveQueue = Promise.resolve(),
+  projectEpoch = 0,
+  allowClose = false;
+ipcMain.handle("reset-project", async () => {
+  projectEpoch++;
+  await autosaveQueue;
+  projectPath = null;
+  savedProject = null;
+  pendingProject = null;
+  await fs.rm(recoveryPath(), { force: true });
+  return true;
+});
+ipcMain.handle("quit-approved", () => {
+  allowClose = true;
+  app.quit();
+});
+ipcMain.handle("save-project", async (_e, input, options = {}) => {
   if (savingProject) return false;
   savingProject = true;
   try {
-    project = Timeline.validate(project);
-    if (!projectPath) {
-      const result = await dialog.showSaveDialog(win, {
-        defaultPath: path.join(
+    const project = Timeline.validate(input);
+    let target = projectPath;
+    if (!target || options.saveAs) {
+      if (options.name !== undefined) {
+        const name = safeName(options.name, "Montaggio");
+        target = path.join(
           (await preferences()).projects,
-          "Montaggio.creastudio",
-        ),
-        filters: [
-          { name: "Progetto AKhbar studio", extensions: ["creastudio"] },
-        ],
-      });
-      if (result.canceled) return false;
-      const folder = path.join(
-        path.dirname(result.filePath),
-        safeName(
-          path.basename(result.filePath, path.extname(result.filePath)),
-          "Montaggio",
-        ),
-      );
-      await fs.mkdir(folder, { recursive: true });
-      projectPath = path.join(folder, path.basename(result.filePath));
+          name,
+          name + ".creastudio",
+        );
+        try {
+          await fs.access(target);
+          const r = await dialog.showMessageBox(win, {
+            type: "question",
+            buttons: ["Sostituisci", "Annulla"],
+            defaultId: 1,
+            cancelId: 1,
+            message: "Esiste già un progetto con questo nome. Sostituirlo?",
+          });
+          if (r.response !== 0) return false;
+        } catch (e) {
+          if (e.code !== "ENOENT") throw e;
+        }
+      } else {
+        const r = await dialog.showSaveDialog(win, {
+          defaultPath: path.join(
+            (await preferences()).projects,
+            "Montaggio.creastudio",
+          ),
+          filters: [
+            { name: "Progetto AKhbar studio", extensions: ["creastudio"] },
+          ],
+        });
+        if (r.canceled) return false;
+        target = path.join(
+          path.dirname(r.filePath),
+          safeName(path.basename(r.filePath, path.extname(r.filePath))),
+          path.basename(r.filePath),
+        );
+      }
     }
     if (
       !project.assetsCollected &&
-      path.basename(path.dirname(projectPath)) !==
-        path.basename(projectPath, path.extname(projectPath))
-    ) {
-      const folder = path.join(
-        path.dirname(projectPath),
-        safeName(
-          path.basename(projectPath, path.extname(projectPath)),
-          "Montaggio",
-        ),
+      path.basename(path.dirname(target)) !==
+        path.basename(target, path.extname(target))
+    )
+      target = path.join(
+        path.dirname(target),
+        safeName(path.basename(target, path.extname(target))),
+        path.basename(target),
       );
-      await fs.mkdir(folder, { recursive: true });
-      projectPath = path.join(folder, path.basename(projectPath));
-    }
     if (
       project.media.some(
         (m) =>
           m.path &&
           path.resolve(m.path).toLowerCase() ===
-            path.resolve(projectPath).toLowerCase(),
+            path.resolve(target).toLowerCase(),
       )
     )
       throw Error("Non sovrascrivere un file multimediale con il progetto");
-    await collectProject(project, projectPath);
+    await collectProject(project, target);
+    projectPath = target;
     savedProject = JSON.stringify(project);
     await fs.rm(recoveryPath(), { force: true });
+    await rememberProject(target);
     return true;
   } finally {
     savingProject = false;
   }
 });
-ipcMain.handle("open-project", async () => {
-  const result = await dialog.showOpenDialog(win, {
-    properties: ["openFile"],
-    filters: [
-      {
-        name: "Progetti AKhbar studio (anche precedenti)",
-        extensions: ["creastudio", "json"],
-      },
-    ],
-  });
+ipcMain.handle("open-project", async (_e, recent) => {
+  const result = recent
+    ? { filePaths: [recent] }
+    : await dialog.showOpenDialog(win, {
+        properties: ["openFile"],
+        filters: [
+          {
+            name: "Progetti AKhbar studio (anche precedenti)",
+            extensions: ["creastudio", "json"],
+          },
+        ],
+      });
   if (result.canceled) return null;
   const data = await loadProject(result.filePaths[0]);
+  projectEpoch++;
+  await autosaveQueue;
   projectPath = /\.creastudio$/i.test(result.filePaths[0])
     ? result.filePaths[0]
     : null;
   savedProject = JSON.stringify(data);
   await fs.rm(recoveryPath(), { force: true });
+  await rememberProject(result.filePaths[0]);
   return data;
 });
 ipcMain.handle("project-file", async () => {
@@ -545,18 +633,28 @@ ipcMain.handle("project-file", async () => {
   const file = pendingProject;
   pendingProject = null;
   const data = await loadProject(file);
+  projectEpoch++;
+  await autosaveQueue;
   projectPath = /\.creastudio$/i.test(file) ? file : null;
   savedProject = JSON.stringify(data);
   await fs.rm(recoveryPath(), { force: true });
+  await rememberProject(file);
   return data;
 });
-ipcMain.handle("autosave", async (_e, project) => {
-  if (JSON.stringify(project) === savedProject) return;
-  await atomic(recoveryPath(), {
-    project: Timeline.validate(project),
-    path: projectPath,
-    savedAt: Date.now(),
+ipcMain.handle("autosave", (_e, project) => {
+  const epoch = projectEpoch,
+    location = projectPath;
+  const job = autosaveQueue.then(async () => {
+    if (epoch !== projectEpoch || JSON.stringify(project) === savedProject)
+      return;
+    await atomic(recoveryPath(), {
+      project: Timeline.validate(project),
+      path: location,
+      savedAt: Date.now(),
+    });
   });
+  autosaveQueue = job.catch(() => {});
+  return job;
 });
 ipcMain.handle("recover", async () => {
   try {
@@ -721,13 +819,15 @@ ipcMain.handle("export", async (_e, project, settings) => {
   project = Timeline.validate(project);
   const result = settings.outputPath
     ? { filePath: settings.outputPath }
-    : await dialog.showSaveDialog(win, {
-        defaultPath: path.join(
+    : {
+        filePath: await reserveRecording(
           (await preferences()).exports,
-          "Video-AKhbar.mp4",
+          projectPath
+            ? path.basename(projectPath, ".creastudio")
+            : "Video-AKhbar",
+          "mp4",
         ),
-        filters: [{ name: "Video MP4", extensions: ["mp4"] }],
-      });
+      };
   if (result.canceled) return null;
   const target = path.resolve(result.filePath);
   if (
