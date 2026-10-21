@@ -1,4 +1,4 @@
-/* Absolute time, exclusive tracks, explicit snapping and no ripple editing. */
+/* Absolute time, exclusive tracks and ripple limited to one timeline insertion. */
 (function (root) {
   const n = (v, min, max) => Number.isFinite(v) && v >= min && v <= max;
   const api = {
@@ -153,7 +153,109 @@
       return api.validate(p);
     },
     sourceFamily(c) {
-      return c.sourceInstanceId || c.mediaId;
+      return c.sourceInstanceId || c.id;
+    },
+    trimFamilySegment(input, id, trimmed, closeGaps = false) {
+      const p = JSON.parse(JSON.stringify(input)),
+        old = input.clips.find((c) => c.id === id),
+        c = p.clips.find((c) => c.id === id);
+      if (!old || !c) throw Error("Clip non disponibile");
+      Object.assign(c, {
+        in: trimmed.in,
+        out: trimmed.out,
+        start: trimmed.start,
+      });
+      const rate = old.speed || 1,
+        head = Math.max(0, (c.in - old.in) / rate),
+        tail = Math.max(0, (old.out - c.out) / rate);
+      if (closeGaps && (head || tail)) {
+        // Keep the selected source cuts: remove timeline time, never restore media.
+        c.start = Math.max(0, c.start - head);
+        if (old.sourceInstanceId)
+          for (const next of p.clips)
+            if (
+              next.id !== id &&
+              next.track === old.track &&
+              next.sourceInstanceId === old.sourceInstanceId &&
+              next.start >= old.start + api.duration(old) - 1e-8
+            )
+              next.start -= head + tail;
+      }
+      if (!api.canPlace(input.clips, p.clips))
+        throw Error(
+          "Chiusura spazio bloccata da un’altra clip: nessuna modifica applicata",
+        );
+      return api.validate(p);
+    },
+    copySelection(p, ids) {
+      const clips = p.clips.filter((c) => ids.includes(c.id));
+      if (!clips.length) throw Error("Seleziona gli elementi da copiare");
+      const used = new Set(clips.map((c) => c.mediaId));
+      return JSON.parse(
+        JSON.stringify({
+          clips,
+          media: p.media.filter((m) => used.has(m.id)),
+        }),
+      );
+    },
+    pasteSelection(input, clipboard, start, track, makeId) {
+      if (!clipboard?.clips?.length) throw Error("Nessun elemento copiato");
+      if (
+        !n(start, 0, 604800) ||
+        !Number.isInteger(track) ||
+        track < 0 ||
+        track >= api.trackCount(input)
+      )
+        throw Error("Posizione o traccia di destinazione non valida");
+      if (input.clips.length + clipboard.clips.length > 1000)
+        throw Error("Limite di 1000 elementi raggiunto");
+      const p = JSON.parse(JSON.stringify(input)),
+        content = JSON.parse(JSON.stringify(clipboard)),
+        timeOrigin = Math.min(...content.clips.map((c) => c.start)),
+        trackOrigin = Math.min(...content.clips.map((c) => c.track)),
+        mapping = () => new Map(),
+        ids = mapping(),
+        families = mapping(),
+        groups = mapping(),
+        media = mapping(),
+        remap = (map, key) => {
+          if (!map.has(key)) map.set(key, makeId());
+          return map.get(key);
+        };
+      for (const m of content.media) {
+        const existing = p.media.find(
+          (other) =>
+            other.id === m.id && other.path === m.path && other.kind === m.kind,
+        );
+        const id = existing?.id || makeId();
+        media.set(m.id, id);
+        if (!existing) p.media.push({ ...m, id });
+      }
+      for (const c of content.clips) remap(ids, c.id);
+      const added = content.clips.map((c) => {
+        const next = {
+          ...c,
+          id: ids.get(c.id),
+          mediaId: media.get(c.mediaId),
+          sourceInstanceId: remap(families, api.sourceFamily(c)),
+          start: start + c.start - timeOrigin,
+          track: track + c.track - trackOrigin,
+        };
+        if (c.groupId) next.groupId = remap(groups, c.groupId);
+        if (c.detachedFrom && ids.has(c.detachedFrom))
+          next.detachedFrom = ids.get(c.detachedFrom);
+        else delete next.detachedFrom;
+        delete next.speedHomeTrack;
+        return next;
+      });
+      if (!api.canPlace(p.clips, added))
+        throw Error(
+          "Spazio insufficiente per incollare: nessun elemento è stato modificato",
+        );
+      const lastTrack = Math.max(...added.map((c) => c.track));
+      while (api.trackCount(p) <= lastTrack) api.addTrack(p);
+      p.clips.push(...added);
+      return { project: api.validate(p), ids: added.map((c) => c.id) };
     },
     familyIds(p, ids) {
       const families = new Set(
@@ -374,6 +476,7 @@
         if (offset < 0.02 || offset > d - 0.02) continue;
         const cut = api.sourceTime(c, time),
           id = typeof makeId === "function" ? makeId() : makeId;
+        c.sourceInstanceId ||= c.id;
         clips.splice(
           i,
           1,
@@ -455,7 +558,11 @@
       const runs =
         acrossTracks && new Set(chosen.map((c) => c.track)).size > 1
           ? [chosen]
-          : api.contiguousRuns(chosen);
+          : [...new Set(chosen.map(api.sourceFamily))].flatMap((family) =>
+              api.contiguousRuns(
+                chosen.filter((c) => api.sourceFamily(c) === family),
+              ),
+            );
       for (const run of runs)
         if (run.length > 1) {
           const id = makeId();

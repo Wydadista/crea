@@ -8,6 +8,8 @@ InstallDirRegKey HKCU "Software\AKhbar studio" "InstallDir"
 RequestExecutionLevel user
 SetCompressor zlib
 !define MUI_ABORTWARNING
+!define MUI_ICON "${APP_DIR}\project-icon.ico"
+!define MUI_UNICON "${APP_DIR}\project-icon.ico"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\AKhbar studio.exe"
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
@@ -38,8 +40,8 @@ Section "AKhbar studio"
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
   WriteUninstaller "$INSTDIR\Disinstalla.exe"
   CreateDirectory "$SMPROGRAMS\AKhbar studio"
-  CreateShortcut "$SMPROGRAMS\AKhbar studio\AKhbar studio.lnk" "$INSTDIR\AKhbar studio.exe"
-  CreateShortcut "$DESKTOP\AKhbar studio.lnk" "$INSTDIR\AKhbar studio.exe"
+  CreateShortcut "$SMPROGRAMS\AKhbar studio\AKhbar studio.lnk" "$INSTDIR\AKhbar studio.exe" "" "$INSTDIR\project-icon.ico" 0
+  CreateShortcut "$DESKTOP\AKhbar studio.lnk" "$INSTDIR\AKhbar studio.exe" "" "$INSTDIR\project-icon.ico" 0
   WriteRegStr HKCU "Software\AKhbar studio" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AKhbarStudio" "DisplayName" "AKhbar studio"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AKhbarStudio" "DisplayVersion" "${VERSION}"

@@ -26,7 +26,9 @@ let project = Timeline.empty(),
   exportBusy = false,
   exportCancelled = false;
 let mediaView = localStorage.getItem("akhbar-media-view") || "grid";
-let edgeSnapEnabled = localStorage.getItem("akhbar-edge-snap") !== "false";
+const edgeSnapEnabled = true; // Always enabled; independent from family gap closure.
+let timelineClipboard = null,
+  selectedMediaId = null;
 let rippleFamily = localStorage.getItem("akhbar-family-ripple") === "true";
 let fitTimeline = false;
 const thumbCache = new Map();
@@ -263,8 +265,17 @@ function renderLibrary() {
   for (const m of actual) {
     const card = el("div", "media-card");
     card.tabIndex = 0;
+    card.dataset.mediaId = m.id;
+    card.classList.toggle("selected", selectedMediaId === m.id);
+    card.setAttribute("aria-selected", String(selectedMediaId === m.id));
     card.onclick = (e) => {
-      if (!e.target.closest("button")) showSource(m);
+      if (e.target.closest("button")) return;
+      selectedMediaId = m.id;
+      for (const item of list.children) {
+        const active = item.dataset.mediaId === m.id;
+        item.classList.toggle("selected", active);
+        item.setAttribute("aria-selected", String(active));
+      }
     };
     card.onkeydown = (e) => {
       if (e.key === "Enter") showSource(m);
@@ -301,8 +312,9 @@ function renderLibrary() {
       draggedMedia = m.id;
       e.dataTransfer.setData("application/crea-media", m.id);
     };
-    card.ondblclick = () =>
-      addMedia(m.id, time, Number($("activeTrack").value));
+    card.ondblclick = (e) => {
+      if (!e.target.closest("button")) showSource(m);
+    };
     list.append(card);
   }
 }
@@ -836,31 +848,24 @@ function trimDrag(e, c, side) {
   pause();
   selectIds([c.id]);
   const x = e.clientX,
+    before = clone(project),
     old = clone(c),
-    m = mediaOf(c);
-  let dirty = false,
-    lastX = x;
+    m = mediaOf(c),
+    scroll = $("timelineScroll").scrollLeft;
+  let lastX = x;
   const move = (ev) => {
-    if (ev.clientX === lastX) return;
     lastX = ev.clientX;
-    if (!dirty) {
-      checkpoint();
-      dirty = true;
-    }
-    const delta = (ev.clientX - x) / scale,
-      rate = c.speed || 1;
+    const delta = (lastX - x + $("timelineScroll").scrollLeft - scroll) / scale,
+      rate = old.speed || 1;
+    Object.assign(c, old);
     if (side === "left") {
       const newStart = Math.max(
-          0,
-          Math.min(
-            old.start + Timeline.duration(old) - 0.02,
-            old.start + delta,
-          ),
-        ),
-        newIn = old.in + (newStart - old.start) * rate;
-      c.in = Math.max(0, newIn);
+        0,
+        Math.min(old.start + Timeline.duration(old) - 0.02, old.start + delta),
+      );
+      c.in = Math.max(0, old.in + (newStart - old.start) * rate);
       c.start = old.start + (c.in - old.in) / rate;
-    } else
+    } else {
       c.out = Math.max(
         c.in + 0.02 * rate,
         Math.min(
@@ -870,20 +875,29 @@ function trimDrag(e, c, side) {
           old.out + delta * rate,
         ),
       );
-    if (!Timeline.canPlace(project.clips, [c])) {
-      Object.assign(c, old);
-      toast("Intervallo occupato: rifilatura non applicata.");
     }
+    if (!Timeline.canPlace(project.clips, [c])) Object.assign(c, old);
     changed();
   };
   captureMove(e, move, (ev) => {
     if (ev.type === "pointercancel") {
-      Object.assign(c, old);
-      if (dirty) history.pop();
+      project = before;
       changed();
       return;
     }
     move(ev);
+    try {
+      const result = Timeline.trimFamilySegment(before, c.id, c, rippleFamily);
+      if (JSON.stringify(result) !== JSON.stringify(before)) {
+        history.push(JSON.stringify(before));
+        future = [];
+      }
+      project = result;
+    } catch (error) {
+      project = before;
+      toast(error.message);
+    }
+    changed();
   });
 }
 function bindTrack(track) {
@@ -1382,14 +1396,47 @@ function split() {
 function remove() {
   if (!selection.size) return;
   pause();
-  checkpoint();
-  project = Timeline.deleteFamilySegments(
-    project,
-    [...selection],
-    rippleFamily,
-  );
+  try {
+    const next = Timeline.deleteFamilySegments(
+      project,
+      [...selection],
+      rippleFamily,
+    );
+    checkpoint();
+    project = next;
+  } catch (error) {
+    return toast(error.message);
+  }
   selection.clear();
   changed();
+}
+function copyTimelineSelection() {
+  try {
+    timelineClipboard = Timeline.copySelection(project, [...selection]);
+    toast(`${timelineClipboard.clips.length} elementi copiati`);
+  } catch (error) {
+    toast(error.message);
+  }
+}
+function pasteTimelineSelection() {
+  try {
+    const result = Timeline.pasteSelection(
+      project,
+      timelineClipboard,
+      time,
+      Number($("activeTrack").value),
+      uid,
+    );
+    pause();
+    checkpoint();
+    project = result.project;
+    selection = new Set(result.ids);
+    resetPlayers();
+    render();
+    for (const m of project.media) if (!waves.has(m.id)) requestWave(m);
+  } catch (error) {
+    toast(error.message);
+  }
 }
 function group() {
   if (selection.size < 2)
@@ -1522,6 +1569,8 @@ function showTrackContext(e, track) {
   e.stopPropagation();
   $("contextMenu").hidden = true;
   contextTrack = track;
+  $("activeTrack").value = track;
+  $("pasteTrack").disabled = !timelineClipboard;
   const menu = $("trackContextMenu");
   $("deleteTrack").textContent = "Elimina traccia " + (track + 1);
   menu.hidden = false;
@@ -1543,6 +1592,10 @@ function deleteTimelineTrack(track) {
     Timeline.trackCount(project) - 1,
   );
 }
+$("pasteTrack").onclick = () => {
+  $("trackContextMenu").hidden = true;
+  pasteTimelineSelection();
+};
 $("deleteTrack").onclick = () => {
   $("trackContextMenu").hidden = true;
   const count = project.clips.filter((c) => c.track === contextTrack).length;
@@ -1563,6 +1616,8 @@ function showContext(x, y) {
   const menu = $("contextMenu");
   const c = first(),
     m = c && mediaOf(c);
+  if (c) $("activeTrack").value = c.track;
+  menu.querySelector('[data-action="paste"]').disabled = !timelineClipboard;
   menu.querySelector('[data-action="detach-audio"]').disabled = !(
     c &&
     m.kind === "video" &&
@@ -1583,6 +1638,8 @@ for (const button of $("contextMenu").querySelectorAll("button"))
   button.onclick = () => {
     const a = button.dataset.action;
     $("contextMenu").hidden = true;
+    if (a === "copy") copyTimelineSelection();
+    if (a === "paste") pasteTimelineSelection();
     if (a === "split") split();
     if (a === "group") group();
     if (a === "ungroup") editGroup(false);
@@ -2210,6 +2267,8 @@ for (const action of Object.keys(defaultKeys))
       "ctrl+w",
       "ctrl+z",
       "ctrl+shift+z",
+      "ctrl+c",
+      "ctrl+v",
       "ctrl+a",
       "ctrl+g",
       "ctrl+shift+g",
@@ -2308,6 +2367,11 @@ document.onkeydown = (e) => {
   )
     return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if ((e.ctrlKey || e.metaKey) && ["c", "v"].includes(k)) {
+    e.preventDefault();
+    k === "c" ? copyTimelineSelection() : pasteTimelineSelection();
+    return;
+  }
   const match = Object.keys(keys).find((action) =>
     keys[action].includes(eventShortcut(e)),
   );
@@ -2368,26 +2432,76 @@ async function exportProject(settings) {
   }
   return output;
 }
+const exportPreferenceFields = [
+  "exportHeight",
+  "exportFps",
+  "exportPreset",
+  "exportQuality",
+  "exportEncoder",
+  "exportCpuPreset",
+  "exportKeyframe",
+  "preserveOriginal",
+  "exportFilename",
+];
+let savedExportPreferences = {};
+try {
+  savedExportPreferences = JSON.parse(
+    localStorage.getItem("akhbar-export") || "{}",
+  );
+} catch {}
+function saveExportPreferences() {
+  for (const id of exportPreferenceFields) {
+    const field = $(id);
+    savedExportPreferences[id] =
+      field.type === "checkbox" ? field.checked : field.value;
+  }
+  localStorage.setItem("akhbar-export", JSON.stringify(savedExportPreferences));
+}
+function updateExportControls() {
+  const copy = $("preserveOriginal").checked;
+  $("exportCustomQuality").hidden = $("exportPreset").value !== "custom";
+  $("exportQualityValue").textContent = $("exportQuality").value + "%";
+  $("exportCpuControl").hidden = $("exportEncoder").value !== "cpu" || copy;
+  $("exportCopyNotice").hidden = !copy;
+  $("exportPreset").disabled = copy;
+  $("exportQuality").disabled = copy;
+}
+function setExportBusy(busy) {
+  exportBusy = busy;
+  $("exportSettings").disabled = busy;
+  for (const id of ["doExport", "exportClose", "exportCloseTop"])
+    $(id).disabled = busy;
+  $("cancelExport").hidden = !busy;
+  updateExportControls();
+}
+function showExportTarget() {
+  const folder = $("exportDirectory").value,
+    name = $("exportFilename").value;
+  $("exportDirectory").title = folder;
+  const sep = folder.includes("\\") ? "\\" : "/";
+  $("exportPath").textContent =
+    exportOutputPath || folder.replace(/[\\/]+$/, "") + sep + name;
+}
 $("exportBtn").onclick = () => {
   if (!project.clips.length) return toast("Aggiungi una clip.");
   pause();
   updatePreviewView();
-  $("exportResultActions").hidden = true;
-  $("exportPath").textContent =
-    exportOutputPath ||
-    `${workspacePrefs.exports || "Download"} · nome automatico`;
+  if (!$("exportDirectory").value)
+    $("exportDirectory").value = workspacePrefs.exports || "";
+  showExportTarget();
+  updateExportControls();
+  $("exportAdvanced").open = false;
+  $("exportTechnical").open = false;
   $("exportDialog").showModal();
 };
-$("exportQuality").oninput = () => {
-  $("exportQualityValue").textContent = $("exportQuality").value + "%";
-};
+$("exportQuality").oninput = updateExportControls;
 studio.onProgress((p) => {
   $("exportProgress").value = p.percent;
+  $("exportPercent").textContent = p.percent + "%";
   if (p.encoder)
     $("exportEngine").textContent =
-      `Encoder: ${p.encoder} · Decoder: ${p.decoder || "CPU"} · Percorso: ${p.path}${p.fallbackFrom ? " · Ripiego da " + p.fallbackFrom : ""}`;
-  $("exportStatus").textContent =
-    `${p.percent}% contenuto · ${fmt(p.elapsedSeconds || 0)} trascorsi · ${p.encoder || "preparazione"} / decoder ${p.decoder || "CPU"}${p.fallbackFrom ? " (ripiego da " + p.fallbackFrom + ")" : ""} · ${p.message}`;
+      `Encoder: ${p.encoder} · Decoder: ${p.decoder || "CPU"} · Percorso: ${p.path || "in preparazione"}${p.fallbackFrom ? " · Ripiego da " + p.fallbackFrom : ""}`;
+  $("exportStatus").textContent = p.message || "Esportazione in corso…";
 });
 $("exportDialog").oncancel = (e) => {
   if (exportBusy) e.preventDefault();
@@ -2396,19 +2510,25 @@ $("exportDialog").onsubmit = (e) => {
   if (exportBusy) e.preventDefault();
 };
 $("doExport").onclick = safe(async () => {
-  if (!$("exportFps").checkValidity())
-    return toast("Inserisci FPS interi tra 1 e 120.");
+  for (const id of ["exportFps", "exportKeyframe"])
+    if (!$(id).reportValidity()) return;
+  if (!$("exportFilename").value.trim() || !$("exportDirectory").value.trim())
+    return toast("Indica nome file e cartella.");
+  saveExportPreferences();
   $("exportResultActions").hidden = true;
-  exportBusy = true;
+  $("exportActivity").hidden = false;
+  $("exportAdvanced").open = false;
+  setExportBusy(true);
   const elapsedStart = performance.now();
-  const elapsedTimer = setInterval(() => {
-    $("exportElapsed").textContent =
-      "Tempo trascorso: " + fmt((performance.now() - elapsedStart) / 1000);
-  }, 200);
+  const paintElapsed = () =>
+    ($("exportElapsed").textContent =
+      "Tempo trascorso: " + fmt((performance.now() - elapsedStart) / 1000));
+  paintElapsed();
+  const elapsedTimer = setInterval(paintElapsed, 200);
   exportCancelled = false;
-  $("doExport").disabled = true;
-  $("cancelExport").hidden = false;
   $("exportProgress").value = 0;
+  $("exportPercent").textContent = "0%";
+  $("exportEngine").textContent = "Encoder da verificare all’avvio";
   try {
     const s = {
       height:
@@ -2420,6 +2540,8 @@ $("doExport").onclick = safe(async () => {
       encoder: $("exportEncoder").value,
       cpuPreset: $("exportCpuPreset").value,
       outputPath: exportOutputPath || undefined,
+      outputDirectory: $("exportDirectory").value.trim(),
+      outputName: $("exportFilename").value.trim(),
       preserveOriginal: $("preserveOriginal").checked,
       keyframeSeconds: Number($("exportKeyframe").value),
     };
@@ -2428,25 +2550,28 @@ $("doExport").onclick = safe(async () => {
     if (exportCancelled) throw Error("Esportazione annullata");
     const result = await studio.exportVideo(out, s);
     $("exportStatus").textContent = result
-      ? "Salvato in " + result
+      ? "Esportazione completata"
       : "Esportazione annullata";
     if (result) {
       $("exportPath").textContent = result;
       $("exportResultActions").hidden = false;
+      $("exportProgress").value = 100;
+      $("exportPercent").textContent = "100%";
       toast("Video MP4 esportato.");
     }
   } catch (e) {
     $("exportStatus").textContent = e.message;
   } finally {
+    paintElapsed();
     clearInterval(elapsedTimer);
-    exportBusy = false;
-    $("doExport").disabled = false;
-    $("cancelExport").hidden = true;
+    setExportBusy(false);
   }
 });
 $("cancelExport").onclick = () => {
   exportCancelled = true;
-  studio.cancelExport();
+  $("cancelExport").disabled = true;
+  $("exportStatus").textContent = "Annullamento in corso…";
+  studio.cancelExport().finally(() => ($("cancelExport").disabled = false));
 };
 const recordFields = [
   "recordName",
@@ -3258,17 +3383,34 @@ new ResizeObserver(() => {
 }).observe(document.querySelector(".stage"));
 $("openExportVideo").onclick = safe(() => studio.openExport("video"));
 $("openExportFolder").onclick = safe(() => studio.openExport("folder"));
+for (const id of exportPreferenceFields) {
+  if (id === "exportEncoder" || savedExportPreferences[id] === undefined)
+    continue;
+  const field = $(id);
+  if (field.type === "checkbox") field.checked = !!savedExportPreferences[id];
+  else field.value = savedExportPreferences[id];
+}
+for (const id of exportPreferenceFields)
+  $(id).addEventListener("change", () => {
+    updateExportControls();
+    saveExportPreferences();
+  });
 for (const prefix of ["export", "record"]) {
   const preset = $(prefix + "Preset"),
     slider = $(prefix + "Quality");
-  preset.onchange = () => {
+  preset.onchange = (event) => {
     if (preset.value !== "custom") {
       slider.value = preset.value;
       slider.dispatchEvent(new Event("input"));
     }
+    if (prefix === "export") {
+      updateExportControls();
+      if (event) saveExportPreferences();
+    }
   };
   slider.addEventListener("input", () => {
     if (preset.value !== slider.value) preset.value = "custom";
+    if (prefix === "export") updateExportControls();
   });
   preset.onchange();
 }
@@ -3279,12 +3421,24 @@ studio
       const option = new Option(e.label, e.id);
       $("exportEncoder").add(option);
     }
+    const wanted = savedExportPreferences.exportEncoder;
+    if ([...$("exportEncoder").options].some((o) => o.value === wanted))
+      $("exportEncoder").value = wanted;
     $("gpuStatus").textContent = encoders.length
-      ? "Encoder GPU verificati con una codifica di prova. Ripiego CPU automatico in caso di errore."
-      : "Nessun encoder GPU utilizzabile rilevato: rendering CPU disponibile.";
+      ? "GPU disponibile · verifica encoder eseguita"
+      : "GPU non disponibile: verrà utilizzata la CPU";
+    $("exportDiagnostics").textContent = encoders.length
+      ? "Encoder disponibili: " +
+        encoders.map((e) => e.label).join(", ") +
+        ". Eventuali ripieghi CPU sono riportati durante l’esportazione."
+      : "Nessun encoder hardware ha superato la codifica di prova.";
+    updateExportControls();
   })
-  .catch((e) => {
-    $("gpuStatus").textContent = "Verifica GPU non riuscita: disponibile CPU.";
+  .catch(() => {
+    $("gpuStatus").textContent = "GPU non disponibile: verrà utilizzata la CPU";
+    $("exportDiagnostics").textContent =
+      "Verifica degli encoder GPU non riuscita.";
+    updateExportControls();
   });
 function ensureTrackRows() {
   const count = Timeline.trackCount(project);
@@ -3673,20 +3827,10 @@ new ResizeObserver(() => {
   if (fitTimeline) renderTimeline();
   else requestRulerPaint();
 }).observe($("timelineScroll"));
-function showEdgeSnap() {
-  $("edgeSnap").setAttribute("aria-pressed", String(edgeSnapEnabled));
-  $("edgeSnap").textContent = "🧲 Aggancio: " + (edgeSnapEnabled ? "sì" : "no");
-}
-$("edgeSnap").onclick = () => {
-  edgeSnapEnabled = !edgeSnapEnabled;
-  localStorage.setItem("akhbar-edge-snap", String(edgeSnapEnabled));
-  showEdgeSnap();
-};
-showEdgeSnap();
 function showRipple() {
   $("rippleFamily").setAttribute("aria-pressed", String(rippleFamily));
   $("rippleFamily").textContent =
-    "⇤ Chiudi spazi della clip: " + (rippleFamily ? "sì" : "no");
+    "🧲 Chiudi spazi della clip: " + (rippleFamily ? "sì" : "no");
 }
 $("rippleFamily").onclick = () => {
   rippleFamily = !rippleFamily;
@@ -3775,14 +3919,42 @@ $("freezeFrame").onclick = safe(async () => {
 });
 let exportOutputPath = null;
 $("chooseExportPath").onclick = safe(async () => {
-  const path = await studio.chooseExport();
+  const path = await studio.chooseExport({
+    directory: $("exportDirectory").value,
+    name: $("exportFilename").value,
+  });
   if (path) {
     exportOutputPath = path;
-    $("exportPath").textContent = path;
+    const split = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+    $("exportDirectory").value =
+      path.slice(0, split === 2 && path[1] === ":" ? 3 : split) || "/";
+    $("exportFilename").value = path.slice(split + 1);
+    workspacePrefs = await studio.setPreferences({
+      exports: $("exportDirectory").value,
+    });
+    $("exportsDirectory").value = workspacePrefs.exports;
+    saveExportPreferences();
+    showExportTarget();
   }
+});
+for (const id of ["exportFilename", "exportDirectory"])
+  $(id).addEventListener("input", () => {
+    exportOutputPath = null;
+    showExportTarget();
+  });
+$("exportDirectory").onchange = safe(async () => {
+  workspacePrefs = await studio.setPreferences({
+    exports: $("exportDirectory").value,
+  });
+  $("exportsDirectory").value = workspacePrefs.exports;
 });
 function applyPreferences(p) {
   workspacePrefs = { ...workspacePrefs, ...p };
+  if (!exportBusy) {
+    $("exportDirectory").value = workspacePrefs.exports || "";
+    exportOutputPath = null;
+    showExportTarget();
+  }
   document.documentElement.style.setProperty(
     "--ruler-color",
     workspacePrefs.rulerColor,

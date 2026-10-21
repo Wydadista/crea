@@ -227,21 +227,21 @@ const { _electron: electron } = require("playwright"),
       await page.evaluate(() => project.clips.find((c) => c.id === "b").start),
       1,
     );
-    // The magnet switch really disables snapping, independently of ripple deletion.
+    // Family gap closure does not disable the always-on movement snapping.
     await setup(40);
-    await page.locator("#edgeSnap").click();
+    await page.locator("#rippleFamily").click();
     box = await page.locator('[data-id="b"]').boundingBox();
     ruler = await page.locator("#ruler").boundingBox();
     await page.mouse.move(box.x + 20, box.y + 20);
     await page.mouse.down();
     await page.mouse.move(ruler.x + 40 + 20 - 6, box.y + 25);
-    assert.equal(await page.locator(".drop-ghost.snapped").count(), 0);
+    assert.equal(await page.locator(".drop-ghost.snapped").count(), 1);
     await page.mouse.up();
     assert.equal(
       await page.evaluate(() => project.clips.find((c) => c.id === "b").start),
-      3,
+      1,
     );
-    await page.locator("#edgeSnap").click();
+    await page.locator("#rippleFamily").click();
     await setup(40);
     box = await page.locator('[data-id="b"]').boundingBox();
     const target = await page.locator("#track1").boundingBox();

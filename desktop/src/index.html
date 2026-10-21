@@ -15,7 +15,7 @@
     <header>
       <div class="brand">
         <span class="brand-icon">A</span> AKhbar <b>STUDIO</b
-        ><span class="badge">DESKTOP · 0.3.4</span>
+        ><span class="badge">DESKTOP · 0.3.5</span>
       </div>
       <details id="fileMenu" class="file-menu">
         <summary>File ▾</summary>
@@ -181,7 +181,7 @@
             value="0"
             aria-label="Navigazione intero montaggio"
           /><span id="projectSeekTime">00:00 / 00:00</span
-          ><span id="playbackState">Aggancio senza ripple</span>
+          ><span id="playbackState">Aggancio automatico</span>
         </div>
       </section>
       <aside class="properties">
@@ -520,17 +520,11 @@
               +</button
             ><output id="trackHeightValue">100</output></label
           ><button
-            id="edgeSnap"
-            aria-pressed="true"
-            title="Aggancia i bordi durante il trascinamento, senza chiudere gli spazi dopo un’eliminazione"
-          >
-            🧲 Aggancio: sì</button
-          ><button
             id="rippleFamily"
             aria-pressed="false"
-            title="Chiudi solo i vuoti lasciati dai segmenti della stessa aggiunta"
+            title="Chiudi i vuoti dopo eliminazione o accorciamento dei bordi, solo fra segmenti della stessa clip inserita. Aggancio durante gli spostamenti sempre attivo."
           >
-            ⇤ Chiudi spazi della clip: no</button
+            🧲 Chiudi spazi della clip: no</button
           ><label
             >Traccia
             <select id="activeTrack">
@@ -618,109 +612,181 @@
       </div>
       <footer>
         <span id="status"
-          >Pronto. Aggancio senza ripple: le clip restano dove le metti.</span
+          >Pronto. Aggancio automatico durante gli spostamenti. Calamita:
+          chiusura spazi della singola clip.</span
         ><span id="durationLabel"></span>
       </footer>
     </section>
-    <dialog id="exportDialog">
-      <form method="dialog">
-        <div class="modal-title">
-          <h2>Esporta il montaggio</h2>
-          <button class="close" value="cancel">×</button>
-        </div>
-        <p class="hint">MP4 H.264 / AAC · tracce composte · 16:9</p>
-        <div class="form-grid">
-          <label
-            >Risoluzione<select id="exportHeight">
-              <option value="original" id="originalResolution">
-                Originale
-              </option>
-              <option value="720">720p</option>
-              <option value="1080" selected>1080p</option>
-              <option value="1440">1440p</option>
-              <option value="2160">2160p</option>
-            </select></label
-          ><label
-            >FPS personalizzati (1–120)<input
-              id="exportFps"
-              type="number"
-              min="1"
-              max="120"
-              step="1"
-              value="30"
-          /></label>
-        </div>
-        <label
-          >Qualità <b id="exportQualityValue">70%</b
-          ><select id="exportPreset">
-            <option value="35">Base — file piccoli, meno dettagli</option>
-            <option value="55">Buona — uso quotidiano, peso contenuto</option>
-            <option value="75" selected>
-              Ottima — dettagli nitidi, peso maggiore
-            </option>
-            <option value="100">
-              Massima qualità con compressione, file più grandi
-            </option>
-            <option value="custom">
-              Personalizzata — slider 1–100%
-            </option></select
-          ><input
-            id="exportQuality"
-            type="range"
-            min="1"
-            max="100"
-            value="70"
-            list="qualityMarks"
-        /></label>
-        <p class="hint">
-          Quattro livelli oppure qualità personalizzata. Valori inferiori
-          riducono qualità e peso. Dimensione finale variabile secondo le scene.
-        </p>
-        <label
-          >Elaborazione<select id="exportEncoder">
-            <option value="cpu">CPU — compatibile</option>
-          </select></label
-        >
-        <label
-          >Velocità codifica CPU<select id="exportCpuPreset">
-            <option value="veryfast">
-              Rapida · file potenzialmente più grandi
-            </option>
-            <option value="fast">Compressione maggiore · più lenta</option>
-          </select></label
-        ><label
-          >Keyframe ogni (secondi)<input
-            id="exportKeyframe"
-            type="number"
-            min="1"
-            max="30"
-            value="4"
-        /></label>
-        <label
-          ><input id="preserveOriginal" type="checkbox" />Copia flussi originali
-          senza ricodifica (solo clip intera, FPS e dimensioni identici; ignora
-          qualità encoder)</label
-        >
-        <button id="chooseExportPath" type="button">Scegli destinazione…</button
-        ><output id="exportPath"
-          >Cartella Esportazioni configurata nelle impostazioni</output
-        >
-        <p id="gpuStatus" class="hint"></p>
-        <progress id="exportProgress" value="0" max="100"></progress>
-        <p id="exportEngine">Encoder da verificare all’avvio</p>
-        <p id="exportElapsed">Tempo trascorso: 00:00</p>
-        <p id="exportStatus">Scegli dove salvare il video.</p>
-        <div id="exportResultActions" hidden>
-          <button id="openExportVideo" type="button">Apri video</button
-          ><button id="openExportFolder" type="button">Apri cartella</button>
-        </div>
-        <div class="modal-actions">
-          <button id="cancelExport" type="button" hidden>
-            Annulla esportazione</button
-          ><button id="doExport" type="button" class="primary">
-            Esporta MP4 ↗
+    <dialog id="exportDialog" aria-labelledby="exportTitle">
+      <form method="dialog" id="exportForm">
+        <header class="export-header">
+          <div>
+            <h2 id="exportTitle">Esporta il montaggio</h2>
+            <p class="hint">MP4 · H.264 · AAC</p>
+          </div>
+          <button
+            id="exportCloseTop"
+            class="close"
+            value="cancel"
+            formnovalidate
+            aria-label="Chiudi"
+          >
+            ×
           </button>
+        </header>
+        <div class="export-body">
+          <fieldset id="exportSettings">
+            <div class="export-main-grid">
+              <label
+                >Risoluzione<select id="exportHeight">
+                  <option value="original" id="originalResolution">
+                    Originale
+                  </option>
+                  <option value="720">720p</option>
+                  <option value="1080" selected>1080p</option>
+                  <option value="1440">1440p</option>
+                  <option value="2160">2160p</option>
+                </select></label
+              >
+              <label
+                >FPS<input
+                  id="exportFps"
+                  type="number"
+                  min="1"
+                  max="120"
+                  step="1"
+                  value="30"
+              /></label>
+              <div>
+                <label
+                  >Qualità
+                  <span
+                    class="info-tip"
+                    tabindex="0"
+                    title="Qualità e peso dipendono dal contenuto. 100% conserva la compressione."
+                    aria-label="100% usa ancora compressione"
+                    >ⓘ</span
+                  >
+                  <select id="exportPreset">
+                    <option value="35">Base · file piccoli</option>
+                    <option value="55">Buona · peso contenuto</option>
+                    <option value="75" selected>
+                      Ottima · dettagli nitidi
+                    </option>
+                    <option value="100">Massima · file più grandi</option>
+                    <option value="custom">Personalizzata</option>
+                  </select></label
+                >
+                <label id="exportCustomQuality" class="export-custom" hidden
+                  >Qualità personalizzata <b id="exportQualityValue">75%</b>
+                  <input
+                    id="exportQuality"
+                    aria-label="Qualità personalizzata"
+                    type="range"
+                    min="1"
+                    max="100"
+                    value="75"
+                    list="qualityMarks"
+                  />
+                </label>
+              </div>
+              <div>
+                <label
+                  >Elaborazione<select id="exportEncoder">
+                    <option value="cpu">CPU — compatibile</option>
+                  </select></label
+                >
+                <p id="gpuStatus" class="hint" role="status">
+                  Verifica disponibilità GPU…
+                </p>
+              </div>
+            </div>
+            <section class="export-file" aria-label="File finale">
+              <label
+                >Nome file<input
+                  id="exportFilename"
+                  value="Video-AKhbar.mp4"
+                  spellcheck="false"
+              /></label>
+              <label
+                >Cartella
+                <div class="export-folder-row">
+                  <input id="exportDirectory" spellcheck="false" /><button
+                    id="chooseExportPath"
+                    type="button"
+                  >
+                    Sfoglia…
+                  </button>
+                </div></label
+              >
+            </section>
+            <details id="exportAdvanced">
+              <summary>Impostazioni avanzate</summary>
+              <div class="export-advanced-grid">
+                <label id="exportCpuControl"
+                  >Velocità codifica CPU<select id="exportCpuPreset">
+                    <option value="veryfast">Rapida · file più grandi</option>
+                    <option value="fast">
+                      Compressione maggiore · più lenta
+                    </option>
+                  </select></label
+                >
+                <label
+                  >Keyframe ogni (secondi)<input
+                    id="exportKeyframe"
+                    type="number"
+                    min="1"
+                    max="30"
+                    value="4"
+                /></label>
+              </div>
+              <label class="check"
+                ><input id="preserveOriginal" type="checkbox" />Copia flussi
+                originali senza ricodifica
+                <span
+                  class="info-tip"
+                  tabindex="0"
+                  title="Richiede una sola clip intera H.264/AAC, senza effetti o modifiche audio, con FPS, dimensioni e keyframe compatibili. Le richieste incompatibili vengono rifiutate."
+                  aria-label="Informazioni sulla copia dei flussi"
+                  >ⓘ</span
+                >
+              </label>
+              <p id="exportCopyNotice" class="hint" hidden>
+                La copia conserva la qualità originale: il livello Qualità non
+                si applica. Richiede FPS, risoluzione e audio compatibili.
+              </p>
+            </details>
+          </fieldset>
+          <section id="exportActivity" hidden aria-live="polite">
+            <div class="export-progress-row">
+              <progress id="exportProgress" value="0" max="100"></progress
+              ><b id="exportPercent">0%</b>
+            </div>
+            <div class="export-progress-meta">
+              <span id="exportElapsed">Tempo trascorso: 00:00</span
+              ><button id="cancelExport" type="button" hidden>
+                Annulla esportazione
+              </button>
+            </div>
+            <p id="exportStatus">Pronto per esportare.</p>
+            <output id="exportPath" tabindex="0"></output>
+            <div id="exportResultActions" hidden>
+              <button id="openExportVideo" type="button">Apri video</button
+              ><button id="openExportFolder" type="button">
+                Apri cartella
+              </button>
+            </div>
+          </section>
+          <details id="exportTechnical">
+            <summary>Dettagli tecnici</summary>
+            <p id="exportEngine">Encoder da verificare all’avvio</p>
+            <p id="exportDiagnostics" class="hint"></p>
+          </details>
         </div>
+        <footer class="export-footer">
+          <button id="exportClose" value="cancel" formnovalidate>Chiudi</button
+          ><button id="doExport" type="button" class="primary">Esporta</button>
+        </footer>
       </form>
     </dialog>
     <dialog id="recordDialog">
@@ -947,6 +1013,7 @@
       </form>
     </dialog>
     <div id="trackContextMenu" hidden>
+      <button id="pasteTrack">Incolla al cursore · Ctrl+V</button>
       <button id="deleteTrack">Elimina traccia</button>
     </div>
     <dialog id="deleteTrackDialog">
@@ -1008,6 +1075,8 @@
       <option value="70" label="Consigliata"></option>
     </datalist>
     <div id="contextMenu" hidden>
+      <button data-action="copy">Copia · Ctrl+C</button>
+      <button data-action="paste">Incolla al cursore · Ctrl+V</button>
       <button data-action="split">✂ Dividi al cursore</button
       ><button data-action="group">▣ Raggruppa elementi selezionati</button
       ><button data-action="ungroup">Separa gruppo</button

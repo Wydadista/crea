@@ -135,7 +135,7 @@ test("groups split at real 0.1 s gaps and across rows; isolated clips remain ind
   ];
   let i = 0;
   T.groupSelected(
-    clips,
+    clips.map((c) => Object.assign(c, { sourceInstanceId: "insertion" })),
     clips.map((c) => c.id),
     () => String(++i),
   );

@@ -33,6 +33,7 @@ const { collectProject, safeName, reserveRecording } = require("./storage");
 const { Recording } = require("./recording");
 const preferencesFile = () =>
   path.join(app.getPath("userData"), "preferences.json");
+if (process.platform === "win32") app.setAppUserModelId("it.crea.studio");
 async function preferences() {
   let saved = {};
   try {
@@ -159,11 +160,12 @@ app.whenReady().then(() => {
       }
     },
   );
+  const workArea = screen.getPrimaryDisplay().workAreaSize;
   win = new BrowserWindow({
-    width: 1500,
-    height: 950,
-    minWidth: 1080,
-    minHeight: 820,
+    width: Math.min(1500, workArea.width),
+    height: Math.min(950, workArea.height),
+    minWidth: 720,
+    minHeight: 480,
     backgroundColor: "#15191f",
     title: "AKhbar studio",
     icon: path.join(__dirname, "project-icon.ico"),
@@ -175,6 +177,14 @@ app.whenReady().then(() => {
       backgroundThrottling: false,
     },
   });
+  if (process.platform === "win32" && app.isPackaged)
+    win.setAppDetails({
+      appId: "it.crea.studio",
+      appIconPath: process.execPath,
+      appIconIndex: 0,
+      relaunchCommand: `"${process.execPath}"`,
+      relaunchDisplayName: "AKhbar studio",
+    });
   win.on("close", (event) => {
     if (!allowClose) {
       event.preventDefault();
@@ -817,9 +827,15 @@ ipcMain.handle("audio-data", async (_e, c, m, page = 0) => {
     await handle.close();
   }
 });
-ipcMain.handle("choose-export", async () => {
+ipcMain.handle("choose-export", async (_e, options = {}) => {
   const result = await dialog.showSaveDialog(win, {
-    defaultPath: path.join((await preferences()).exports, "Video-AKhbar.mp4"),
+    defaultPath: path.join(
+      typeof options.directory === "string" &&
+        path.isAbsolute(options.directory)
+        ? options.directory
+        : (await preferences()).exports,
+      safeName(options.name, "Video-AKhbar.mp4"),
+    ),
     filters: [{ name: "Video MP4", extensions: ["mp4"] }],
   });
   return result.canceled ? null : result.filePath;
@@ -827,17 +843,51 @@ ipcMain.handle("choose-export", async () => {
 ipcMain.handle("export", async (_e, project, settings) => {
   if (exportController) throw Error("Esportazione già in corso");
   project = Timeline.validate(project);
-  const result = settings.outputPath
-    ? { filePath: settings.outputPath }
-    : {
-        filePath: await reserveRecording(
-          (await preferences()).exports,
-          projectPath
-            ? path.basename(projectPath, ".creastudio")
-            : "Video-AKhbar",
-          "mp4",
-        ),
-      };
+  let namedPath;
+  if (!settings.outputPath && settings.outputName !== undefined) {
+    if (
+      typeof settings.outputDirectory !== "string" ||
+      !path.isAbsolute(settings.outputDirectory)
+    )
+      throw Error("Indica una cartella di esportazione con percorso completo");
+    const name = String(settings.outputName).trim();
+    if (!name || safeName(name, "") !== name)
+      throw Error(
+        "Nome file non valido: evita caratteri speciali e percorsi nel nome",
+      );
+    namedPath = path.join(
+      settings.outputDirectory,
+      /\.mp4$/i.test(name) ? name : name + ".mp4",
+    );
+    try {
+      await fs.access(namedPath);
+      const answer = await dialog.showMessageBox(win, {
+        type: "question",
+        title: "File già esistente",
+        message: "Sostituire il video esistente?",
+        detail: namedPath,
+        buttons: ["Annulla", "Sostituisci"],
+        defaultId: 0,
+        cancelId: 0,
+      });
+      if (answer.response !== 1) return null;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    await fs.mkdir(settings.outputDirectory, { recursive: true });
+  }
+  const result =
+    settings.outputPath || namedPath
+      ? { filePath: settings.outputPath || namedPath }
+      : {
+          filePath: await reserveRecording(
+            (await preferences()).exports,
+            projectPath
+              ? path.basename(projectPath, ".creastudio")
+              : "Video-AKhbar",
+            "mp4",
+          ),
+        };
   if (result.canceled) return null;
   const target = path.resolve(result.filePath);
   if (

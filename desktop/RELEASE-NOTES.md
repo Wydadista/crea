@@ -1,3 +1,13 @@
+# AKhbar studio 0.3.5
+
+Libreria: clic seleziona, doppio clic apre la sorgente; trascinamento e pulsante + conservati. Copia/incolla di selezioni multiple dal menu o con Ctrl+C/Ctrl+V, con proprietà e disposizione relative conservate e conflitti rifiutati senza modifiche parziali. Le copie hanno una provenienza distinta dagli originali.
+
+Aggancio durante il trascinamento sempre attivo, anche tra file diversi. Calamita dedicata alla chiusura degli spazi della singola clip inserita, dopo eliminazione e dopo accorciamento di entrambi i bordi, al rilascio. Gruppi separati per inserimento e adiacenza reale, mantenendo i tagli visibili. Corretta la zona di trascinamento delle clip molto strette.
+
+Esportazione compatta fino a 900 px, due colonne, qualità personalizzata condizionale, avanzate e diagnostica richiudibili, nome e cartella raggruppati, progressi e risultato riutilizzati, barra inferiore sempre raggiungibile. Preferenze conservate, motore di rendering invariato. Icona configurata anche nelle risorse dell’eseguibile, nei collegamenti e nell’installer; identificazione Windows della finestra.
+
+Prove brevi e limiti: [VERIFICA-0.3.5.md](VERIFICA-0.3.5.md). DPI nativi, icona, installer e prove lunghe affidati al PC dell’utente.
+
 # AKhbar studio 0.3.4
 
 Aggancio dei bordi con tolleranza in pixel, riconoscimento degli attraversamenti rapidi, mantenimento dell’aggancio e nuovo controllo al rilascio; precedenza alla traccia iniziale e calamita separata dalla chiusura degli spazi. Velocità e ripristino limitati alla selezione, rifiuto atomico dei conflitti senza ricollocare clip su altre tracce; comando separato per la sorgente intera. Gruppi consecutivi con colore uniforme, contorno esterno e tagli grigi, separati anche da vuoti di 0,1 s; collegamento tra tracce disponibile esplicitamente. Righello da 24 px con etichette misurate e limitate all’area visibile. Invio applica le proprietà e le impostazioni; i campi multilinea conservano il ritorno a capo.

@@ -3,7 +3,7 @@ contextBridge.exposeInMainWorld("studio", {
   preferences: () => ipcRenderer.invoke("preferences"),
   setPreferences: (v) => ipcRenderer.invoke("set-preferences", v),
   chooseDirectory: () => ipcRenderer.invoke("choose-directory"),
-  chooseExport: () => ipcRenderer.invoke("choose-export"),
+  chooseExport: (options) => ipcRenderer.invoke("choose-export", options),
   thumbnail: (file, t) => ipcRenderer.invoke("thumbnail", file, t),
   freezeFrame: (m, t) => ipcRenderer.invoke("freeze-frame", m, t),
   recordingToolbar: (state) => ipcRenderer.invoke("recording-toolbar", state),
