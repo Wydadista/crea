@@ -1977,7 +1977,7 @@ header .project-name {
   pointer-events: none;
 }
 .clip.group {
-  background: var(--group-color) !important;
+  background: var(--clip-color) !important;
   border: 1px solid #aaa1d1;
   border-radius: 6px;
 }
@@ -2368,7 +2368,10 @@ header .project-name {
 /* Keep a draggable centre even when a short segment is narrower than both trim handles. */
 .clip .handle,
 .clip.compact-track .handle {
-  width: min(7px, 25%);
+  width: min(10px, 30%);
+  z-index: 12;
+  touch-action: none;
+  user-select: none;
 }
 
 /* Joined segments share a strong outer silhouette; internal cuts are references. */
@@ -2677,4 +2680,9 @@ header .project-name {
 }
 .app-dialog-actions .primary {
   margin-right: auto;
+}
+
+/* Provenance colours survive cuts, joins and links; borders/badges show membership. */
+.clip {
+  background: var(--clip-color) !important;
 }

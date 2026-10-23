@@ -155,6 +155,64 @@
     sourceFamily(c) {
       return c.sourceInstanceId || c.id;
     },
+    colorSource(c) {
+      return c.colorSourceId || api.sourceFamily(c);
+    },
+    clipColor(c) {
+      let hash = 2166136261;
+      for (const char of api.colorSource(c))
+        hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+      hash ^= hash >>> 16;
+      hash = Math.imul(hash, 0x85ebca6b);
+      hash ^= hash >>> 13;
+      return `hsl(${(hash >>> 0) % 360} 42% 27%)`;
+    },
+    closeTrimGap(p, previous, trimmed) {
+      const start = Math.min(...previous.map((c) => c.start));
+      const end = Math.max(...previous.map((c) => c.start + api.duration(c)));
+      const head = Math.max(
+        0,
+        Math.min(...trimmed.map((c) => c.start)) - start,
+      );
+      const tail = Math.max(
+        0,
+        end - Math.max(...trimmed.map((c) => c.start + api.duration(c))),
+      );
+      if (head < 1e-8 && tail < 1e-8) return;
+      const ids = new Set(trimmed.map((c) => c.id));
+      const track = previous[0].track;
+      // Preserve source cuts and attach the shortened unit to its predecessor.
+      const preceding = p.clips.filter(
+        (c) =>
+          !ids.has(c.id) &&
+          c.track === track &&
+          c.start + api.duration(c) <= start + 1e-8,
+      );
+      const anchor =
+        head > 1e-8 && preceding.length
+          ? Math.max(...preceding.map((c) => c.start + api.duration(c)))
+          : start;
+      const shift = head + (head > 1e-8 ? Math.max(0, start - anchor) : 0);
+      for (const c of trimmed) c.start -= shift;
+      const families = new Set(
+        previous.map((c) => c.sourceInstanceId).filter(Boolean),
+      );
+      const following = p.clips.filter(
+        (c) =>
+          !ids.has(c.id) &&
+          c.track === track &&
+          families.has(c.sourceInstanceId) &&
+          c.start >= end - 1e-8,
+      );
+      const positions = following.map((c) => c.start);
+      for (const c of following) c.start -= shift + tail;
+      // Another source can block the downstream ripple. Keep the actual trim and
+      // its left attachment rather than undoing the user's source cut on release.
+      if (api.overlaps(p.clips))
+        following.forEach((c, i) => {
+          c.start = positions[i];
+        });
+    },
     trimFamilySegment(input, id, trimmed, closeGaps = false) {
       const p = JSON.parse(JSON.stringify(input)),
         old = input.clips.find((c) => c.id === id),
@@ -165,22 +223,7 @@
         out: trimmed.out,
         start: trimmed.start,
       });
-      const rate = old.speed || 1,
-        head = Math.max(0, (c.in - old.in) / rate),
-        tail = Math.max(0, (old.out - c.out) / rate);
-      if (closeGaps && (head || tail)) {
-        // Keep the selected source cuts: remove timeline time, never restore media.
-        c.start = Math.max(0, c.start - head);
-        if (old.sourceInstanceId)
-          for (const next of p.clips)
-            if (
-              next.id !== id &&
-              next.track === old.track &&
-              next.sourceInstanceId === old.sourceInstanceId &&
-              next.start >= old.start + api.duration(old) - 1e-8
-            )
-              next.start -= head + tail;
-      }
+      if (closeGaps) api.closeTrimGap(p, [old], [c]);
       if (!api.canPlace(input.clips, p.clips))
         throw Error(
           "Chiusura spazio bloccata da un’altra clip: nessuna modifica applicata",
@@ -193,7 +236,10 @@
       const used = new Set(clips.map((c) => c.mediaId));
       return JSON.parse(
         JSON.stringify({
-          clips,
+          clips: clips.map((c) => ({
+            ...c,
+            colorSourceId: api.colorSource(c),
+          })),
           media: p.media.filter((m) => used.has(m.id)),
         }),
       );
@@ -237,6 +283,7 @@
         const next = {
           ...c,
           id: ids.get(c.id),
+          colorSourceId: api.colorSource(c),
           mediaId: media.get(c.mediaId),
           sourceInstanceId: remap(families, api.sourceFamily(c)),
           start: start + c.start - timeOrigin,
@@ -247,6 +294,7 @@
         if (c.joinedSegments)
           next.joinedSegments = c.joinedSegments.map((segment) => ({
             ...segment,
+            colorSourceId: api.colorSource(segment),
             id: remap(ids, segment.id),
             mediaId: media.get(segment.mediaId),
             sourceInstanceId: remap(families, api.sourceFamily(segment)),
@@ -370,6 +418,7 @@
         track,
         muted,
         sourceInstanceId: id,
+        colorSourceId: api.colorSource(video),
         detachedFrom: video.id,
       };
       for (const key of [
@@ -491,6 +540,7 @@
         if (offset < 0.02 || offset > d - 0.02) continue;
         const cut = api.sourceTime(c, time),
           id = typeof makeId === "function" ? makeId() : makeId;
+        c.colorSourceId ||= api.colorSource(c);
         c.sourceInstanceId ||= c.id;
         clips.splice(
           i,
@@ -628,7 +678,7 @@
       project.clips = project.clips.filter((c) => !ids.includes(c.id));
       return { project, clipboard };
     },
-    trimJoined(input, id, side, delta) {
+    trimJoined(input, id, side, delta, closeGaps = false) {
       const p = JSON.parse(JSON.stringify(input));
       const clip = p.clips.find((c) => c.id === id);
       if (!clip?.groupId) throw Error("Elemento non unito");
@@ -709,6 +759,7 @@
       p.clips = p.clips
         .filter((c) => c.groupId !== clip.groupId)
         .concat(result);
+      if (closeGaps) api.closeTrimGap(p, visible, result);
       if (!api.canPlace([], p.clips)) throw Error("Intervallo occupato");
       return api.validate(p);
     },
@@ -948,7 +999,8 @@
           !n(c.volume, 0, 1) ||
           !n(c.speed ?? 1, 0.1, 16) ||
           (c.groupId !== undefined && typeof c.groupId !== "string") ||
-          (c.linkId !== undefined && typeof c.linkId !== "string")
+          (c.linkId !== undefined && typeof c.linkId !== "string") ||
+          (c.colorSourceId !== undefined && typeof c.colorSourceId !== "string")
         )
           throw Error("Clip non valida");
         if (

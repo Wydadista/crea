@@ -150,16 +150,15 @@ test("trim closure is source-speed aware, preserves selected cuts and affects on
   );
   const conflicting = project();
   conflicting.clips = [c("a", 0), c("b", 2), c("other", 4, "B"), c("c", 6)];
-  assert.throws(
-    () =>
-      T.trimFamilySegment(
-        conflicting,
-        "b",
-        { ...conflicting.clips[1], out: 0.5 },
-        true,
-      ),
-    /Chiusura spazio/,
+  const trimmed = T.trimFamilySegment(
+    conflicting,
+    "b",
+    { ...conflicting.clips[1], out: 0.5 },
+    true,
   );
+  assert.equal(trimmed.clips.find((c) => c.id === "b").out, 0.5);
+  assert.equal(trimmed.clips.find((c) => c.id === "c").start, 6);
+  assert.equal(trimmed.clips.find((c) => c.id === "other").start, 4);
 });
 test("grouping partitions each inserted clip and actual gaps, including independent inserts of one media", () => {
   const p = project();

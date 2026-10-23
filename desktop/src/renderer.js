@@ -549,11 +549,6 @@ function renderRuler() {
   }
   ruler.replaceChildren(fragment);
 }
-function groupColor(id) {
-  let hash = 0;
-  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) | 0;
-  return `hsl(${Math.abs(hash) % 360} 28% 31%)`;
-}
 function renderTimeline() {
   const sc = $("timelineScroll"),
     total = Timeline.total(project.clips);
@@ -596,6 +591,8 @@ function renderTimeline() {
         "div",
         `clip${group ? " group" : ""}${m.kind === "audio" ? " audio" : ""}${m.kind === "annotation" ? " annotation" : ""}${members.some((c) => selection.has(c.id)) ? " selected" : ""}`,
       );
+    node.style.setProperty("--clip-color", Timeline.clipColor(c));
+    node.dataset.colorSource = Timeline.colorSource(c);
     const rowHeight = project.trackHeights?.[block.track] || 100,
       padding = trackPadding(rowHeight);
     node.style.height = rowHeight - 2 * padding + "px";
@@ -603,7 +600,6 @@ function renderTimeline() {
     node.classList.toggle("compact-track", rowHeight < 64);
     if (c.groupId) {
       node.classList.add("group");
-      node.style.setProperty("--group-color", groupColor(c.groupId));
       const join = joins.get(c.id);
       if (join?.left) {
         node.classList.add("joined-left");
@@ -613,12 +609,6 @@ function renderTimeline() {
     }
     if (c.linkId) {
       node.classList.add("linked");
-      const siblings = project.clips.filter((x) => x.linkId === c.linkId);
-      const index = siblings.findIndex((x) => x.id === c.id);
-      node.style.setProperty(
-        "--clip-color",
-        `hsl(${(index * 137.508) % 360} 40% 28%)`,
-      );
       const badge = el("span", "link-badge", "🔗 " + c.linkId.slice(0, 4));
       badge.title = "Elementi raggruppati";
       node.append(badge);
@@ -915,19 +905,21 @@ function beginClipDrag(e, block) {
   });
 }
 function trimJoinedDrag(e, c, side) {
+  const dragScale = scale,
+    fitBefore = fitTimeline;
+  fitTimeline = false;
   selectIds([c.id]);
   const before = clone(project),
     x = e.clientX,
     scroll = $("timelineScroll").scrollLeft;
-  let next = before;
+  let next = before,
+    lastValidDelta = 0;
   const move = (ev) => {
     try {
-      next = Timeline.trimJoined(
-        before,
-        c.id,
-        side,
-        (ev.clientX - x + $("timelineScroll").scrollLeft - scroll) / scale,
-      );
+      const delta =
+        (ev.clientX - x + $("timelineScroll").scrollLeft - scroll) / dragScale;
+      next = Timeline.trimJoined(before, c.id, side, delta);
+      lastValidDelta = delta;
       project = next;
       selection = new Set(
         Timeline.linkedIds(
@@ -946,11 +938,24 @@ function trimJoinedDrag(e, c, side) {
     if (ev.type === "pointercancel") project = before;
     else {
       move(ev);
-      if (JSON.stringify(project) !== JSON.stringify(before)) {
-        history.push(JSON.stringify(before));
-        future = [];
+      try {
+        project = Timeline.trimJoined(
+          before,
+          c.id,
+          side,
+          lastValidDelta,
+          rippleFamily,
+        );
+        if (JSON.stringify(project) !== JSON.stringify(before)) {
+          history.push(JSON.stringify(before));
+          future = [];
+        }
+      } catch (error) {
+        project = before;
+        toast(error.message);
       }
     }
+    fitTimeline = fitBefore;
     changed();
   });
 }
@@ -960,6 +965,9 @@ function trimDrag(e, c, side) {
   e.stopPropagation();
   pause();
   if (c.groupId) return trimJoinedDrag(e, c, side);
+  const dragScale = scale,
+    fitBefore = fitTimeline;
+  fitTimeline = false;
   selectIds([c.id]);
   const x = e.clientX,
     before = clone(project),
@@ -969,7 +977,7 @@ function trimDrag(e, c, side) {
   let lastX = x;
   const move = (ev) => {
     lastX = ev.clientX;
-    const delta = (lastX - x + $("timelineScroll").scrollLeft - scroll) / scale,
+    const delta = (lastX - x + $("timelineScroll").scrollLeft - scroll) / dragScale,
       rate = old.speed || 1;
     Object.assign(c, old);
     if (side === "left") {
@@ -996,6 +1004,7 @@ function trimDrag(e, c, side) {
   captureMove(e, move, (ev) => {
     if (ev.type === "pointercancel") {
       project = before;
+      fitTimeline = fitBefore;
       changed();
       return;
     }
@@ -1011,6 +1020,7 @@ function trimDrag(e, c, side) {
       project = before;
       toast(error.message);
     }
+    fitTimeline = fitBefore;
     changed();
   });
 }
