@@ -35,6 +35,10 @@ contextBridge.exposeInMainWorld("studio", {
     ipcRenderer.invoke("save-project", project, options),
   projectInfo: () => ipcRenderer.invoke("project-info"),
   recentProjects: () => ipcRenderer.invoke("recent-projects"),
+  onAppDialog: (fn) =>
+    ipcRenderer.on("app-dialog", (_event, request) => fn(request)),
+  respondAppDialog: (id, response) =>
+    ipcRenderer.invoke("app-dialog-response", id, response),
   confirmUnsaved: () => ipcRenderer.invoke("confirm-unsaved"),
   resetProject: () => ipcRenderer.invoke("reset-project"),
   quitApproved: () => ipcRenderer.invoke("quit-approved"),

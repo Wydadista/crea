@@ -118,12 +118,66 @@
         </div>
         <div id="elementsPanel" hidden>
           <h2>Elementi ed effetti</h2>
-          <div class="annotation-tools">
-            <button id="addText">T Testo</button
-            ><button id="addArrow">➜ Freccia</button
-            ><button id="addBlur">◌ Sfocatura</button
-            ><button id="addPixel">▦ Pixelizzazione</button
-            ><button id="addCircle">◯ Cerchio</button>
+          <div
+            class="annotation-tools"
+            aria-label="Elementi da aggiungere o trascinare"
+          >
+            <button
+              id="addText"
+              class="element-tile"
+              aria-label="Aggiungi testo"
+            >
+              <span class="element-preview text-preview" aria-hidden="true"
+                ><strong>Aa</strong><span>La tua storia</span></span
+              >
+              <span class="element-label">Testo</span>
+            </button>
+            <button
+              id="addArrow"
+              class="element-tile"
+              aria-label="Aggiungi freccia"
+            >
+              <span class="element-preview" aria-hidden="true"
+                ><svg viewBox="0 0 120 80">
+                  <path d="M25 58 91 23m-28-3 30 1-15 27" /></svg
+              ></span>
+              <span class="element-label">Freccia</span>
+            </button>
+            <button
+              id="addCircle"
+              class="element-tile"
+              aria-label="Aggiungi cerchio"
+            >
+              <span class="element-preview" aria-hidden="true"
+                ><svg viewBox="0 0 120 80">
+                  <circle cx="60" cy="40" r="26" /></svg
+              ></span>
+              <span class="element-label">Cerchio</span>
+            </button>
+            <button
+              id="addBlur"
+              class="element-tile"
+              aria-label="Aggiungi sfocatura"
+            >
+              <span
+                class="element-preview landscape-preview blur-preview"
+                aria-hidden="true"
+                ><img src="effect-landscape.svg" alt="" draggable="false"
+              /></span>
+              <span class="element-label">Sfocatura</span>
+            </button>
+            <button
+              id="addPixel"
+              class="element-tile"
+              aria-label="Aggiungi pixelizzazione"
+            >
+              <span
+                class="element-preview landscape-preview pixel-preview"
+                aria-hidden="true"
+                ><img src="effect-pixel.svg" alt="" draggable="false"
+              /></span>
+              <span class="element-label">Pixelizzazione</span>
+            </button>
           </div>
           <p class="hint">Scegli la traccia nella barra della timeline.</p>
         </div>
@@ -497,36 +551,15 @@
           ><button id="groupTool">▣ Unisci selezionati</button
           ><button id="linkTool">🔗 Raggruppa</button
           ><button id="addTrack">＋ Aggiungi traccia</button
-          ><label
-            class="track-height-controls"
-            title="Regola tutte le tracce; ogni traccia resta ridimensionabile singolarmente"
-            >Altezza tracce<button
-              id="trackHeightMinus"
-              type="button"
-              aria-label="Riduci altezza tracce"
-            >
-              −</button
-            ><input
-              id="trackHeight"
-              type="range"
-              min="32"
-              max="600"
-              step="1"
-              value="100"
-              aria-label="Altezza tracce"
-            /><button
-              id="trackHeightPlus"
-              type="button"
-              aria-label="Aumenta altezza tracce"
-            >
-              +</button
-            ><output id="trackHeightValue">100</output></label
           ><button
             id="rippleFamily"
             aria-pressed="false"
             title="Chiudi i vuoti dopo eliminazione o accorciamento dei bordi, solo fra segmenti della stessa clip inserita. Aggancio durante gli spostamenti sempre attivo."
           >
-            🧲 Chiudi spazi della clip: no</button
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 3v10a7 7 0 0 0 14 0V3h-5v10a2 2 0 0 1-4 0V3Z" />
+              <path d="M5 8h5m4 0h5" />
+            </svg></button
           ><label
             >Traccia
             <select id="activeTrack">
@@ -539,7 +572,11 @@
             title="Crea fermo immagine"
             aria-label="Crea fermo immagine"
           >
-            ▣
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="3" />
+              <circle cx="8" cy="9" r="1.5" />
+              <path d="m3 17 5-5 4 4 4-5 5 6" />
+            </svg>
           </button>
         </div>
         <div class="range-tools" hidden>
@@ -598,7 +635,38 @@
       </div>
       <div class="timeline-body">
         <div class="track-labels">
-          <div class="ruler-label">TRACCE LIBERE</div>
+          <div class="ruler-label">
+            <label
+              class="track-height-controls"
+              title="Regola tutte le tracce; ogni traccia resta ridimensionabile singolarmente"
+              ><span class="sr-only">Altezza tracce</span
+              ><svg class="height-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M3 5h12M3 12h12M3 19h12m5-16v18m-3-15 3-3 3 3m-6 12 3 3 3-3"
+                /></svg
+              ><button
+                id="trackHeightMinus"
+                type="button"
+                aria-label="Riduci altezza tracce"
+              >
+                −</button
+              ><input
+                id="trackHeight"
+                type="range"
+                min="32"
+                max="600"
+                step="1"
+                value="100"
+                aria-label="Altezza tracce"
+              /><button
+                id="trackHeightPlus"
+                type="button"
+                aria-label="Aumenta altezza tracce"
+              >
+                +</button
+              ><output id="trackHeightValue">100</output></label
+            >
+          </div>
           <div id="labelViewport">
             <div id="labelRows"></div>
           </div>
@@ -993,6 +1061,28 @@
         <button id="saveSettings" type="button" class="primary">
           Applica impostazioni</button
         ><button>Chiudi</button>
+      </form>
+    </dialog>
+    <dialog
+      id="appDialog"
+      class="app-dialog"
+      aria-labelledby="appDialogTitle"
+      aria-describedby="appDialogMessage appDialogDetail"
+    >
+      <form method="dialog">
+        <div class="app-dialog-brand">
+          <span class="brand-icon" aria-hidden="true">A</span
+          ><span>AKhbar <b>STUDIO</b></span>
+        </div>
+        <div class="app-dialog-symbol" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M5 3h12l4 4v14H3V3Zm2 0v7h10V3M7 21v-7h10v7" />
+          </svg>
+        </div>
+        <h2 id="appDialogTitle"></h2>
+        <p id="appDialogMessage"></p>
+        <p id="appDialogDetail"></p>
+        <div id="appDialogActions" class="app-dialog-actions"></div>
       </form>
     </dialog>
     <dialog id="projectNameDialog">

@@ -108,18 +108,17 @@ const { _electron: electron } = require("playwright"),
     assert.equal(await page.locator("#rangeStart").isVisible(), false);
     assert.equal(await page.locator("#annotationX").isVisible(), false);
     assert.equal(await page.locator("#clipStart").isVisible(), false);
-    await app.evaluate(({ dialog }) => {
-      globalThis.promptChoice = 2;
-      dialog.showMessageBox = async () => ({
-        response: globalThis.promptChoice,
-      });
+    await page.evaluate(() => {
+      void transitionProject(emptyWorkspace);
     });
-    await page.evaluate(() => transitionProject(emptyWorkspace));
+    await page.locator('#appDialog [data-choice="2"]').click();
+    await page.waitForFunction(() => !transitionBusy);
     assert.equal(await page.evaluate(() => project.clips.length), 2);
-    await app.evaluate(() => {
-      globalThis.promptChoice = 1;
+    await page.evaluate(() => {
+      void transitionProject(emptyWorkspace);
     });
-    await page.evaluate(() => transitionProject(emptyWorkspace));
+    await page.locator('#appDialog [data-choice="1"]').click();
+    await page.waitForFunction(() => !transitionBusy);
     assert.equal(await page.evaluate(() => project.clips.length), 0);
     assert.equal(await page.evaluate(() => isProjectDirty()), false);
     // Real portable save and Save As, using only a tiny image copied from the repository.

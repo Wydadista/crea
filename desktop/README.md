@@ -42,6 +42,14 @@ Qualità 65% corrisponde a CRF/CQ 23 in questa versione; le percentuali di Camta
 
 Risultati e limiti dei benchmark: [PERFORMANCE.md](PERFORMANCE.md). Nessuna equivalenza con Camtasia è dichiarata senza una prova sulla stessa sorgente e sullo stesso PC.
 
+## Interfaccia
+
+Le conferme di chiusura/salvataggio, sostituzione e recupero automatico usano finestre interne con logo e colori di AKhbar studio. **Annulla** o **Esc** conservano il progetto; **Salva** deve completarsi prima di chiudere. I selettori di file e cartelle continuano a usare il sistema operativo.
+
+La calamita è un pulsante con la sola icona: verde quando la chiusura degli spazi è attiva, neutro quando è disattiva; il suggerimento indica sì/no. Il fermo immagine ha un'icona fotografica. I comandi per l'altezza sono sopra le intestazioni delle tracce. **Elementi ed effetti** mostra riquadri grandi con esempi visivi di testo, freccia, cerchio, sfocatura e pixelizzazione; clic e trascinamento mantengono le azioni precedenti.
+
+Verifiche della grafica: [VERIFICA-GRAFICA.md](VERIFICA-GRAFICA.md).
+
 ## Montaggio e navigazione
 
 - **Unisci selezionati** conserva l'unione dei segmenti contigui della stessa clip inserita. Il contorno esterno è marcato, i tagli interni rimangono riferimenti sottili senza maniglie. Si ridimensiona soltanto dalle due estremità; **Separa elementi uniti** rende nuovamente modificabili i singoli segmenti. Accorciare oltre un taglio e riallungare conserva i riferimenti originali, anche dopo salvataggio.

@@ -2,6 +2,75 @@
 const $ = (id) => document.getElementById(id),
   uid = () => crypto.randomUUID(),
   clone = (x) => JSON.parse(JSON.stringify(x));
+// One accessible, themed confirmation at a time. Escape always cancels safely.
+let appDialogQueue = Promise.resolve();
+function showAppDialog(options) {
+  const job = appDialogQueue.then(
+    () =>
+      new Promise((resolve) => {
+        const dialog = $("appDialog"),
+          actions = $("appDialogActions");
+        const cancel = options.cancelId ?? options.buttons.length - 1;
+        $("appDialogTitle").textContent = options.title || options.message;
+        $("appDialogMessage").textContent = options.title
+          ? options.message
+          : "";
+        $("appDialogMessage").hidden = !options.title;
+        $("appDialogDetail").textContent = options.detail || "";
+        $("appDialogDetail").hidden = !options.detail;
+        actions.replaceChildren();
+        options.buttons.forEach((label, index) => {
+          const button = document.createElement("button");
+          button.textContent = label;
+          button.value = String(index);
+          button.className =
+            index === (options.defaultId ?? 0) && index !== cancel
+              ? "primary"
+              : "";
+          button.dataset.choice = String(index);
+          actions.append(button);
+        });
+        dialog.returnValue = String(cancel);
+        const onCancel = () => {
+          dialog.returnValue = String(cancel);
+        };
+        const onKeydown = (event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            dialog.close(String(cancel));
+          }
+        };
+        dialog.addEventListener("cancel", onCancel);
+        dialog.addEventListener("keydown", onKeydown);
+        dialog.addEventListener(
+          "close",
+          () => {
+            dialog.removeEventListener("cancel", onCancel);
+            dialog.removeEventListener("keydown", onKeydown);
+            const response = Number(dialog.returnValue);
+            resolve(
+              Number.isInteger(response) &&
+                response >= 0 &&
+                response < options.buttons.length
+                ? response
+                : cancel,
+            );
+          },
+          { once: true },
+        );
+        dialog.showModal();
+        actions.children[options.defaultId ?? 0]?.focus();
+      }),
+  );
+  appDialogQueue = job.catch(() => {});
+  return job;
+}
+studio.onAppDialog(({ requestId, options }) => {
+  showAppDialog(options)
+    .then((response) => studio.respondAppDialog(requestId, response))
+    .catch((error) => toast(error.message));
+});
 let previewFocus = null;
 let workspacePrefs = {
   imageDuration: 5,
@@ -2437,6 +2506,7 @@ document.addEventListener(
   true,
 );
 document.onkeydown = (e) => {
+  if ($("appDialog").open) return;
   if (
     (e.ctrlKey || e.metaKey) &&
     ["n", "o", "w"].includes(e.key.toLowerCase()) &&
@@ -3925,8 +3995,14 @@ new ResizeObserver(() => {
 }).observe($("timelineScroll"));
 function showRipple() {
   $("rippleFamily").setAttribute("aria-pressed", String(rippleFamily));
-  $("rippleFamily").textContent =
-    "🧲 Chiudi spazi della clip: " + (rippleFamily ? "sì" : "no");
+  $("rippleFamily").setAttribute(
+    "aria-label",
+    "Chiudi spazi della clip: " + (rippleFamily ? "sì" : "no"),
+  );
+  $("rippleFamily").title =
+    "Chiudi spazi della clip: " +
+    (rippleFamily ? "sì" : "no") +
+    ". Solo fra segmenti della stessa clip; aggancio durante gli spostamenti sempre attivo.";
 }
 $("rippleFamily").onclick = () => {
   rippleFamily = !rippleFamily;

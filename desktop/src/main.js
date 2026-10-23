@@ -523,14 +523,54 @@ ipcMain.handle(
   "recent-projects",
   async () => (await preferences()).recentProjects || [],
 );
+// App confirmations live in the editor, including prompts requested by main-process work.
+const pendingDialogs = new Map();
+function appDialog(options) {
+  const cancel = options.cancelId ?? options.buttons.length - 1;
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed())
+    return Promise.resolve({ response: cancel });
+  const requestId = randomUUID();
+  return new Promise((resolve) => {
+    const contents = win.webContents;
+    const finish = (response) => {
+      pendingDialogs.delete(requestId);
+      contents.removeListener("destroyed", aborted);
+      contents.removeListener("render-process-gone", aborted);
+      resolve({ response });
+    };
+    const aborted = () => finish(cancel);
+    pendingDialogs.set(requestId, { finish, buttons: options.buttons });
+    contents.once("destroyed", aborted);
+    contents.once("render-process-gone", aborted);
+    contents.send("app-dialog", {
+      requestId,
+      options: { ...options, cancelId: cancel },
+    });
+  });
+}
+ipcMain.handle("app-dialog-response", (event, requestId, response) => {
+  if (event.sender !== win?.webContents) return false;
+  const pending = pendingDialogs.get(requestId);
+  if (
+    !pending ||
+    !Number.isInteger(response) ||
+    response < 0 ||
+    response >= pending.buttons.length
+  )
+    return false;
+  pending.finish(response);
+  return true;
+});
 ipcMain.handle("confirm-unsaved", async () => {
-  const r = await dialog.showMessageBox(win, {
+  const r = await appDialog({
     type: "question",
     buttons: ["Salva", "Scarta modifiche", "Annulla"],
     defaultId: 0,
     cancelId: 2,
-    message: "Il progetto contiene modifiche non salvate.",
-    detail: "Vuoi salvarle prima di continuare?",
+    title: "Vuoi salvare il progetto?",
+    message: "Ci sono modifiche non salvate",
+    detail:
+      "Salva il tuo montaggio prima di continuare, oppure prosegui senza conservare le ultime modifiche.",
   });
   return ["save", "discard", "cancel"][r.response];
 });
@@ -566,7 +606,7 @@ ipcMain.handle("save-project", async (_e, input, options = {}) => {
         );
         try {
           await fs.access(target);
-          const r = await dialog.showMessageBox(win, {
+          const r = await appDialog({
             type: "question",
             buttons: ["Sostituisci", "Annulla"],
             defaultId: 1,
@@ -679,7 +719,7 @@ ipcMain.handle("autosave", (_e, project) => {
 ipcMain.handle("recover", async () => {
   try {
     const data = JSON.parse(await fs.readFile(recoveryPath(), "utf8"));
-    const result = await dialog.showMessageBox(win, {
+    const result = await appDialog({
       type: "question",
       buttons: ["Recupera montaggio", "Ignora"],
       defaultId: 0,
@@ -861,7 +901,7 @@ ipcMain.handle("export", async (_e, project, settings) => {
     );
     try {
       await fs.access(namedPath);
-      const answer = await dialog.showMessageBox(win, {
+      const answer = await appDialog({
         type: "question",
         title: "File già esistente",
         message: "Sostituire il video esistente?",
