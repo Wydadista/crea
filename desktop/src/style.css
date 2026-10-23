@@ -2370,3 +2370,39 @@ header .project-name {
 .clip.compact-track .handle {
   width: min(7px, 25%);
 }
+
+/* Joined segments share a strong outer silhouette; internal cuts are references. */
+.clip.group {
+  border-width: 3px;
+}
+.clip.group.joined-left {
+  border-left-width: 0;
+}
+.clip.group.joined-right {
+  border-right-width: 0;
+}
+.group-cut {
+  width: 1px;
+  background: #ffffff45;
+  cursor: default;
+}
+.clip.linked {
+  background: var(--clip-color) !important;
+}
+.link-badge {
+  position: absolute;
+  right: 7px;
+  top: 23px;
+  z-index: 8;
+  background: #101720dc;
+  color: #fff;
+  border: 1px solid #b6d5eb;
+  border-radius: 4px;
+  padding: 0 3px;
+  font-size: 10px;
+  pointer-events: none;
+}
+.clip.linked.selected:not(.group) {
+  outline: 2px solid #ffe486;
+  outline-offset: -2px;
+}

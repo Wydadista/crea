@@ -217,6 +217,7 @@
         ids = mapping(),
         families = mapping(),
         groups = mapping(),
+        links = mapping(),
         media = mapping(),
         remap = (map, key) => {
           if (!map.has(key)) map.set(key, makeId());
@@ -242,6 +243,18 @@
           track: track + c.track - trackOrigin,
         };
         if (c.groupId) next.groupId = remap(groups, c.groupId);
+        if (c.linkId) next.linkId = remap(links, c.linkId);
+        if (c.joinedSegments)
+          next.joinedSegments = c.joinedSegments.map((segment) => ({
+            ...segment,
+            id: remap(ids, segment.id),
+            mediaId: media.get(segment.mediaId),
+            sourceInstanceId: remap(families, api.sourceFamily(segment)),
+            groupId: next.groupId,
+            ...(segment.linkId ? { linkId: remap(links, segment.linkId) } : {}),
+            start: start + segment.start - timeOrigin,
+            track: track + segment.track - trackOrigin,
+          }));
         if (c.detachedFrom && ids.has(c.detachedFrom))
           next.detachedFrom = ids.get(c.detachedFrom);
         else delete next.detachedFrom;
@@ -361,6 +374,8 @@
       };
       for (const key of [
         "groupId",
+        "linkId",
+        "joinedSegments",
         "layout",
         "zoom",
         "effect",
@@ -554,7 +569,10 @@
     },
     groupSelected(clips, ids, makeId, acrossTracks = false) {
       const chosen = clips.filter((c) => ids.includes(c.id));
-      chosen.forEach((c) => delete c.groupId);
+      chosen.forEach((c) => {
+        delete c.groupId;
+        delete c.joinedSegments;
+      });
       const runs =
         acrossTracks && new Set(chosen.map((c) => c.track)).size > 1
           ? [chosen]
@@ -568,6 +586,131 @@
           const id = makeId();
           run.forEach((c) => (c.groupId = id));
         }
+    },
+    linkedIds(clips, ids) {
+      const result = new Set(ids);
+      let size;
+      do {
+        size = result.size;
+        for (const key of ["groupId", "linkId"]) {
+          const groups = new Set(
+            clips
+              .filter((c) => result.has(c.id))
+              .map((c) => c[key])
+              .filter(Boolean),
+          );
+          for (const c of clips) if (groups.has(c[key])) result.add(c.id);
+        }
+      } while (size !== result.size);
+      return [...result];
+    },
+    linkSelected(clips, ids, makeId) {
+      const chosen = api.linkedIds(clips, ids);
+      if (chosen.length < 2) return;
+      const id = makeId();
+      for (const c of clips) if (chosen.includes(c.id)) c.linkId = id;
+    },
+    splitTargets(clips, ids, time) {
+      const crossed = clips.filter(
+        (c) => time - c.start > 1e-8 && c.start + api.duration(c) - time > 1e-8,
+      );
+      if (ids.length)
+        return crossed.filter((c) => ids.includes(c.id)).map((c) => c.id);
+      if (crossed.length > 1)
+        throw Error(
+          "Più elementi sotto il cursore: seleziona quello da tagliare",
+        );
+      return crossed.map((c) => c.id);
+    },
+    cutSelection(input, ids) {
+      const clipboard = api.copySelection(input, ids);
+      const project = JSON.parse(JSON.stringify(input));
+      project.clips = project.clips.filter((c) => !ids.includes(c.id));
+      return { project, clipboard };
+    },
+    trimJoined(input, id, side, delta) {
+      const p = JSON.parse(JSON.stringify(input));
+      const clip = p.clips.find((c) => c.id === id);
+      if (!clip?.groupId) throw Error("Elemento non unito");
+      const visible = p.clips
+        .filter((c) => c.groupId === clip.groupId)
+        .sort((a, b) => a.start - b.start);
+      const archive = visible.find((c) => c.joinedSegments)?.joinedSegments;
+      const members = archive
+        ? JSON.parse(JSON.stringify(archive))
+        : JSON.parse(JSON.stringify(visible));
+      if (archive) {
+        const anchor = visible[0],
+          original = members.find((c) => c.id === anchor.id);
+        const offset =
+          anchor.start -
+          original.start -
+          (anchor.in - original.in) / (original.speed || 1);
+        const trackDelta = anchor.track - original.track;
+        for (const c of members) {
+          c.start += offset;
+          c.track += trackDelta;
+        }
+      }
+      for (const c of members) {
+        const current = visible.find((v) => v.id === c.id);
+        if (current) {
+          const {
+            in: sourceIn,
+            out: sourceOut,
+            start: sourceStart,
+            ...properties
+          } = current;
+          Object.assign(c, properties);
+        }
+        c.groupId = clip.groupId;
+        if (clip.linkId) c.linkId = clip.linkId;
+        else delete c.linkId;
+      }
+      const saved = JSON.parse(JSON.stringify(members));
+      for (const c of saved) delete c.joinedSegments;
+      const first = members[0],
+        last = members.at(-1);
+      if ((side === "left" ? visible[0] : visible.at(-1)).id !== id)
+        throw Error(
+          "Separa gli elementi uniti per modificare i confini interni",
+        );
+      const start = visible[0].start,
+        end = visible.at(-1).start + api.duration(visible.at(-1));
+      const edge =
+        side === "left"
+          ? Math.max(
+              0,
+              first.start - first.in / (first.speed || 1),
+              Math.min(end - 0.02, start + delta),
+            )
+          : Math.max(start + 0.02, end + delta);
+      const left = side === "left" ? edge : start;
+      const right = side === "right" ? edge : end;
+      const result = [];
+      for (const c of members) {
+        const rate = c.speed || 1,
+          oldEnd = c.start + api.duration(c);
+        const media = p.media.find((m) => m.id === c.mediaId);
+        const limit = ["image", "annotation", "effect"].includes(media.kind)
+          ? 86400
+          : media.duration;
+        const from = c === first ? left : Math.max(left, c.start);
+        const to = c === last ? right : Math.min(right, oldEnd);
+        if (to - from < 0.001) continue;
+        c.out = Math.min(limit, c.in + (to - c.start) * rate);
+        c.in += (from - c.start) * rate;
+        c.start = from;
+        delete c.joinedSegments;
+        result.push(c);
+      }
+      if (!result.length) throw Error("Durata non valida");
+      result[0].joinedSegments = saved;
+      p.clips = p.clips
+        .filter((c) => c.groupId !== clip.groupId)
+        .concat(result);
+      if (!api.canPlace([], p.clips)) throw Error("Intervallo occupato");
+      return api.validate(p);
     },
     snapMove(clips, origins, delta, trackDelta, options = {}) {
       if (!options.enabled) return { delta, latch: null };
@@ -804,7 +947,8 @@
           ) ||
           !n(c.volume, 0, 1) ||
           !n(c.speed ?? 1, 0.1, 16) ||
-          (c.groupId !== undefined && typeof c.groupId !== "string")
+          (c.groupId !== undefined && typeof c.groupId !== "string") ||
+          (c.linkId !== undefined && typeof c.linkId !== "string")
         )
           throw Error("Clip non valida");
         if (
@@ -925,6 +1069,20 @@
           p.trackMuted.some((v) => typeof v !== "boolean"))
       )
         throw Error("Tracce non valide");
+      // Earlier projects also used groupId for explicit cross-track links.
+      // Keep those links, without treating their separate clips as joined cuts.
+      const legacyGroups = new Set(
+        p.clips.map((c) => c.groupId).filter(Boolean),
+      );
+      for (const id of legacyGroups) {
+        const members = p.clips.filter((c) => c.groupId === id);
+        if (new Set(members.map((c) => c.track)).size < 2) continue;
+        for (const c of members) {
+          c.linkId ||= `legacy-${id}`;
+          delete c.groupId;
+          delete c.joinedSegments;
+        }
+      }
       if (api.overlaps(p.clips))
         throw Error(
           "Intervallo occupato: usa uno spazio libero o un’altra traccia.",

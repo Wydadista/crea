@@ -199,7 +199,7 @@ const resolvedProject = (p, file) => {
     await page.locator("#track0 .clip").nth(1).click();
     await page.keyboard.up("Control");
     await page.locator("#track0 .clip").first().click({ button: "right" });
-    await page.locator('[data-action="group"]').click();
+    await page.locator('[data-action="join"]').click();
     assert.equal(await page.locator("#track0 .clip").count(), 2);
     assert.ok(
       await page.locator("#track0 .clip").first().getAttribute("data-group"),
@@ -238,7 +238,7 @@ const resolvedProject = (p, file) => {
     assert.equal(await page.locator("#track0 .clip.group").count(), 2);
     await page.locator("#toStart").click();
     await page.locator("#track0 .clip").first().click({ button: "right" });
-    await page.locator('[data-action="ungroup"]').click();
+    await page.locator('[data-action="unjoin"]').click();
     assert.equal(await page.locator("#track0 .clip").count(), 2);
     // Batch speed/reset (1x) affects selected pieces, without closing gaps.
     await page.locator("#clipSpeed").fill("2");

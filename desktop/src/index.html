@@ -190,8 +190,8 @@
         <div id="noSelection" class="no-selection">
           Seleziona una clip.
           <p>
-            Ctrl / Shift + clic: selezione multipla.<br />Tasto destro:
-            raggruppa.
+            Ctrl / Shift + clic: selezione multipla.<br />Tasto destro: unisci
+            selezionati oppure raggruppa.
           </p>
         </div>
         <div id="clipProperties" hidden>
@@ -475,13 +475,14 @@
           </details>
           <div class="property-actions">
             <button id="applyProperties" class="primary">Applica</button>
-            <button id="groupBtn">Raggruppa selezione</button
+            <button id="groupBtn">Unisci selezionati</button
             ><button
               id="groupAcrossTracks"
-              title="Collega esplicitamente gli elementi selezionati su tracce diverse"
+              title="Collega gli elementi selezionati conservando tracce e sincronizzazione"
             >
-              Raggruppa tra tracce</button
+              Raggruppa</button
             ><button id="ungroupBtn">Separa gruppo</button
+            ><button id="unjoinBtn">Separa elementi uniti</button
             ><button id="deleteBtn" class="danger">Elimina selezione</button>
           </div>
         </div>
@@ -493,7 +494,8 @@
           <button id="undoBtn">↶</button><button id="redoBtn">↷</button
           ><button id="cutTool">✂ Dividi</button
           ><button id="deleteTool">⌫ Elimina</button
-          ><button id="groupTool">▣ Raggruppa</button
+          ><button id="groupTool">▣ Unisci selezionati</button
+          ><button id="linkTool">🔗 Raggruppa</button
           ><button id="addTrack">＋ Aggiungi traccia</button
           ><label
             class="track-height-controls"
@@ -985,8 +987,7 @@
             value="#335d80"
         /></label>
         <h3>Interfaccia e tasti</h3>
-        <button id="keysBtn" type="button">
-          ⌨ Comandi e tasti alternativi</button
+        <button id="keysBtn" type="button">⌨ Comandi e tasti alternativi</button
         ><button id="resetPanels" type="button">Ripristina pannelli</button>
         <p id="settingsStatus" class="hint"></p>
         <button id="saveSettings" type="button" class="primary">
@@ -1075,10 +1076,13 @@
       <option value="70" label="Consigliata"></option>
     </datalist>
     <div id="contextMenu" hidden>
+      <button data-action="cut">Taglia · Ctrl+X</button>
       <button data-action="copy">Copia · Ctrl+C</button>
       <button data-action="paste">Incolla al cursore · Ctrl+V</button>
       <button data-action="split">✂ Dividi al cursore</button
-      ><button data-action="group">▣ Raggruppa elementi selezionati</button
+      ><button data-action="join">▣ Unisci selezionati</button
+      ><button data-action="unjoin">Separa elementi uniti</button
+      ><button data-action="group">🔗 Raggruppa</button
       ><button data-action="ungroup">Separa gruppo</button
       ><button data-action="set-speed">
         Velocità · <span id="contextSpeedValue">1×</span></button

@@ -192,9 +192,9 @@ function render() {
   $("undoBtn").disabled = !history.length;
   $("redoBtn").disabled = !future.length;
 }
-function changed() {
+function changed(preserveTime = false) {
   updatePreviewView();
-  time = Math.min(time, Timeline.total(project.clips));
+  if (!preserveTime) time = Math.min(time, Timeline.total(project.clips));
   renderTimeline();
   properties();
   warmAudio();
@@ -204,15 +204,7 @@ function changed() {
   $("redoBtn").disabled = !future.length;
 }
 function groupMembers(ids) {
-  const groups = new Set(
-    project.clips
-      .filter((c) => ids.includes(c.id))
-      .map((c) => c.groupId)
-      .filter(Boolean),
-  );
-  return project.clips
-    .filter((c) => ids.includes(c.id) || groups.has(c.groupId))
-    .map((c) => c.id);
+  return Timeline.linkedIds(project.clips, ids);
 }
 function selectIds(ids, add = false, toggle = false) {
   ids = groupMembers(ids);
@@ -550,6 +542,18 @@ function renderTimeline() {
       }
       if (join?.right) node.classList.add("joined-right");
     }
+    if (c.linkId) {
+      node.classList.add("linked");
+      const siblings = project.clips.filter((x) => x.linkId === c.linkId);
+      const index = siblings.findIndex((x) => x.id === c.id);
+      node.style.setProperty(
+        "--clip-color",
+        `hsl(${(index * 137.508) % 360} 40% 28%)`,
+      );
+      const badge = el("span", "link-badge", "🔗 " + c.linkId.slice(0, 4));
+      badge.title = "Elementi raggruppati";
+      node.append(badge);
+    }
     if (c.muted || project.trackMuted?.[c.track]) node.classList.add("muted");
     node.dataset.id = c.id;
     node.dataset.group = block.groupId || "";
@@ -586,6 +590,7 @@ function renderTimeline() {
     };
     if (!group)
       for (const side of ["left", "right"]) {
+        if (joins.get(c.id)?.[side]) continue;
         const h = el("span", "handle " + side);
         h.onpointerdown = (e) => trimDrag(e, c, side);
         node.append(h);
@@ -779,8 +784,7 @@ function beginClipDrag(e, block) {
       start: o.start + snapped.delta,
       track: o.track + td,
     }));
-    if (latch?.edge === "start")
-      proposals.find((c) => c.id === latch.originId).start = latch.at;
+
     add = Math.max(
       0,
       ...proposals.map((c) => c.track + 1 - Timeline.trackCount(project)),
@@ -841,11 +845,52 @@ function beginClipDrag(e, block) {
     changed();
   });
 }
+function trimJoinedDrag(e, c, side) {
+  selectIds([c.id]);
+  const before = clone(project),
+    x = e.clientX,
+    scroll = $("timelineScroll").scrollLeft;
+  let next = before;
+  const move = (ev) => {
+    try {
+      next = Timeline.trimJoined(
+        before,
+        c.id,
+        side,
+        (ev.clientX - x + $("timelineScroll").scrollLeft - scroll) / scale,
+      );
+      project = next;
+      selection = new Set(
+        Timeline.linkedIds(
+          project.clips,
+          project.clips
+            .filter((item) => item.groupId === c.groupId)
+            .map((item) => item.id),
+        ),
+      );
+      changed();
+    } catch {
+      /* Keep the last valid position when another clip blocks the edge. */
+    }
+  };
+  captureMove(e, move, (ev) => {
+    if (ev.type === "pointercancel") project = before;
+    else {
+      move(ev);
+      if (JSON.stringify(project) !== JSON.stringify(before)) {
+        history.push(JSON.stringify(before));
+        future = [];
+      }
+    }
+    changed();
+  });
+}
 function trimDrag(e, c, side) {
   if (e.button !== 0) return;
   e.preventDefault();
   e.stopPropagation();
   pause();
+  if (c.groupId) return trimJoinedDrag(e, c, side);
   selectIds([c.id]);
   const x = e.clientX,
     before = clone(project),
@@ -1360,11 +1405,24 @@ for (const id of [
       };
     });
 function split() {
-  if (!selection.size) return toast("Seleziona una clip o un gruppo.");
+  let ids;
+  try {
+    ids = Timeline.splitTargets(project.clips, [...selection], time);
+  } catch (error) {
+    return toast(error.message);
+  }
+  if (!ids.length) return;
   pause();
   const before = JSON.stringify(project);
-  const ids = selected().map((c) => c.id),
-    newIds = [];
+  const newIds = [];
+  const joined = new Set(
+    project.clips
+      .filter((c) => ids.includes(c.id))
+      .map((c) => c.groupId)
+      .filter(Boolean),
+  );
+  for (const c of project.clips)
+    if (joined.has(c.groupId)) delete c.joinedSegments;
   let count = Timeline.split(project.clips, ids, time, () => {
     const id = uid();
     newIds.push(id);
@@ -1418,6 +1476,20 @@ function copyTimelineSelection() {
     toast(error.message);
   }
 }
+function cutTimelineSelection() {
+  if (!selection.size) return;
+  try {
+    const result = Timeline.cutSelection(project, groupMembers([...selection]));
+    pause();
+    checkpoint();
+    timelineClipboard = result.clipboard;
+    project = result.project;
+    selection.clear();
+    changed(true);
+  } catch (error) {
+    toast(error.message);
+  }
+}
 function pasteTimelineSelection() {
   try {
     const result = Timeline.pasteSelection(
@@ -1438,7 +1510,7 @@ function pasteTimelineSelection() {
     toast(error.message);
   }
 }
-function group() {
+function joinSelected() {
   if (selection.size < 2)
     return toast("Seleziona almeno due clip con Ctrl/Shift + clic.");
   editGroup(true);
@@ -1447,19 +1519,37 @@ function editGroup(join) {
   pause();
   checkpoint();
   if (join) Timeline.groupSelected(project.clips, [...selection], uid);
-  else for (const c of selected()) delete c.groupId;
+  else
+    for (const c of selected()) {
+      delete c.groupId;
+      delete c.joinedSegments;
+    }
   changed();
 }
-$("groupAcrossTracks").onclick = () => {
-  if (selection.size < 2) return toast("Seleziona gli elementi da collegare.");
+function group() {
+  if (selection.size < 2)
+    return toast("Seleziona almeno due elementi da raggruppare.");
   pause();
   checkpoint();
-  Timeline.groupSelected(project.clips, [...selection], uid, true);
+  Timeline.linkSelected(project.clips, [...selection], uid);
   changed();
-};
-$("groupBtn").onclick = group;
-$("groupTool").onclick = group;
-$("ungroupBtn").onclick = () => editGroup(false);
+}
+function unlinkGroup() {
+  if (!selection.size) return;
+  pause();
+  checkpoint();
+  for (const c of project.clips.filter((c) =>
+    groupMembers([...selection]).includes(c.id),
+  ))
+    delete c.linkId;
+  changed();
+}
+$("groupAcrossTracks").onclick = group;
+$("linkTool").onclick = group;
+$("groupBtn").onclick = joinSelected;
+$("groupTool").onclick = joinSelected;
+$("ungroupBtn").onclick = unlinkGroup;
+$("unjoinBtn").onclick = () => editGroup(false);
 $("splitBtn").onclick = split;
 $("cutTool").onclick = split;
 $("deleteBtn").onclick = remove;
@@ -1638,11 +1728,14 @@ for (const button of $("contextMenu").querySelectorAll("button"))
   button.onclick = () => {
     const a = button.dataset.action;
     $("contextMenu").hidden = true;
+    if (a === "cut") cutTimelineSelection();
+    if (a === "join") joinSelected();
+    if (a === "unjoin") editGroup(false);
     if (a === "copy") copyTimelineSelection();
     if (a === "paste") pasteTimelineSelection();
     if (a === "split") split();
     if (a === "group") group();
-    if (a === "ungroup") editGroup(false);
+    if (a === "ungroup") unlinkGroup();
     if (a === "source-speed") {
       selection = new Set(Timeline.familyIds(project, [...selection]));
       renderTimeline();
@@ -2268,6 +2361,7 @@ for (const action of Object.keys(defaultKeys))
       "ctrl+z",
       "ctrl+shift+z",
       "ctrl+c",
+      "ctrl+x",
       "ctrl+v",
       "ctrl+a",
       "ctrl+g",
@@ -2367,9 +2461,11 @@ document.onkeydown = (e) => {
   )
     return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  if ((e.ctrlKey || e.metaKey) && ["c", "v"].includes(k)) {
+  if ((e.ctrlKey || e.metaKey) && ["c", "v", "x"].includes(k)) {
     e.preventDefault();
-    k === "c" ? copyTimelineSelection() : pasteTimelineSelection();
+    if (k === "c") copyTimelineSelection();
+    else if (k === "x") cutTimelineSelection();
+    else pasteTimelineSelection();
     return;
   }
   const match = Object.keys(keys).find((action) =>
@@ -2399,7 +2495,7 @@ document.onkeydown = (e) => {
     }
     if (k === "g") {
       e.preventDefault();
-      e.shiftKey ? editGroup(false) : group();
+      e.shiftKey ? unlinkGroup() : group();
     }
     return;
   }
