@@ -1,8 +1,8 @@
-# AKhbar studio 0.4.2
+# AKhbar studio 0.4.3
 
 Editor desktop per Windows 10/11 x64, derivato dal commit `427ae12b48a1d8e685e362506b92c78621b7fede` di Wydadista/crea. Conserva timeline multitraccia, tagli, gruppi, velocità di lavoro/ripristino, effetti, annotazioni, anteprima, recupero automatico e apertura dei progetti precedenti `.creastudio`. Il vecchio `../creapost.html` è indipendente.
 
-Novità e verifiche della versione attuale: [VERIFICA-0.4.2.md](VERIFICA-0.4.2.md). La verifica precedente resta in [VERIFICA-0.4.1.md](VERIFICA-0.4.1.md). Le novità 0.4.0 restano in [VERIFICA-0.4.0.md](VERIFICA-0.4.0.md). Le verifiche precedenti restano in [VERIFICA-0.3.5.md](VERIFICA-0.3.5.md).
+Novità e verifiche della versione attuale: [VERIFICA-0.4.3.md](VERIFICA-0.4.3.md). La verifica 0.4.2 resta in [VERIFICA-0.4.2.md](VERIFICA-0.4.2.md). La verifica precedente resta in [VERIFICA-0.4.1.md](VERIFICA-0.4.1.md). Le novità 0.4.0 restano in [VERIFICA-0.4.0.md](VERIFICA-0.4.0.md). Le verifiche precedenti restano in [VERIFICA-0.3.5.md](VERIFICA-0.3.5.md).
 
 ## Avvio e installer Windows
 
@@ -21,7 +21,7 @@ Chiudere l'app prima di creare l'installer:
 npm run build:win
 ```
 
-Risultato: `dist/AKhbar-studio-0.4.2-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
+Risultato: `dist/AKhbar-studio-0.4.3-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
 
 ```powershell
 npm run build:release

@@ -79,6 +79,8 @@ async function renderProject(
   const stages = [];
   let fallbackFrom = null,
     decoder = "cpu";
+  let directIntervals = 0,
+    compositedIntervals = 0;
   let actualEncoder = "libx264",
     pathName = "composizione",
     lastPercent = 0;
@@ -89,6 +91,8 @@ async function renderProject(
     fallbackFrom,
     path: pathName,
     stages,
+    directIntervals,
+    compositedIntervals,
     totalSeconds: total,
   });
   const report = (percent, message) => {
@@ -306,6 +310,8 @@ async function renderProject(
           "-y",
           "-ss",
           String(c.in),
+          // Keep the frame held at the cut, including sparse screen recordings.
+          "-noaccurate_seek",
           ...(cuda
             ? ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"]
             : []),
@@ -321,8 +327,8 @@ async function renderProject(
           );
         args.push("-map", "0:v:0");
         const vf = [
+          `fps=${fps}:start_time=0:round=up`,
           "tpad=stop_mode=clone:stop_duration=1",
-          `fps=${fps}`,
           ...(cuda
             ? []
             : [
@@ -345,7 +351,14 @@ async function renderProject(
             "-map",
             "0:a:0",
             "-af",
-            [af, `volume=${c.volume}`, "apad", `atrim=duration=${total}`]
+            [
+              "atrim=start=0",
+              "asetpts=PTS-STARTPTS",
+              af,
+              `volume=${c.volume}`,
+              "apad",
+              `atrim=duration=${total}`,
+            ]
               .filter(Boolean)
               .join(","),
             "-c:a",
@@ -382,6 +395,86 @@ async function renderProject(
       throw Error(
         "Copia originale disponibile solo per una clip intera senza modifiche",
       );
+    const renderPlainInterval = async (c, m, start, duration, part) => {
+      const offset = Math.max(c.in, T.sourceTime(c, start));
+      const args = [
+        "-y",
+        "-ss",
+        String(offset),
+        "-noaccurate_seek",
+        "-i",
+        m.path,
+      ];
+      const audible =
+        m.hasAudio && !c.muted && !p.trackMuted?.[c.track] && c.volume > 0;
+      if (!audible)
+        args.push(
+          "-f",
+          "lavfi",
+          "-i",
+          `anullsrc=r=48000:cl=stereo:d=${duration}`,
+        );
+      const video = [
+        `fps=${fps}:start_time=0:round=up`,
+        `tpad=stop_mode=clone:stop_duration=${duration}`,
+        `trim=duration=${duration}`,
+        ...(m.width === W && m.height === H
+          ? []
+          : [
+              `scale=${W}:${H}:force_original_aspect_ratio=decrease`,
+              `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`,
+            ]),
+        "setsar=1",
+      ];
+      args.push(
+        "-map",
+        "0:v:0",
+        "-vf",
+        video.join(","),
+        ...videoArgs(),
+        "-bf",
+        "0",
+      );
+      if (audible) {
+        const processing = await audioFilters(c, m, binaries.ffmpeg);
+        args.push(
+          "-map",
+          "0:a:0",
+          "-af",
+          [
+            "atrim=start=0",
+            "asetpts=PTS-STARTPTS",
+            processing,
+            `volume=${c.volume}`,
+            "apad",
+            `atrim=duration=${duration}`,
+          ]
+            .filter(Boolean)
+            .join(","),
+        );
+      } else args.push("-map", "1:a:0");
+      args.push(
+        "-c:a",
+        "pcm_s16le",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        "-t",
+        String(duration),
+        "-fps_mode",
+        "cfr",
+        path.join(dir, part),
+      );
+      directIntervals++;
+      pathName = compositedIntervals ? "montaggio misto" : "montaggio diretto";
+      await run(
+        args,
+        start,
+        duration,
+        "Clip senza sovrapposizioni · " + actualEncoder,
+      );
+    };
     const rasters = new Map();
     for (const [i, c] of p.clips.entries())
       if (p.media.find((m) => m.id === c.mediaId).kind === "annotation") {
@@ -441,6 +534,22 @@ async function renderProject(
         .filter((s) => s.start <= f0 && s.end > f0)
         .map((s) => s.c)
         .sort((a, b) => a.track - b.track);
+      // Most cut-only intervals need neither a synthetic canvas nor RGBA overlays.
+      const plain =
+        active.length === 1 &&
+        simpleClip({ ...p, clips: [{ ...active[0], start: 0 }] });
+      if (plain) {
+        const part = `part-${interval}.nut`;
+        await renderPlainInterval(active[0], plain.m, start, d, part);
+        concat.push(`file '${part}'\nduration ${d}`);
+        report(
+          ((start + d) / total) * 99,
+          `Montaggio ${interval + 1}/${bounds.length - 1}`,
+        );
+        continue;
+      }
+      compositedIntervals++;
+      pathName = directIntervals ? "montaggio misto" : "composizione";
       const args = [
           "-y",
           "-f",
@@ -517,11 +626,15 @@ async function renderProject(
         } else if (m.kind === "image")
           args.push("-loop", "1", "-framerate", String(fps), "-i", m.path);
         else
+          // Do not stop the video demuxer at the cut end: a following sparse
+          // frame is needed to determine how long the preceding image is held.
+          // The output video/audio filters enforce the selected duration.
           args.push(
             "-ss",
             String(offset),
-            "-t",
-            String(d * speed + 0.1),
+            ...(m.kind === "video"
+              ? ["-noaccurate_seek"]
+              : ["-t", String(d * speed + 0.1)]),
             "-i",
             m.path,
           );
@@ -536,7 +649,7 @@ async function renderProject(
               m.kind === "annotation"
                 ? H
                 : Math.max(2, Math.round((H * l.height) / 100));
-          let chain = `[${inputIndex}:v]setpts=(PTS-STARTPTS)/${speed},fps=${fps},tpad=stop_mode=clone:stop_duration=${d},scale=${rw}:${rh}:force_original_aspect_ratio=decrease,pad=${rw}:${rh}:(ow-iw)/2:(oh-ih)/2:color=black${["annotation", "image"].includes(m.kind) ? "@0" : ""},setsar=1,format=rgba`;
+          let chain = `[${inputIndex}:v]setpts=PTS/${speed},fps=${fps}:start_time=0:round=up,tpad=stop_mode=clone:stop_duration=${d},trim=duration=${d},scale=${rw}:${rh}:force_original_aspect_ratio=decrease,pad=${rw}:${rh}:(ow-iw)/2:(oh-ih)/2:color=black${["annotation", "image"].includes(m.kind) ? "@0" : ""},setsar=1,format=rgba`;
           if (l.content && m.kind !== "annotation") {
             const b = l.content,
               x = Math.round((b.x / 100) * rw),
@@ -549,7 +662,7 @@ async function renderProject(
                 1,
                 Math.min(rh - y, Math.round((b.height / 100) * rh)),
               );
-            chain = `[${inputIndex}:v]setpts=(PTS-STARTPTS)/${speed},fps=${fps},tpad=stop_mode=clone:stop_duration=${d},scale=${w}:${h},pad=${rw}:${rh}:${x}:${y}:color=black${m.kind === "image" ? "@0" : ""},setsar=1,format=rgba`;
+            chain = `[${inputIndex}:v]setpts=PTS/${speed},fps=${fps}:start_time=0:round=up,tpad=stop_mode=clone:stop_duration=${d},trim=duration=${d},scale=${w}:${h},pad=${rw}:${rh}:${x}:${y}:color=black${m.kind === "image" ? "@0" : ""},setsar=1,format=rgba`;
           }
           const z = c.zoom || { from: 1, to: 1, x: 0.5, y: 0.5 };
           if (
@@ -614,7 +727,7 @@ async function renderProject(
           const label = `a${inputIndex}`;
           const processing = await audioFilters(c, m, binaries.ffmpeg);
           filters.push(
-            `[${inputIndex}:a]asetpts=PTS-STARTPTS,${tempo(speed)},${processing ? processing + "," : ""}volume=${c.volume},apad,atrim=duration=${d}[${label}]`,
+            `[${inputIndex}:a]atrim=start=0:duration=${d * speed},asetpts=PTS-STARTPTS,${tempo(speed)},${processing ? processing + "," : ""}volume=${c.volume},apad,atrim=duration=${d}[${label}]`,
           );
           audios.push(`[${label}]`);
         }
