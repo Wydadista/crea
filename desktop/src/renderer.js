@@ -575,8 +575,11 @@ function renderTimeline() {
       project.clips.filter((c) => c.groupId === id),
     )) {
       if (run.length < 2) continue;
+      const duration =
+        Math.max(...run.map((c) => c.start + Timeline.duration(c))) -
+        Math.min(...run.map((c) => c.start));
       run.forEach((c, i) =>
-        joins.set(c.id, { left: i > 0, right: i < run.length - 1 }),
+        joins.set(c.id, { left: i > 0, right: i < run.length - 1, duration }),
       );
     }
   for (let track = 0; track < Timeline.trackCount(project); track++) {
@@ -595,6 +598,8 @@ function renderTimeline() {
       c = members[0],
       m = mediaOf(c),
       group = !!block.compact,
+      duration = joins.get(c.id)?.duration ?? block.end - block.start,
+      title = `${group ? `Gruppo modificabile · ${members.length} clip` : m.name}\nDurata: ${fmt(group ? block.end - block.start : duration)}`,
       node = el(
         "div",
         `clip${group ? " group" : ""}${m.kind === "audio" ? " audio" : ""}${m.kind === "annotation" ? " annotation" : ""}${members.some((c) => selection.has(c.id)) ? " selected" : ""}`,
@@ -622,7 +627,7 @@ function renderTimeline() {
         "link-badge",
         group ? "🔗 Gruppo" : "🔗 " + c.linkId.slice(0, 4),
       );
-      badge.title = "Elementi raggruppati";
+      badge.title = title;
       node.append(badge);
     }
     if (c.muted || project.trackMuted?.[c.track]) node.classList.add("muted");
@@ -630,9 +635,7 @@ function renderTimeline() {
     node.dataset.group = block.groupId || "";
     node.style.left = block.start * scale + "px";
     node.style.width = Math.max(5, (block.end - block.start) * scale) + "px";
-    node.title = group
-      ? `Gruppo modificabile · ${members.length} clip`
-      : m.name;
+    node.title = title;
     node.append(
       el(
         "span",
