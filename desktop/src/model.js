@@ -197,7 +197,56 @@
       out.trackCount = Math.max(1, layer);
       if (out.trackCount > api.MAX_TRACKS)
         throw Error("Troppi livelli di composizione per esportare");
+      // One application remains continuous across internal joined cuts.
+      const merged = [];
+      for (const c of out.clips.sort((a, b) => a.start - b.start)) {
+        const previous =
+          c.applicationId &&
+          merged.find(
+            (x) =>
+              x.applicationId === c.applicationId &&
+              x.track === c.track &&
+              Math.abs(x.start + api.duration(x) - c.start) < 1e-7 &&
+              Math.abs(x.out - c.in) < 1e-7,
+          );
+        if (previous) previous.out = c.out;
+        else merged.push(c);
+      }
+      out.clips = merged;
       return out;
+    },
+    sequence(clips, clip) {
+      const members = clip.groupId
+        ? api
+            .contiguousRuns(
+              clips.filter(
+                (c) => c.groupId === clip.groupId && c.track === clip.track,
+              ),
+            )
+            .find((run) => run.some((c) => c.id === clip.id)) || [clip]
+        : [clip];
+      return {
+        members,
+        start: Math.min(...members.map((c) => c.start)),
+        end: Math.max(...members.map((c) => c.start + api.duration(c))),
+        track: clip.track,
+      };
+    },
+    sequenceZoom(clips, clip, frames, id) {
+      const scope = api.sequence(clips, clip);
+      for (const c of scope.members)
+        c.zoom = {
+          from: frames[0].scale,
+          to: frames[1].scale,
+          x: frames[1].x,
+          y: frames[1].y,
+          applicationId: id,
+          keys: frames.map((k) => ({
+            ...k,
+            time: c.in + (scope.start + k.time - c.start) * (c.speed || 1),
+          })),
+        };
+      return scope;
     },
     zoomAt(c, source) {
       const z = c.zoom || { from: 1, to: 1, x: 0.5, y: 0.5 };
@@ -266,6 +315,41 @@
       for (const id of api.linkedIds(p.clips, [...shifting])) shifting.add(id);
       for (const c of p.clips) if (shifting.has(c.id)) c.start += d;
       p.clips.push({ ...clip, start: at });
+      return api.validate(p);
+    },
+    moveInsert(input, ids, at, track) {
+      const p = JSON.parse(JSON.stringify(input));
+      const chosen = new Set(api.linkedIds(p.clips, ids));
+      const moving = p.clips.filter((c) => chosen.has(c.id));
+      if (!moving.length) throw Error("Nessun elemento da inserire");
+      const start = Math.min(...moving.map((c) => c.start));
+      const end = Math.max(...moving.map((c) => c.start + api.duration(c)));
+      const sourceTrack = Math.min(...moving.map((c) => c.track));
+      const rest = p.clips.filter((c) => !chosen.has(c.id));
+      if (
+        rest.some(
+          (c) =>
+            c.track === track &&
+            c.start < at - 1e-8 &&
+            c.start + api.duration(c) > at + 1e-8,
+        )
+      )
+        throw Error("Inserisci fra due elementi");
+      const shift = new Set(
+        api.linkedIds(
+          rest,
+          rest
+            .filter((c) => c.track === track && c.start >= at - 1e-8)
+            .map((c) => c.id),
+        ),
+      );
+      for (const c of rest) if (shift.has(c.id)) c.start += end - start;
+      for (const c of moving) {
+        c.start = at + c.start - start;
+        c.track += track - sourceTrack;
+        delete c.speedHomeTrack;
+      }
+      p.clips = [...rest, ...moving];
       return api.validate(p);
     },
     sourceFamily(c) {
@@ -349,7 +433,12 @@
     copySelection(p, ids) {
       const clips = p.clips.filter((c) => ids.includes(c.id));
       if (!clips.length) throw Error("Seleziona gli elementi da copiare");
-      const used = new Set(clips.map((c) => c.mediaId));
+      const used = new Set(
+        clips.flatMap((c) => [
+          c.mediaId,
+          ...(c.attachments || []).map((a) => a.mediaId),
+        ]),
+      );
       return JSON.parse(
         JSON.stringify({
           clips: clips.map((c) => ({
@@ -410,6 +499,15 @@
             ...a,
             id: makeId(),
             parentId: next.id,
+            mediaId: media.get(a.mediaId) || a.mediaId,
+            ...(a.applicationId
+              ? {
+                  applicationId: remap(
+                    groups,
+                    "application:" + a.applicationId,
+                  ),
+                }
+              : {}),
           }));
         if (c.groupId) next.groupId = remap(groups, c.groupId);
         if (c.linkId) next.linkId = remap(links, c.linkId);
@@ -1211,7 +1309,7 @@
           for (const a of c.attachments) {
             if (
               a.attachments ||
-              !n(a.sourceIn, 0, 604800) ||
+              !n(a.sourceIn, -604800, 604800) ||
               !n(a.sourceOut, a.sourceIn + 0.001, 604800)
             )
               throw Error("Intervallo effetto non valido");
@@ -1222,7 +1320,7 @@
         }
         if (c.zoom) {
           for (const k of ["from", "to"])
-            if (!n(c.zoom[k], 1, 5)) throw Error("Zoom non valido");
+            if (!n(c.zoom[k], 1, 20)) throw Error("Zoom non valido");
           for (const k of ["x", "y"])
             if (!n(c.zoom[k], 0, 1)) throw Error("Centro zoom non valido");
         }
@@ -1233,12 +1331,12 @@
             c.zoom.keys.length > 16
           )
             throw Error("Movimento zoom non valido");
-          let prior = -1;
+          let prior = -Infinity;
           for (const k of c.zoom.keys) {
             if (
-              !n(k.time, 0, 604800) ||
+              !n(k.time, -604800, 604800) ||
               k.time <= prior ||
-              !n(k.scale, 1, 5) ||
+              !n(k.scale, 1, 20) ||
               !n(k.x, 0, 1) ||
               !n(k.y, 0, 1)
             )
@@ -1332,6 +1430,46 @@
         throw Error(
           "Intervallo occupato: usa uno spazio libero o un’altra traccia.",
         );
+      // Migrate the repeated local zoom produced by 0.4.0 on joined selections.
+      // Existing source-time keys that already span cuts are left alone.
+      for (const id of new Set(p.clips.map((c) => c.groupId).filter(Boolean))) {
+        for (const run of api.contiguousRuns(
+          p.clips.filter((c) => c.groupId === id),
+        )) {
+          if (
+            run.length < 2 ||
+            run.some((c) => !c.zoom || c.zoom.applicationId)
+          )
+            continue;
+          const profile = (c) =>
+            JSON.stringify({
+              from: c.zoom.from,
+              to: c.zoom.to,
+              x: c.zoom.x,
+              y: c.zoom.y,
+              keys: c.zoom.keys?.map((k) => ({
+                ...k,
+                time: Number(((k.time - c.in) / (c.out - c.in)).toFixed(6)),
+              })),
+            });
+          if (!run.every((c) => profile(c) === profile(run[0]))) continue;
+          const c = run[0],
+            d = api.total(run) - c.start,
+            z = c.zoom;
+          const frames = z.keys?.length
+            ? z.keys.map((k) => ({
+                ...k,
+                time: ((k.time - c.in) / (c.out - c.in)) * d,
+              }))
+            : [
+                { time: 0, scale: z.from, x: z.x, y: z.y },
+                { time: d * 0.25, scale: z.to, x: z.x, y: z.y },
+                { time: d * 0.75, scale: z.to, x: z.x, y: z.y },
+                { time: d, scale: z.from, x: z.x, y: z.y },
+              ];
+          api.sequenceZoom(p.clips, c, frames, "joined-zoom-" + id);
+        }
+      }
       return p;
     },
   };

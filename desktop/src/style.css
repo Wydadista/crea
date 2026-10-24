@@ -1978,7 +1978,7 @@ header .project-name {
 }
 .clip.group {
   background: var(--clip-color) !important;
-  border: 1px solid #aaa1d1;
+  border: 1px solid #ffc82e;
   border-radius: 6px;
 }
 .clip.group.joined-left {
@@ -2825,4 +2825,123 @@ header .project-name {
 #pickZoomFrame[aria-pressed="true"] {
   color: var(--accent);
   border-color: var(--accent);
+}
+
+/* Tracks grow upwards from the fixed bottom edge. */
+#timelineScroll {
+  display: flex;
+  flex-direction: column;
+}
+#timeline {
+  min-height: 100%;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0;
+}
+#ruler {
+  flex-shrink: 0;
+  margin-bottom: auto;
+}
+.track {
+  flex-shrink: 0;
+}
+#labelViewport {
+  display: flex;
+  flex-direction: column;
+}
+#labelRows {
+  margin-top: auto;
+  flex-shrink: 0;
+}
+.track-resizer {
+  top: -4px;
+  bottom: auto;
+  height: 8px;
+  z-index: 15;
+}
+.clip.group {
+  border-color: #ffc82e;
+}
+.sequence-bars {
+  position: absolute;
+  z-index: 16;
+  pointer-events: none;
+}
+.sequence-bars .attachment-row {
+  pointer-events: auto;
+}
+.sequence-bars .attachment-bar {
+  border-color: #ffc82e;
+}
+.zoom-frame-box {
+  position: absolute;
+  border: 2px solid #ffc82e;
+  box-shadow:
+    0 0 0 1px #000,
+    0 0 0 9999px #0005;
+  z-index: 30;
+  cursor: move;
+  touch-action: none;
+}
+.zoom-frame-handle {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 13px;
+  height: 13px;
+  background: #ffc82e;
+  border: 1px solid #000;
+  cursor: nwse-resize;
+}
+.zoom-result {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 32%;
+  height: auto;
+  z-index: 35;
+  border: 1px solid #ffc82e;
+  pointer-events: none;
+  background: #000;
+}
+.clip.group.selected {
+  border-color: #ffc82e;
+  box-shadow: 0 0 0 1px #fff8;
+}
+#timelineScroll {
+  display: block;
+}
+#timeline {
+  display: block;
+  min-height: 100%;
+  flex: none;
+}
+#ruler {
+  margin-bottom: 0;
+}
+#labelViewport {
+  display: block;
+}
+#labelRows {
+  margin-top: 0;
+}
+.timeline-base-spacer {
+  padding: 0 !important;
+  border: 0 !important;
+  min-height: 0 !important;
+  pointer-events: none;
+}
+.lane-resizer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  cursor: row-resize;
+  z-index: 19;
+  touch-action: none;
+}
+.lane-resizer:hover {
+  background: #ffc82e88;
 }

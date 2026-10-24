@@ -77,7 +77,9 @@ test("timed effects, duration progress, reversible mono/mute and CPU fallback su
       speed: 1,
       volume: 1,
       mono: true,
-      voice: { noise: 0.3, level: 0.4 },
+      // A pure calibration tone is intentionally suppressed by a speech denoiser.
+      // Keep this channel/volume regression independent from speech enhancement.
+      voice: { noise: 0, level: 0.4 },
     };
     assert.match(await audioFilters(c, media, ffmpeg), /c0=c0\|c1=c0/);
     let project = T.validate(

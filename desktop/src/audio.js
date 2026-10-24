@@ -51,12 +51,6 @@ async function audioFilters(c, m, ffmpeg) {
           : "pan=stereo|c0=0.5*c0+0.5*c1|c1=0.5*c0+0.5*c1",
     );
   }
-  if (c.voice?.noise && !c.voice.bypass)
-    // Modest attenuation, low noise floor, adaptive tracking and smoothed gains.
-    // Avoid the previous up-to-24 dB gate-like suppression of quiet consonants.
-    filters.push(
-      `afftdn=nr=${(2 + c.voice.noise * 8).toFixed(2)}:nf=-50:tn=1:gs=10`,
-    );
   if (c.voice?.level && !c.voice.bypass)
     filters.push(
       `dynaudnorm=f=250:g=15:p=${(0.5 + c.voice.level * 0.4).toFixed(2)}:m=${(1 + c.voice.level * 9).toFixed(2)}`,

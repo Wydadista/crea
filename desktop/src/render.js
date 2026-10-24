@@ -65,7 +65,11 @@ async function renderProject(
   progress = () => {},
   signal,
 ) {
-  const p = T.validate(input),
+  const p = T.validate({
+      ...input,
+      media: input.media.map((m) => ({ ...m })),
+      clips: input.clips.map((c) => ({ ...c })),
+    }),
     cfg = encoding(settings, p),
     { fps, width: W, height: H, crf } = cfg,
     total = T.total(p.clips);
@@ -157,6 +161,21 @@ async function renderProject(
       });
     });
   try {
+    for (const c of p.clips) {
+      const m = p.media.find((m) => m.id === c.mediaId);
+      if (c.voice?.noise && !c.voice.bypass && m.hasAudio) {
+        report(0, "Riduzione rumore DeepFilterNet3…");
+        const clean = await require("./deepfilter").denoisedMedia(
+          c,
+          m,
+          binaries.ffmpeg,
+          signal,
+        );
+        const id = "deepfilter-" + c.id;
+        p.media.push({ ...clean, id });
+        c.mediaId = id;
+      }
+    }
     const enc = require("./encoders");
     const requested = settings.encoder || "cpu";
     if (requested !== "cpu" && !enc.candidates.some(([id]) => id === requested))
@@ -544,7 +563,7 @@ async function renderProject(
             const zz = T.zoomExpression(c, "scale", source),
               zx = T.zoomExpression(c, "x", source),
               zy = T.zoomExpression(c, "y", source);
-            const zoomFilter = `zoompan=z='max(1,min(5,${zz}))':x='(iw-iw/zoom)*(${zx})':y='(ih-ih/zoom)*(${zy})':d=1:s=${rw}x${rh}:fps=${fps}`;
+            const zoomFilter = `zoompan=z='max(1,min(20,${zz}))':x='(iw-iw/zoom)*(${zx})':y='(ih-ih/zoom)*(${zy})':d=1:s=${rw}x${rh}:fps=${fps}`;
             if (m.kind === "image") {
               filters.push(
                 chain + `,split[zc${id}][za${id}]`,

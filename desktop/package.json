@@ -1,6 +1,6 @@
 {
   "name": "akhbar-studio",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Editor video desktop semplice con timeline e registrazione schermo",
   "author": "AKhbar studio",
   "main": "src/main.js",
@@ -10,7 +10,7 @@
     "pack": "electron-builder --dir",
     "build:win": "electron-builder --win --x64 --dir --publish never && node scripts/make-installer.cjs",
     "test:ui": "node test/ui-smoke.cjs && node test/features-ui.cjs && node test/precision-ui.cjs && node test/workflow-ui.cjs",
-    "prebuild:win": "node scripts/prepare-windows.cjs",
+    "prebuild:win": "node scripts/prepare-windows.cjs && node --use-env-proxy scripts/prepare-deepfilter.cjs win32",
     "bundle:release": "node scripts/bundle-release.cjs",
     "build:release": "npm run build:win && npm run bundle:release",
     "test:akhbar": "node test/akhbar-ui.cjs",
@@ -18,7 +18,8 @@
     "test:editing": "node test/editing-ui.cjs",
     "test:detach": "node test/detach-height-ui.cjs",
     "test:recording-quality": "node test/recording-quality-ui.cjs",
-    "test:workflow-editing": "node test/workflow-editing-ui.cjs"
+    "test:workflow-editing": "node test/workflow-editing-ui.cjs",
+    "postinstall": "node --use-env-proxy scripts/prepare-deepfilter.cjs"
   },
   "dependencies": {
     "ffmpeg-static": "5.3.0",
@@ -57,7 +58,13 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true
     },
-    "artifactName": "AKhbar-studio-${version}-${arch}-Setup.${ext}"
+    "artifactName": "AKhbar-studio-${version}-${arch}-Setup.${ext}",
+    "extraResources": [
+      {
+        "from": "vendor/deepfilter/win32",
+        "to": "vendor/deepfilter/win32"
+      }
+    ]
   },
   "private": true,
   "repository": {

@@ -1,8 +1,8 @@
-# AKhbar studio 0.4.0
+# AKhbar studio 0.4.1
 
 Editor desktop per Windows 10/11 x64, derivato dal commit `427ae12b48a1d8e685e362506b92c78621b7fede` di Wydadista/crea. Conserva timeline multitraccia, tagli, gruppi, velocità di lavoro/ripristino, effetti, annotazioni, anteprima, recupero automatico e apertura dei progetti precedenti `.creastudio`. Il vecchio `../creapost.html` è indipendente.
 
-Novità e verifiche della versione attuale: [VERIFICA-0.4.0.md](VERIFICA-0.4.0.md). Le verifiche precedenti restano in [VERIFICA-0.3.5.md](VERIFICA-0.3.5.md).
+Novità e verifiche della versione attuale: [VERIFICA-0.4.1.md](VERIFICA-0.4.1.md). Le novità 0.4.0 restano in [VERIFICA-0.4.0.md](VERIFICA-0.4.0.md). Le verifiche precedenti restano in [VERIFICA-0.3.5.md](VERIFICA-0.3.5.md).
 
 ## Avvio e installer Windows
 
@@ -13,13 +13,15 @@ npm ci
 npm start
 ```
 
+Per questa versione eseguire anche `npm ci` se si avevano già le dipendenze della 0.4.0: installa il nuovo motore audio. Richiede Internet durante questa preparazione.
+
 Chiudere l'app prima di creare l'installer:
 
 ```powershell
 npm run build:win
 ```
 
-Risultato: `dist/AKhbar-studio-0.4.0-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
+Risultato: `dist/AKhbar-studio-0.4.1-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
 
 ```powershell
 npm run build:release
@@ -71,7 +73,7 @@ Verifiche della grafica: [VERIFICA-GRAFICA.md](VERIFICA-GRAFICA.md).
 
 Le nuove clip video/audio e le registrazioni partono in **mono reversibile**. Un canale solo attivo viene distribuito a entrambe le uscite al suo livello originale; due canali attivi vengono mediati evitando saturazioni. I file originali non cambiano. Le scelte (o l'assenza del mono) dei progetti precedenti vengono rispettate. Anteprima ed export condividono lo stesso filtro; l'analisi dei canali non costruisce una forma d'onda completa.
 
-La riduzione del rumore usa un'attenuazione più moderata (2–10 dB), soglia più bassa, tracking e guadagni smussati. Intensità regolabile e pulsante **prima/dopo** nelle proprietà. Lo zero disattiva il filtro; iniziare dal 25% per un intervento leggero. Il confronto bypassa anche l'uniformità voce e si applica a preview/export. La qualità su voci reali dipende da rumore e registrazione; non è un modello neurale e non ripara parole già distorte. La funzione di apprendimento da un campione di solo rumore non è inclusa.
+La riduzione del rumore usa **DeepFilterNet3**, con il motore CPU ufficiale `deep-filter` 0.5.6 e modello 3 esplicito. `npm ci` scarica motore e modello (circa 35 MB su Windows), controllando SHA-256. Dopo l'installazione l'elaborazione è locale e non richiede Internet, Python o GPU. Lo slider regola il limite di attenuazione tra 6 e 24 dB; zero e **prima/dopo** bypassano il denoiser. Iniziare da 25–50%, quindi ascoltare consonanti e voce durante il rumore. Anteprima ed export riusano la stessa elaborazione della sorgente intera, con compensazione del ritardo e durata invariata. Il file originale rimane intatto. Le opzioni audio del registratore durante la cattura restano quelle del dispositivo/browser; DeepFilterNet3 si applica dalla proprietà Riduzione rumore della clip. Non è garantito il recupero di parole già distorte o coperte completamente dal rumore.
 
 ## Media e registrazione
 

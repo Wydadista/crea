@@ -6,16 +6,14 @@ recordingControls.onState((s) => {
   $("state").textContent = s.countdown
     ? String(s.countdown)
     : (s.paused ? "Ⅱ " : "") + (s.time || "00:00");
-  $("message").textContent = s.countdown
-    ? "Registrazione tra " + s.countdown + "…"
-    : s.finishing
-      ? "Preparazione / salvataggio…"
-      : s.active
-        ? s.paused
-          ? "Registrazione in pausa"
-          : "Registrazione in corso"
-        : "Pronto per una nuova registrazione";
-  $("pause").textContent = s.paused ? "Riprendi" : "Pausa";
+  $("state").title = s.finishing
+    ? "Preparazione / salvataggio…"
+    : s.countdown
+      ? "Conto alla rovescia"
+      : "Tempo registrato";
+  $("pause").textContent = s.paused ? "▶" : "⏸";
+  $("pause").title = s.paused ? "Riprendi" : "Pausa";
+  $("pause").setAttribute("aria-label", $("pause").title);
   $("pause").disabled = !s.active || s.finishing;
   $("stop").disabled = !s.active && !s.countdown;
   $("discard").disabled = (!s.active && !s.countdown) || s.finishing;
@@ -24,7 +22,13 @@ recordingControls.onState((s) => {
   $("name").disabled = !!busy;
   if (document.activeElement !== $("name") && s.name !== undefined)
     $("name").value = s.name;
-  MicMeter.paint($("level"), $("peak"), $("db"), $("micStatus"), s, s.paused);
+  $("level").style.transform = `scaleX(${s.paused ? 0 : s.level || 0})`;
+  $("peak").style.left =
+    Math.max(0, Math.min(100, (((s.peakHoldDb ?? -60) + 60) / 60) * 100)) + "%";
+  $("level").parentElement.setAttribute(
+    "aria-valuenow",
+    Math.round((s.level || 0) * 100),
+  );
 });
 $("name").oninput = () =>
   recordingControls.control({ type: "name", value: $("name").value });
@@ -42,3 +46,6 @@ for (const [id, action] of [
   ["settings", "settings"],
 ])
   $(id).onclick = () => recordingControls.control(action);
+
+$("minimize").onclick = () => recordingControls.control("minimize");
+$("close").onclick = () => recordingControls.control("close-window");

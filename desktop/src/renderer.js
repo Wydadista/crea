@@ -795,7 +795,8 @@ function beginClipDrag(e, block) {
     valid = false,
     add = 0,
     previousDelta = 0,
-    latch = null;
+    latch = null,
+    insertion = null;
   const ghosts = origin.map(() => {
     const n = el("div", "drop-ghost");
     document.body.append(n);
@@ -858,6 +859,33 @@ function beginClipDrag(e, block) {
       track: o.track + td,
     }));
 
+    insertion = null;
+    if (!newTrack && !block.compact) {
+      const remaining = project.clips.filter(
+        (c) => !origin.some((o) => o.c.id === c.id),
+      );
+      const tr = block.track + td;
+      const at = Timeline.insertionPoint(
+        { clips: remaining },
+        tr,
+        (ev.clientX - $("ruler").getBoundingClientRect().left) / scale,
+        14 / scale,
+      );
+      if (at !== null) {
+        try {
+          insertion = {
+            project: Timeline.moveInsert(
+              project,
+              origin.map((o) => o.c.id),
+              at,
+              tr,
+            ),
+            at,
+            track: tr,
+          };
+        } catch {}
+      }
+    }
     add = Math.max(
       0,
       ...proposals.map((c) => c.track + 1 - Timeline.trackCount(project)),
@@ -866,7 +894,18 @@ function beginClipDrag(e, block) {
       Timeline.canPlace(project.clips, proposals) &&
       Timeline.trackCount(project) + add <= Timeline.MAX_TRACKS;
     $("newTrackDrop").classList.toggle("dragover", newTrack);
-    guide.hidden = !latch || !valid;
+    if (insertion) valid = true;
+    guide.hidden = !insertion && (!latch || !valid);
+    guide.classList.toggle("insertion-guide", !!insertion);
+    if (insertion) {
+      const r = $("track" + insertion.track).getBoundingClientRect();
+      Object.assign(guide.style, {
+        left:
+          $("ruler").getBoundingClientRect().left + insertion.at * scale + "px",
+        top: r.top + "px",
+        height: r.height + "px",
+      });
+    }
     proposals.forEach((c, i) => {
       const r = newTrack ? zone : $("track" + c.track)?.getBoundingClientRect(),
         ghost = ghosts[i];
@@ -885,7 +924,7 @@ function beginClipDrag(e, block) {
           ? "Agganciato · " + fmt(c.start)
           : "Rilascia qui"
         : "Intervallo occupato";
-      if (latch && r && c.id === latch.originId)
+      if (!insertion && latch && r && c.id === latch.originId)
         Object.assign(guide.style, {
           left:
             $("ruler").getBoundingClientRect().left + latch.at * scale + "px",
@@ -909,6 +948,11 @@ function beginClipDrag(e, block) {
     if (!valid)
       return toast("Posizione non disponibile: le clip sono rimaste ferme.");
     checkpoint();
+    if (insertion) {
+      project = insertion.project;
+      changed();
+      return;
+    }
     for (let i = 0; i < add; i++) Timeline.addTrack(project);
     proposals.forEach((c) => {
       const target = project.clips.find((o) => o.id === c.id);
@@ -3696,7 +3740,7 @@ studio
   });
 function ensureTrackRows() {
   const count = Timeline.trackCount(project);
-  if ($("labelRows").children.length !== count) {
+  if ($("labelRows").querySelectorAll("[data-choose-track]").length !== count) {
     document.querySelectorAll(".track").forEach((n) => n.remove());
     $("labelRows").replaceChildren();
     const active = Number($("activeTrack").value) || 0;
@@ -3744,7 +3788,7 @@ function ensureTrackRows() {
         const move = (ev) => {
           project.trackHeights[t] = Math.max(
             Timeline.MIN_TRACK_HEIGHT,
-            Math.min(600, height + ev.clientY - y),
+            Math.min(600, height + y - ev.clientY),
           );
           scheduleTrackGeometry();
         };

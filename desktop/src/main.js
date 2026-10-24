@@ -376,16 +376,18 @@ ipcMain.handle("recording-toolbar", async (_e, state) => {
   if (!recordingToolbar) {
     const area = screen.getPrimaryDisplay().workArea;
     recordingToolbar = new BrowserWindow({
-      width: 580,
-      height: 300,
-      minWidth: 500,
-      minHeight: 280,
+      width: 1080,
+      height: 76,
+      minWidth: 1080,
+      minHeight: 76,
       title: "AKhbar studio · Registratore",
       icon: path.join(__dirname, "project-icon.ico"),
       x: area.x + 30,
       y: area.y + 30,
-      frame: true,
-      resizable: true,
+      frame: false,
+      resizable: false,
+      maximizable: false,
+      backgroundColor: "#000000",
       alwaysOnTop: false,
       skipTaskbar: false,
       show: false,
@@ -396,6 +398,7 @@ ipcMain.handle("recording-toolbar", async (_e, state) => {
         sandbox: true,
       },
     });
+    recordingToolbar.setMenu(null);
     recordingToolbar.setContentProtection(true);
 
     recordingToolbar.setVisibleOnAllWorkspaces(true);
@@ -419,6 +422,13 @@ ipcMain.handle("recording-toolbar", async (_e, state) => {
     recordingToolbar.webContents.send("recording-state", recorderWindowState);
 });
 ipcMain.on("recording-control", (event, action) => {
+  if (event.sender === recordingToolbar?.webContents && action === "minimize")
+    return recordingToolbar.minimize();
+  if (
+    event.sender === recordingToolbar?.webContents &&
+    action === "close-window"
+  )
+    return recordingToolbar.close();
   if (
     event.sender === recordingToolbar?.webContents &&
     ["pause", "stop", "start", "discard", "settings", "name"].includes(
@@ -783,6 +793,12 @@ app.on("before-quit", () => previewAudioController.abort());
 const continuousAudio = (c) =>
   !c.voice?.bypass && (c.voice?.noise > 0 || c.voice?.level > 0);
 async function previewAudio(clip, media, page = 0) {
+  media = await require("./deepfilter").denoisedMedia(
+    clip,
+    media,
+    binaries.ffmpeg,
+    previewAudioController.signal,
+  );
   const { audioFilters } = require("./audio");
   const effects = await audioFilters(clip, media, binaries.ffmpeg);
   const processing = [effects, require("./render").tempo(clip.speed || 1)]
