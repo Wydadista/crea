@@ -77,6 +77,9 @@ async function renderProject(
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "crea-render-"));
   const begun = performance.now();
   const stages = [];
+  let audioPipeline,
+    stagedOutput,
+    renderPercent = 99;
   let fallbackFrom = null,
     decoder = "cpu";
   let directIntervals = 0,
@@ -102,7 +105,7 @@ async function renderProject(
     progress({
       percent: lastPercent,
       message,
-      processedSeconds: Math.min(total, (percent * total) / 99),
+      processedSeconds: Math.min(total, (percent * total) / renderPercent),
       ...details(),
     });
   };
@@ -113,6 +116,8 @@ async function renderProject(
     duration = 0,
     phase = "Composizione",
     units = total,
+    progressStart = 0,
+    progressEnd = renderPercent,
   ) =>
     new Promise((resolve, reject) => {
       report(lastPercent, phase);
@@ -143,8 +148,10 @@ async function renderProject(
             const seconds = Number(line.slice(12)) / 1e6;
             if (Number.isFinite(seconds) && duration)
               report(
-                ((offset + Math.min(duration, Math.max(0, seconds))) / units) *
-                  99,
+                progressStart +
+                  ((offset + Math.min(duration, Math.max(0, seconds))) /
+                    units) *
+                    (progressEnd - progressStart),
                 phase,
               );
           }
@@ -627,6 +634,28 @@ async function renderProject(
         ...spans.flatMap((s) => [s.start, Math.min(s.end, endFrame)]),
       ]),
     ].sort((a, b) => a - b);
+    renderPercent = 90;
+    let finalizingAudio = false;
+    const audioFile = path.join(dir, "audio.m4a"),
+      audioBegun = performance.now();
+    audioPipeline = require("./export-audio").createAudioPipeline(
+      binaries.ffmpeg,
+      audioFile,
+      signal,
+      (seconds) => {
+        if (finalizingAudio)
+          report(
+            90 + 2 * Math.min(1, seconds / (endFrame / fps)),
+            "Finalizzazione audio AAC",
+          );
+      },
+    );
+    const queueAudio = (part, start, duration) => {
+      audioPipeline.enqueue(
+        path.join(dir, part),
+        Math.round((start + duration) * 48000) - Math.round(start * 48000),
+      );
+    };
     const concat = [];
     const intervalAt = (interval) => {
       const f0 = bounds[interval],
@@ -664,9 +693,10 @@ async function renderProject(
         if (segments.length === 1)
           await renderPlainInterval(active[0], plain.m, start, d, part);
         else await renderPlainBatch(segments, part);
+        queueAudio(part, start, duration);
         concat.push(`file '${part}'\nduration ${duration}`);
         report(
-          ((start + duration) / total) * 99,
+          ((start + duration) / total) * renderPercent,
           `Montaggio ${interval + 1}/${bounds.length - 1}`,
         );
         continue;
@@ -886,16 +916,35 @@ async function renderProject(
         path.join(dir, part),
       );
       await run(args, start, d);
+      queueAudio(part, start, d);
       concat.push(`file '${part}'\nduration ${d}`);
       report(
-        ((start + d) / total) * 99,
+        ((start + d) / total) * renderPercent,
         `Composizione ${interval + 1}/${bounds.length - 1}`,
       );
     }
     await fs.writeFile(path.join(dir, "list.txt"), concat.join("\n"));
-    const result = path.join(dir, "final.mp4");
-    // Every interval is encoded once with the requested encoder/quality. PCM audio
-    // is continuous across boundaries and AAC is encoded only once here.
+    finalizingAudio = true;
+    report(
+      90 + 2 * Math.min(1, audioPipeline.seconds / (endFrame / fps)),
+      "Finalizzazione audio AAC",
+    );
+    await audioPipeline.finish();
+    stages.push({
+      phase: "Audio AAC in parallelo al video",
+      seconds: (performance.now() - audioBegun) / 1000,
+      encoder: "aac",
+      parallel: true,
+    });
+    report(92, "Assemblaggio MP4 · audio e video già codificati");
+    // Stage beside the destination: publish only after successful finalization,
+    // without copying the complete MP4 from the temporary volume afterwards.
+    stagedOutput = path.join(
+      path.dirname(output),
+      `.akhbar-export-${require("node:crypto").randomUUID()}.mp4`,
+    );
+    // Both streams are already encoded. Preserve the single continuous AAC
+    // encode (including priming) and copy H.264 without a second video encode.
     await run(
       [
         "-y",
@@ -905,6 +954,12 @@ async function renderProject(
         "1",
         "-i",
         path.join(dir, "list.txt"),
+        "-i",
+        audioFile,
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
         "-t",
         String(endFrame / fps),
         "-c:v",
@@ -912,19 +967,21 @@ async function renderProject(
         "-bsf:v",
         `setts=pts=N/(${fps}*TB):dts=N/(${fps}*TB):duration=1/(${fps}*TB)`,
         "-c:a",
-        "aac",
-        "-b:a",
-        "192k",
+        "copy",
         "-movflags",
         "+faststart",
-        result,
+        stagedOutput,
       ],
       0,
-      0,
-      "Assemblaggio MP4 (video senza ricodifica)",
+      endFrame / fps,
+      "Assemblaggio MP4 · copia audio e video",
+      endFrame / fps,
+      92,
+      99,
     );
     if (signal?.aborted) throw Error("Esportazione annullata");
-    await fs.copyFile(result, output);
+    report(99, "Salvataggio finale del file");
+    await fs.rename(stagedOutput, output);
     progress({
       percent: 100,
       message: "Esportazione completata",
@@ -932,6 +989,8 @@ async function renderProject(
     });
     return output;
   } finally {
+    await audioPipeline?.dispose();
+    if (stagedOutput) await fs.rm(stagedOutput, { force: true });
     await fs.rm(dir, { recursive: true, force: true });
   }
 }

@@ -150,6 +150,7 @@ test(
       }
       const output = path.join(dir, "out.mp4"),
         events = [];
+      await fs.writeFile(output, "previous export");
       await renderProject(
         p,
         output,
@@ -161,6 +162,27 @@ test(
       assert.equal(result.directIntervals, 17);
       assert.equal(result.directPasses, 4);
       assert.equal(result.compositedIntervals, 2);
+      assert.ok(
+        result.stages.some(
+          (stage) => stage.encoder === "aac" && stage.parallel,
+        ),
+      );
+      assert.ok(
+        events
+          .filter((event) =>
+            /Montaggio|Composizione|Blocco di/.test(event.message),
+          )
+          .every((event) => event.percent <= 90),
+        "reserve progress for audio and MP4 finalization",
+      );
+      assert.ok(
+        events.some(
+          (event) =>
+            event.message.startsWith("Assemblaggio MP4") &&
+            event.percent >= 92 &&
+            event.percent < 100,
+        ),
+      );
       const { stdout: pixels } = await run(
         ffmpeg,
         [
@@ -289,6 +311,32 @@ test(
         /abort/i,
       );
       await assert.rejects(fs.access(cancelled));
+      // Cancelling during assembly must preserve an existing destination and
+      // remove both background audio work and the staged output beside it.
+      const existing = path.join(dir, "existing.mp4"),
+        sentinel = Buffer.from("existing export");
+      await fs.writeFile(existing, sentinel);
+      const assemblyController = new AbortController();
+      await assert.rejects(
+        renderProject(
+          p,
+          existing,
+          { height: "original", fps: 12, quality: 80, encoder: "cpu" },
+          { ffmpeg, ffprobe },
+          (event) => {
+            if (event.message.startsWith("Assemblaggio MP4 · copia"))
+              assemblyController.abort();
+          },
+          assemblyController.signal,
+        ),
+        /abort/i,
+      );
+      assert.deepEqual(await fs.readFile(existing), sentinel);
+      assert.ok(
+        !(await fs.readdir(dir)).some((file) =>
+          file.startsWith(".akhbar-export-"),
+        ),
+      );
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }

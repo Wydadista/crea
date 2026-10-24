@@ -1,8 +1,8 @@
-# AKhbar studio 0.4.5
+# AKhbar studio 0.4.6
 
 Editor desktop per Windows 10/11 x64, derivato dal commit `427ae12b48a1d8e685e362506b92c78621b7fede` di Wydadista/crea. Conserva timeline multitraccia, tagli, gruppi, velocità di lavoro/ripristino, effetti, annotazioni, anteprima, recupero automatico e apertura dei progetti precedenti `.creastudio`. Il vecchio `../creapost.html` è indipendente.
 
-Novità e verifiche della versione attuale: [VERIFICA-0.4.5.md](VERIFICA-0.4.5.md). La verifica GPU resta in [VERIFICA-0.4.4.md](VERIFICA-0.4.4.md). La verifica dei tagli resta in [VERIFICA-0.4.3.md](VERIFICA-0.4.3.md). La verifica 0.4.2 resta in [VERIFICA-0.4.2.md](VERIFICA-0.4.2.md). La verifica precedente resta in [VERIFICA-0.4.1.md](VERIFICA-0.4.1.md). Le novità 0.4.0 restano in [VERIFICA-0.4.0.md](VERIFICA-0.4.0.md). Le verifiche precedenti restano in [VERIFICA-0.3.5.md](VERIFICA-0.3.5.md).
+Novità e verifiche della versione attuale: [VERIFICA-0.4.6.md](VERIFICA-0.4.6.md). La verifica dei blocchi resta in [VERIFICA-0.4.5.md](VERIFICA-0.4.5.md). La verifica GPU resta in [VERIFICA-0.4.4.md](VERIFICA-0.4.4.md). La verifica dei tagli resta in [VERIFICA-0.4.3.md](VERIFICA-0.4.3.md). La verifica 0.4.2 resta in [VERIFICA-0.4.2.md](VERIFICA-0.4.2.md). La verifica precedente resta in [VERIFICA-0.4.1.md](VERIFICA-0.4.1.md). Le novità 0.4.0 restano in [VERIFICA-0.4.0.md](VERIFICA-0.4.0.md). Le verifiche precedenti restano in [VERIFICA-0.3.5.md](VERIFICA-0.3.5.md).
 
 ## Avvio e installer Windows
 
@@ -21,7 +21,7 @@ Chiudere l'app prima di creare l'installer:
 npm run build:win
 ```
 
-Risultato: `dist/AKhbar-studio-0.4.5-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
+Risultato: `dist/AKhbar-studio-0.4.6-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
 
 ```powershell
 npm run build:release
@@ -35,11 +35,11 @@ Il bundle funziona anche da uno ZIP senza `.git`. Non eseguire `npm ci` contempo
 
 - Una sola clip video senza composizione/effetti/zoom passa direttamente dal decoder all'encoder. Niente sfondo sintetico, passaggio RGBA, video intermedio o seconda codifica. Tagli sorgente, FPS, dimensioni, mono, volume e filtri audio continuano ad applicarsi.
 - I segmenti video consecutivi senza sovrapposizioni o effetti visivi vengono elaborati in blocchi di massimo otto, con un solo avvio dell’encoder per blocco. Ogni segmento mantiene taglio e impostazioni audio; effetti, zoom, cambi di velocità e spazi vuoti interrompono il blocco e usano i percorsi dedicati.
-- Nei montaggi ogni intervallo viene codificato **una volta** con qualità ed encoder selezionati. Il video finale viene concatenato senza ricodifica, normalizzando i timestamp a FPS costanti; l'audio PCM viene codificato in AAC una volta sola, evitando priming AAC a ogni taglio.
+- Nei montaggi ogni intervallo viene codificato **una volta** con qualità ed encoder selezionati. Il video finale viene concatenato senza ricodifica, normalizzando i timestamp a FPS costanti; l'audio PCM viene codificato in AAC una volta sola, in parallelo ai blocchi video successivi, evitando priming AAC a ogni taglio. L'assemblaggio finale copia entrambi i flussi già codificati. Il file viene completato nella cartella scelta e pubblicato con una rinomina, evitando una copia integrale aggiuntiva dal volume temporaneo.
 - **Copia flussi originali** è facoltativa e deve essere scelta esplicitamente. Conserva la qualità originale, quindi non applica lo slider qualità. Richiede una clip intera H.264/AAC, dimensioni/pixel format e cadenza dei pacchetti identici agli FPS richiesti, nessun cambio audio (incluso mono), velocità, mute o effetto. Un'impostazione incompatibile viene rifiutata, non ignorata. Il controllo dei keyframe ne verifica l'intervallo massimo.
 - Su NVIDIA, per una clip semplice alle dimensioni originali, viene provato anche il percorso **CUDA → NVENC** senza download/upload dei fotogrammi. Un test reale decide se usarlo; se CUDA non funziona, il decoder CPU alimenta NVENC. Per ridimensionamenti e composizioni i filtri restano CPU. L'export conserva l'indicazione di encoder, decoder, percorso e ripiego CPU. La compilazione di FFmpeg e i driver devono supportare l'hardware.
 - CPU usa inizialmente `veryfast` e un numero di thread proporzionato alle CPU disponibili (quota cloud inclusa, massimo 8); `fast` rimane selezionabile per una compressione maggiore. Il CRF scelto non cambia: la velocità può aumentare il peso del file.
-- La percentuale riguarda il **contenuto processato**, non una stima del tempo rimanente. Il tempo trascorso è un contatore indipendente. L'assemblaggio/scrittura possono richiedere tempo anche quando i fotogrammi sono già completi; 100% arriva soltanto a file scritto.
+- Nei montaggi la barra riserva fino al 90% al video, 90–92% alla finalizzazione audio e 92–99% all’assemblaggio MP4. Le percentuali indicano le fasi del lavoro, non stimano il tempo rimanente. Il tempo trascorso è un contatore indipendente; 100% arriva soltanto dopo il salvataggio riuscito.
 
 Qualità 65% corrisponde a CRF/CQ 23 in questa versione; le percentuali di Camtasia non sono direttamente confrontabili. Per misurare una RTX 2060 osservare in Gestione attività **Video Encode**, **Video Decode**, CPU e disco, oltre al nome dell'encoder riportato dall'app. Un 5% generale della GPU non misura l'utilizzo NVENC.
 
