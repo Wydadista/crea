@@ -1,8 +1,8 @@
-# AKhbar studio 0.4.4
+# AKhbar studio 0.4.5
 
 Editor desktop per Windows 10/11 x64, derivato dal commit `427ae12b48a1d8e685e362506b92c78621b7fede` di Wydadista/crea. Conserva timeline multitraccia, tagli, gruppi, velocità di lavoro/ripristino, effetti, annotazioni, anteprima, recupero automatico e apertura dei progetti precedenti `.creastudio`. Il vecchio `../creapost.html` è indipendente.
 
-Novità e verifiche della versione attuale: [VERIFICA-0.4.4.md](VERIFICA-0.4.4.md). La verifica dei tagli resta in [VERIFICA-0.4.3.md](VERIFICA-0.4.3.md). La verifica 0.4.2 resta in [VERIFICA-0.4.2.md](VERIFICA-0.4.2.md). La verifica precedente resta in [VERIFICA-0.4.1.md](VERIFICA-0.4.1.md). Le novità 0.4.0 restano in [VERIFICA-0.4.0.md](VERIFICA-0.4.0.md). Le verifiche precedenti restano in [VERIFICA-0.3.5.md](VERIFICA-0.3.5.md).
+Novità e verifiche della versione attuale: [VERIFICA-0.4.5.md](VERIFICA-0.4.5.md). La verifica GPU resta in [VERIFICA-0.4.4.md](VERIFICA-0.4.4.md). La verifica dei tagli resta in [VERIFICA-0.4.3.md](VERIFICA-0.4.3.md). La verifica 0.4.2 resta in [VERIFICA-0.4.2.md](VERIFICA-0.4.2.md). La verifica precedente resta in [VERIFICA-0.4.1.md](VERIFICA-0.4.1.md). Le novità 0.4.0 restano in [VERIFICA-0.4.0.md](VERIFICA-0.4.0.md). Le verifiche precedenti restano in [VERIFICA-0.3.5.md](VERIFICA-0.3.5.md).
 
 ## Avvio e installer Windows
 
@@ -21,7 +21,7 @@ Chiudere l'app prima di creare l'installer:
 npm run build:win
 ```
 
-Risultato: `dist/AKhbar-studio-0.4.4-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
+Risultato: `dist/AKhbar-studio-0.4.5-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
 
 ```powershell
 npm run build:release
@@ -34,6 +34,7 @@ Il bundle funziona anche da uno ZIP senza `.git`. Non eseguire `npm ci` contempo
 **Esporta → Scegli destinazione** apre la finestra nativa di salvataggio; il percorso viene mostrato nel dialogo. Impostazioni: dimensioni originali o 720/1080/1440/2160p, FPS interi 1–120, qualità 1–100%, intervallo massimo dei keyframe (inizialmente 4 secondi), encoder CPU o GPU rilevati con un'effettiva codifica di prova.
 
 - Una sola clip video senza composizione/effetti/zoom passa direttamente dal decoder all'encoder. Niente sfondo sintetico, passaggio RGBA, video intermedio o seconda codifica. Tagli sorgente, FPS, dimensioni, mono, volume e filtri audio continuano ad applicarsi.
+- I segmenti video consecutivi senza sovrapposizioni o effetti visivi vengono elaborati in blocchi di massimo otto, con un solo avvio dell’encoder per blocco. Ogni segmento mantiene taglio e impostazioni audio; effetti, zoom, cambi di velocità e spazi vuoti interrompono il blocco e usano i percorsi dedicati.
 - Nei montaggi ogni intervallo viene codificato **una volta** con qualità ed encoder selezionati. Il video finale viene concatenato senza ricodifica, normalizzando i timestamp a FPS costanti; l'audio PCM viene codificato in AAC una volta sola, evitando priming AAC a ogni taglio.
 - **Copia flussi originali** è facoltativa e deve essere scelta esplicitamente. Conserva la qualità originale, quindi non applica lo slider qualità. Richiede una clip intera H.264/AAC, dimensioni/pixel format e cadenza dei pacchetti identici agli FPS richiesti, nessun cambio audio (incluso mono), velocità, mute o effetto. Un'impostazione incompatibile viene rifiutata, non ignorata. Il controllo dei keyframe ne verifica l'intervallo massimo.
 - Su NVIDIA, per una clip semplice alle dimensioni originali, viene provato anche il percorso **CUDA → NVENC** senza download/upload dei fotogrammi. Un test reale decide se usarlo; se CUDA non funziona, il decoder CPU alimenta NVENC. Per ridimensionamenti e composizioni i filtri restano CPU. L'export conserva l'indicazione di encoder, decoder, percorso e ripiego CPU. La compilazione di FFmpeg e i driver devono supportare l'hardware.

@@ -198,6 +198,7 @@ test(
           );
         if (scenario === "plain") {
           assert.equal(events.at(-1).directIntervals, 3);
+          assert.equal(events.at(-1).directPasses, 1);
           assert.equal(events.at(-1).compositedIntervals, 0);
         }
         if (scenario === "overlay")

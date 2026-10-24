@@ -80,6 +80,7 @@ async function renderProject(
   let fallbackFrom = null,
     decoder = "cpu";
   let directIntervals = 0,
+    directPasses = 0,
     compositedIntervals = 0;
   let actualEncoder = "libx264",
     pathName = "composizione",
@@ -92,6 +93,7 @@ async function renderProject(
     path: pathName,
     stages,
     directIntervals,
+    directPasses,
     compositedIntervals,
     totalSeconds: total,
   });
@@ -467,12 +469,115 @@ async function renderProject(
         path.join(dir, part),
       );
       directIntervals++;
+      directPasses++;
       pathName = compositedIntervals ? "montaggio misto" : "montaggio diretto";
       await run(
         args,
         start,
         duration,
         "Clip senza sovrapposizioni · " + actualEncoder,
+      );
+    };
+    const renderPlainBatch = async (segments, part) => {
+      const args = ["-y"],
+        filters = [],
+        inputs = [];
+      let inputIndex = 0;
+      const duration = segments.reduce((sum, s) => sum + s.duration, 0);
+      for (const [i, s] of segments.entries()) {
+        const { c, m, start, duration: d } = s,
+          videoInput = inputIndex++,
+          offset = Math.max(c.in, T.sourceTime(c, start));
+        args.push(
+          "-ss",
+          String(offset),
+          "-noaccurate_seek",
+          "-threads",
+          String(Math.min(2, enc.threadBudget())),
+          "-i",
+          m.path,
+        );
+        // Preserve the held frame and its time relative to this cut. Never
+        // reset source video PTS before fps, even when batching disjoint cuts.
+        const video = [
+          `fps=${fps}:start_time=0:round=up`,
+          `tpad=stop_mode=clone:stop_duration=${d}`,
+          `trim=duration=${d}`,
+          ...(m.width === W && m.height === H
+            ? []
+            : [
+                `scale=${W}:${H}:force_original_aspect_ratio=decrease`,
+                `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`,
+              ]),
+          "setsar=1",
+          `format=${cfg.pixelFormat}`,
+          "settb=AVTB",
+          "setpts=PTS-STARTPTS",
+        ];
+        filters.push(`[${videoInput}:v:0]${video.join(",")}[v${i}]`);
+        const audible =
+          m.hasAudio && !c.muted && !p.trackMuted?.[c.track] && c.volume > 0;
+        if (audible) {
+          const processing = await audioFilters(c, m, binaries.ffmpeg);
+          filters.push(
+            `[${videoInput}:a:0]` +
+              [
+                "atrim=start=0",
+                "asetpts=PTS-STARTPTS",
+                processing,
+                `volume=${c.volume}`,
+                "apad",
+                `atrim=duration=${d}`,
+                "aformat=sample_fmts=s16:sample_rates=48000:channel_layouts=stereo",
+              ]
+                .filter(Boolean)
+                .join(",") +
+              `[a${i}]`,
+          );
+        } else {
+          const silenceInput = inputIndex++;
+          args.push("-f", "lavfi", "-i", `anullsrc=r=48000:cl=stereo:d=${d}`);
+          filters.push(`[${silenceInput}:a:0]asetpts=PTS-STARTPTS[a${i}]`);
+        }
+        inputs.push(`[v${i}][a${i}]`);
+      }
+      filters.push(
+        `${inputs.join("")}concat=n=${segments.length}:v=1:a=1[outv][outa]`,
+      );
+      const graph = path.join(dir, part + ".txt");
+      await fs.writeFile(graph, filters.join(";"));
+      args.push(
+        "-filter_complex_script",
+        graph,
+        "-map",
+        "[outv]",
+        "-map",
+        "[outa]",
+        ...videoArgs(),
+        "-bf",
+        "0",
+        "-c:a",
+        "pcm_s16le",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        "-t",
+        String(duration),
+        "-r",
+        String(fps),
+        "-fps_mode",
+        "cfr",
+        path.join(dir, part),
+      );
+      directIntervals += segments.length;
+      directPasses++;
+      pathName = compositedIntervals ? "montaggio misto" : "montaggio diretto";
+      await run(
+        args,
+        segments[0].start,
+        duration,
+        `Blocco di ${segments.length} segmenti · ${actualEncoder}`,
       );
     };
     const rasters = new Map();
@@ -523,27 +628,45 @@ async function renderProject(
       ]),
     ].sort((a, b) => a - b);
     const concat = [];
+    const intervalAt = (interval) => {
+      const f0 = bounds[interval],
+        f1 = bounds[interval + 1],
+        active = spans
+          .filter((s) => s.start <= f0 && s.end > f0)
+          .map((s) => s.c)
+          .sort((a, b) => a.track - b.track),
+        plain =
+          active.length === 1 &&
+          simpleClip({ ...p, clips: [{ ...active[0], start: 0 }] });
+      return { active, plain, start: f0 / fps, duration: (f1 - f0) / fps };
+    };
     for (let interval = 0; interval < bounds.length - 1; interval++) {
       if (signal?.aborted) throw Error("Esportazione annullata");
-      const f0 = bounds[interval],
-        f1 = bounds[interval + 1];
-      if (f1 <= f0) continue;
-      const start = f0 / fps,
-        d = (f1 - f0) / fps;
-      const active = spans
-        .filter((s) => s.start <= f0 && s.end > f0)
-        .map((s) => s.c)
-        .sort((a, b) => a.track - b.track);
+      const { active, plain, start, duration: d } = intervalAt(interval);
+      if (d <= 0) continue;
       // Most cut-only intervals need neither a synthetic canvas nor RGBA overlays.
-      const plain =
-        active.length === 1 &&
-        simpleClip({ ...p, clips: [{ ...active[0], start: 0 }] });
       if (plain) {
         const part = `part-${interval}.nut`;
-        await renderPlainInterval(active[0], plain.m, start, d, part);
-        concat.push(`file '${part}'\nduration ${d}`);
+        const segments = [{ c: active[0], m: plain.m, start, duration: d }];
+        // Bound simultaneous decoders and graph size; effects and gaps break a batch.
+        while (segments.length < 8 && interval + 1 < bounds.length - 1) {
+          const next = intervalAt(interval + 1);
+          if (!next.plain || next.duration <= 0) break;
+          segments.push({
+            c: next.active[0],
+            m: next.plain.m,
+            start: next.start,
+            duration: next.duration,
+          });
+          interval++;
+        }
+        const duration = segments.reduce((sum, s) => sum + s.duration, 0);
+        if (segments.length === 1)
+          await renderPlainInterval(active[0], plain.m, start, d, part);
+        else await renderPlainBatch(segments, part);
+        concat.push(`file '${part}'\nduration ${duration}`);
         report(
-          ((start + d) / total) * 99,
+          ((start + duration) / total) * 99,
           `Montaggio ${interval + 1}/${bounds.length - 1}`,
         );
         continue;
