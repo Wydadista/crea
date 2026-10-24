@@ -42,11 +42,11 @@ const { _electron } = require("playwright"),
     );
     await page.evaluate(() => {
       document.querySelector("#layoutPanel").open = true;
-      $("motionStart").value = 0;
-      $("motionEnter").value = 1;
-      $("motionHold").value = 4;
-      $("motionEnd").value = 5;
       $("visualZoom").value = 6;
+      $("visualZoom").oninput();
+      $("visualZoom").onchange();
+      $("zoomEntryDuration").value = 1;
+      $("zoomExitDuration").value = 1;
       applyMotion();
     });
     const zoom = await page.evaluate(() => {

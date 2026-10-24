@@ -1728,12 +1728,8 @@ function unlinkGroup() {
     delete c.linkId;
   changed();
 }
-$("groupAcrossTracks").onclick = group;
 $("linkTool").onclick = group;
-$("groupBtn").onclick = joinSelected;
 $("groupTool").onclick = joinSelected;
-$("ungroupBtn").onclick = unlinkGroup;
-$("unjoinBtn").onclick = () => editGroup(false);
 $("splitBtn").onclick = split;
 $("cutTool").onclick = split;
 $("deleteBtn").onclick = remove;

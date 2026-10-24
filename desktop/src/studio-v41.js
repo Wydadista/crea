@@ -9,6 +9,8 @@ function sequenceOwner(scope) {
 }
 attachElement = function (parent, type) {
   const scope = sequenceScope(parent);
+  if (type === "zoom") return applyZoomFromGallery(scope);
+  if (type === "denoise") return applyDenoiseFromGallery(scope);
   if (!scope || scope.members.some((c) => (c.attachments?.length || 0) >= 64))
     return;
   checkpoint();
@@ -69,58 +71,83 @@ function sequenceFrames(scope) {
       time: c.start - scope.start + (k.time - c.in) / (c.speed || 1),
     }));
   const d = scope.end - scope.start;
-  return [
-    { time: 0, scale: z?.from || 1, x: 0.5, y: 0.5 },
-    { time: d * 0.25, scale: z?.to || 2, x: z?.x ?? 0.5, y: z?.y ?? 0.5 },
-    { time: d * 0.75, scale: z?.to || 2, x: z?.x ?? 0.5, y: z?.y ?? 0.5 },
-    { time: d, scale: z?.from || 1, x: 0.5, y: 0.5 },
-  ];
+  return Timeline.zoomEnvelope(
+    [
+      { time: 0, scale: z?.from || 1, x: 0.5, y: 0.5 },
+      { time: 0, scale: z?.to || 2, x: z?.x ?? 0.5, y: z?.y ?? 0.5 },
+      { time: 0, scale: z?.to || 2, x: z?.x ?? 0.5, y: z?.y ?? 0.5 },
+      { time: d, scale: z?.from || 1, x: 0.5, y: 0.5 },
+    ],
+    0,
+    d,
+    2,
+    2,
+  );
 }
-function saveSequenceFrames(scope, frames, checkpointNow = true) {
+function zoomDurations(scope) {
+  const z = sequenceOwner(scope).zoom;
+  if (!z?.keys?.length) return { entry: 2, exit: 2 };
+  const frames = sequenceFrames(scope);
+  return {
+    entry: z.entryDuration ?? Math.max(0.01, frames[1].time - frames[0].time),
+    exit:
+      z.exitDuration ?? Math.max(0.01, frames.at(-1).time - frames.at(-2).time),
+  };
+}
+function saveSequenceFrames(
+  scope,
+  frames,
+  checkpointNow = true,
+  timing = null,
+) {
   if (checkpointNow) checkpoint();
   Timeline.sequenceZoom(
     project.clips,
     sequenceOwner(scope),
     frames,
     sequenceOwner(scope).zoom?.applicationId || uid(),
+    timing || zoomDurations(scope),
   );
   expandedClips.add(sequenceOwner(scope).id);
 }
 function applyMotion() {
   const scope = sequenceScope();
   if (!scope) return;
-  const frames = sequenceFrames(scope),
-    times = ["motionStart", "motionEnter", "motionHold", "motionEnd"].map(
-      (id) => Number($(id).value),
+  const timing = {
+    entry: Number($("zoomEntryDuration").value),
+    exit: Number($("zoomExitDuration").value),
+  };
+  const frames = sequenceFrames(scope);
+  try {
+    const next = Timeline.zoomEnvelope(
+      frames,
+      frames[0].time,
+      frames.at(-1).time,
+      timing.entry,
+      timing.exit,
     );
-  if (
-    times.some(
-      (t, i) =>
-        !Number.isFinite(t) ||
-        t < 0 ||
-        t > scope.end - scope.start ||
-        (i && t <= times[i - 1]),
-    )
-  )
-    return toast("Scegli tempi crescenti entro la durata della sequenza");
-  frames.forEach((k, i) => {
-    k.time = times[i];
-    k.scale =
-      i === 1 || i === 2
-        ? Number($("visualZoom").value)
-        : Number($("zoomFrom").value) || 1;
-  });
-  saveSequenceFrames(scope, frames);
-  changed();
+    saveSequenceFrames(scope, next, true, timing);
+    changed();
+  } catch (error) {
+    toast(error.message);
+    properties();
+  }
 }
+$("zoomEntryDuration").onchange = $("zoomExitDuration").onchange = applyMotion;
+
 $("applyMotion").onclick = applyMotion;
-$("removeMotion").onclick = () => {
-  const scope = sequenceScope();
+function removeSequenceZoom(scope) {
   if (!scope) return;
+  pause();
   checkpoint();
   scope.members.forEach((c) => delete c.zoom);
+  frameEditing = false;
+  $("pickZoomFrame").setAttribute("aria-pressed", "false");
+  selection = new Set(scope.members.map((c) => c.id));
   changed();
-};
+}
+$("removeMotion").onclick = () => removeSequenceZoom(sequenceScope());
+
 let frameEditing = false;
 const frameBox = el("div", "zoom-frame-box");
 frameBox.hidden = true;
@@ -204,10 +231,11 @@ properties = function () {
   if (!scope) return;
   const f = sequenceFrames(scope),
     i = endpointIndex();
-  if (!document.activeElement?.closest("#motionControls"))
-    ["motionStart", "motionEnter", "motionHold", "motionEnd"].forEach(
-      (id, j) => ($(id).value = Math.max(0, f[j]?.time || 0)),
-    );
+  if (!document.activeElement?.closest("#motionControls")) {
+    const timing = zoomDurations(scope);
+    $("zoomEntryDuration").value = timing.entry;
+    $("zoomExitDuration").value = timing.exit;
+  }
   $("visualZoom").value = f[i].scale;
   zoomOutput.textContent = f[i].scale.toFixed(2) + "×";
   $("zoomFrom").value = f[0].scale;
@@ -388,7 +416,15 @@ function sequenceApplicationBars(scope, node) {
       apps.get(key).push({ c, a });
     }
   const hasZoom = !!owner.zoom?.keys?.length;
-  if (!apps.size && !hasZoom) return;
+  const hasNoise = scope.members.some((c) => c.voice?.noise > 0);
+  const inlineEffects = new Map();
+  for (const c of scope.members)
+    if (c.effect && c.effect.type !== "none") {
+      const key = JSON.stringify(c.effect);
+      if (!inlineEffects.has(key)) inlineEffects.set(key, []);
+      inlineEffects.get(key).push(c);
+    }
+  if (!apps.size && !hasZoom && !hasNoise && !inlineEffects.size) return;
   const toggle = el(
     "button",
     "expand-clip",
@@ -414,6 +450,7 @@ function sequenceApplicationBars(scope, node) {
   const add = (entries, zoom) => {
     const a = entries?.[0]?.a,
       frames = hasZoom ? sequenceFrames(scope) : null;
+    const timing = hasZoom ? zoomDurations(scope) : null;
     const start = zoom
       ? frames[0].time
       : Math.min(
@@ -478,11 +515,9 @@ function sequenceApplicationBars(scope, node) {
         if (zoom)
           saveSequenceFrames(
             scope,
-            frames.map((k) => ({
-              ...k,
-              time: lo + ((k.time - start) / (end - start)) * (hi - lo),
-            })),
+            Timeline.zoomEnvelope(frames, lo, hi, timing.entry, timing.exit),
             false,
+            timing,
           );
         else
           for (const { c, a } of entries) {
@@ -508,21 +543,77 @@ function sequenceApplicationBars(scope, node) {
       h.onpointerdown = (e) => resize(e, side);
       bar.append(h);
     }
-    if (!zoom)
-      bar.oncontextmenu = (e) => {
-        e.preventDefault();
-        checkpoint();
-        for (const { c, a } of entries)
-          c.attachments = c.attachments.filter((x) => x.id !== a.id);
-        selection = new Set([owner.id]);
-        changed();
-      };
+    bar.oncontextmenu = (e) =>
+      showTimelineEffectMenu(
+        e,
+        zoom ? "Elimina zoom" : "Elimina effetto",
+        () => {
+          if (zoom) return removeSequenceZoom(scope);
+          pause();
+          checkpoint();
+          for (const { c, a } of entries)
+            c.attachments = c.attachments.filter((x) => x.id !== a.id);
+          selection = new Set([owner.id]);
+          changed();
+        },
+      );
   };
   for (const entries of apps.values()) add(entries, false);
   if (hasZoom) add(null, true);
+  const staticBar = (label, kind, clips, remove) => {
+    const row = el("div", "attachment-row"),
+      bar = el("div", "attachment-bar " + kind, label);
+    const lo = Math.min(...clips.map((c) => c.start)) - scope.start,
+      hi =
+        Math.max(...clips.map((c) => c.start + Timeline.duration(c))) -
+        scope.start;
+    bar.style.left = (lo / (scope.end - scope.start)) * 100 + "%";
+    bar.style.width = ((hi - lo) / (scope.end - scope.start)) * 100 + "%";
+    row.append(bar);
+    list.append(row);
+    bar.title = label + " · tasto destro per eliminare";
+    bar.onpointerdown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      pause();
+      selection = new Set(clips.map((c) => c.id));
+      previewFocus = clips[0].id;
+      properties();
+      draw();
+    };
+    bar.oncontextmenu = (e) =>
+      showTimelineEffectMenu(e, "Elimina effetto", () => {
+        pause();
+        checkpoint();
+        remove();
+        selection = new Set([owner.id]);
+        changed();
+      });
+  };
+  if (hasNoise)
+    staticBar(
+      "Riduzione del rumore · DeepFilterNet3",
+      "noise-effect",
+      scope.members.filter((c) => c.voice?.noise > 0),
+      () => {
+        for (const c of scope.members) if (c.voice) c.voice.noise = 0;
+      },
+    );
+  for (const clips of inlineEffects.values())
+    staticBar(
+      clips[0].effect.type === "blur" ? "Sfocatura" : "Pixelizzazione",
+      "inline-effect",
+      clips,
+      () => clips.forEach((c) => delete c.effect),
+    );
   const height = Math.max(
     project.trackHeights[scope.track],
-    44 + (apps.size + (hasZoom ? 1 : 0)) * 15,
+    44 +
+      (apps.size +
+        (hasZoom ? 1 : 0) +
+        (hasNoise ? 1 : 0) +
+        inlineEffects.size) *
+        15,
   );
   $("track" + scope.track).style.height = height + "px";
   document.querySelector(`[data-choose-track="${scope.track}"]`).style.height =
@@ -619,5 +710,97 @@ for (const [id, type] of [
     const scope = sequenceScope();
     if (scope?.members.length > 1) attachElement(sequenceOwner(scope), type);
     else previous?.call(button, e);
+  };
+}
+
+function showTimelineEffectMenu(e, label, remove) {
+  e.preventDefault();
+  e.stopPropagation();
+  $("contextMenu").hidden = $("trackContextMenu").hidden = true;
+  const menu = $("effectContextMenu"),
+    button = $("deleteTimelineEffect");
+  button.textContent = label;
+  button.onclick = () => {
+    menu.hidden = true;
+    remove();
+  };
+  menu.hidden = false;
+  menu.style.left =
+    Math.max(4, Math.min(e.clientX, innerWidth - menu.offsetWidth - 4)) + "px";
+  menu.style.top =
+    Math.max(4, Math.min(e.clientY, innerHeight - menu.offsetHeight - 4)) +
+    "px";
+  button.focus({ preventScroll: true });
+}
+window.addEventListener("pointerdown", (e) => {
+  if (!$("effectContextMenu").contains(e.target))
+    $("effectContextMenu").hidden = true;
+});
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") $("effectContextMenu").hidden = true;
+});
+function applyZoomFromGallery(scope = sequenceScope()) {
+  if (
+    !scope ||
+    !scope.members.some((c) => ["video", "image"].includes(mediaOf(c).kind))
+  )
+    return toast(
+      "Seleziona una clip video o un’immagine per applicare lo zoom",
+    );
+  selection = new Set(scope.members.map((c) => c.id));
+  previewFocus = sequenceOwner(scope).id;
+  if (!sequenceOwner(scope).zoom?.keys?.length)
+    saveSequenceFrames(scope, sequenceFrames(scope), true, {
+      entry: 2,
+      exit: 2,
+    });
+  expandedClips.add(sequenceOwner(scope).id);
+  $("layoutPanel").open = true;
+  changed();
+  if (!frameEditing) $("pickZoomFrame").click();
+}
+function applyDenoiseFromGallery(scope = sequenceScope()) {
+  const clips =
+    scope?.members.filter((c) => mediaOf(c).hasAudio && !c.audioDetached) || [];
+  if (!clips.length)
+    return toast("Seleziona una clip con audio per applicare DeepFilterNet3");
+  pause();
+  checkpoint();
+  for (const c of clips)
+    c.voice = {
+      noise: 0,
+      level: 0,
+      ...c.voice,
+      noise: c.voice?.noise || 0.5,
+      bypass: false,
+    };
+  expandedClips.add(sequenceOwner(scope).id);
+  selection = new Set(clips.map((c) => c.id));
+  previewFocus = clips[0].id;
+  $("voiceNoise").closest("details").open = true;
+  changed();
+}
+for (const [id, type, apply] of [
+  ["addZoom", "zoom", applyZoomFromGallery],
+  ["addDenoise", "denoise", applyDenoiseFromGallery],
+]) {
+  const button = $(id);
+  button.onclick = () => apply();
+  button.draggable = true;
+  button.title = "Applica alla clip selezionata o trascina sopra una clip";
+  button.ondragstart = (e) => {
+    draggedElement = type;
+    e.dataTransfer.setData("application/akhbar-element", type);
+    e.dataTransfer.effectAllowed = "copy";
+  };
+  button.ondragend = () => {
+    draggedElement = null;
+    document
+      .querySelectorAll(".drop-ghost,.attach-target")
+      .forEach((n) =>
+        n.classList.contains("drop-ghost")
+          ? n.remove()
+          : n.classList.remove("attach-target"),
+      );
   };
 }

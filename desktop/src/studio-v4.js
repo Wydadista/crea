@@ -504,18 +504,7 @@ properties = function () {
   $("trimIn").disabled = $("trimOut").disabled =
     !!c.parentId || selected().length > 1;
   if (!document.activeElement?.closest("#motionControls")) {
-    const keys = c.zoom?.keys,
-      d = Timeline.duration(c);
-    $("motionStart").value = keys ? (keys[0].time - c.in) / (c.speed || 1) : 0;
-    $("motionEnter").value = keys
-      ? (keys[1].time - c.in) / (c.speed || 1)
-      : d * 0.25;
-    $("motionHold").value = keys
-      ? (keys[2].time - c.in) / (c.speed || 1)
-      : d * 0.75;
-    $("motionEnd").value = keys
-      ? (keys.at(-1).time - c.in) / (c.speed || 1)
-      : d;
+    const keys = c.zoom?.keys;
     $("motionFromX").value = (keys?.[0].x ?? c.zoom?.x ?? 0.5) * 100;
     $("motionFromY").value = (keys?.[0].y ?? c.zoom?.y ?? 0.5) * 100;
     $("motionToX").value = (keys?.[1].x ?? c.zoom?.x ?? 0.5) * 100;

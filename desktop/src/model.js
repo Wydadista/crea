@@ -232,7 +232,31 @@
         track: clip.track,
       };
     },
-    sequenceZoom(clips, clip, frames, id) {
+    zoomEnvelope(frames, start, end, entry = 2, exit = 2) {
+      if (
+        !Number.isFinite(start) ||
+        !Number.isFinite(end) ||
+        end <= start ||
+        !n(entry, 0.01, 604800) ||
+        !n(exit, 0.01, 604800)
+      )
+        throw Error("Durate dello zoom non valide");
+      const span = end - start,
+        sum = entry + exit,
+        ratio = Math.min(1, span / sum);
+      const enterEnd = start + entry * ratio;
+      const exitStart = sum >= span ? enterEnd : end - exit;
+      const first = frames[0],
+        detail = frames[1],
+        last = frames.at(-1);
+      return [
+        { ...first, time: start },
+        { ...detail, time: enterEnd },
+        { ...detail, time: exitStart },
+        { ...last, time: end },
+      ];
+    },
+    sequenceZoom(clips, clip, frames, id, timing) {
       const scope = api.sequence(clips, clip);
       for (const c of scope.members)
         c.zoom = {
@@ -241,6 +265,9 @@
           x: frames[1].x,
           y: frames[1].y,
           applicationId: id,
+          ...(timing
+            ? { entryDuration: timing.entry, exitDuration: timing.exit }
+            : {}),
           keys: frames.map((k) => ({
             ...k,
             time: c.in + (scope.start + k.time - c.start) * (c.speed || 1),
@@ -365,7 +392,7 @@
       hash ^= hash >>> 16;
       hash = Math.imul(hash, 0x85ebca6b);
       hash ^= hash >>> 13;
-      return `hsl(${(hash >>> 0) % 360} 42% 27%)`;
+      return `hsl(${(hash >>> 0) % 360} 23% 22%)`;
     },
     closeTrimGap(p, previous, trimmed) {
       const start = Math.min(...previous.map((c) => c.start));
@@ -1324,6 +1351,10 @@
           for (const k of ["x", "y"])
             if (!n(c.zoom[k], 0, 1)) throw Error("Centro zoom non valido");
         }
+        if (c.zoom)
+          for (const field of ["entryDuration", "exitDuration"])
+            if (c.zoom[field] !== undefined && !n(c.zoom[field], 0.01, 604800))
+              throw Error("Durata dello zoom non valida");
         if (c.zoom?.keys) {
           if (
             !Array.isArray(c.zoom.keys) ||
@@ -1331,17 +1362,23 @@
             c.zoom.keys.length > 16
           )
             throw Error("Movimento zoom non valido");
-          let prior = -Infinity;
+          let prior = -Infinity,
+            previous = null;
           for (const k of c.zoom.keys) {
             if (
               !n(k.time, -604800, 604800) ||
-              k.time <= prior ||
+              k.time < prior ||
+              (k.time === prior &&
+                ["scale", "x", "y"].some(
+                  (field) => k[field] !== previous?.[field],
+                )) ||
               !n(k.scale, 1, 20) ||
               !n(k.x, 0, 1) ||
               !n(k.y, 0, 1)
             )
               throw Error("Inquadratura zoom non valida");
             prior = k.time;
+            previous = k;
           }
         }
         if (c.effect) {

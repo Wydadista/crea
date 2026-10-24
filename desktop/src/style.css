@@ -2376,7 +2376,7 @@ header .project-name {
 
 /* Joined segments share a strong outer silhouette; internal cuts are references. */
 .clip.group {
-  border-width: 3px;
+  border-width: 2px;
 }
 .clip.group.joined-left {
   border-left-width: 0;
@@ -2944,4 +2944,58 @@ header .project-name {
 }
 .lane-resizer:hover {
   background: #ffc82e88;
+}
+
+#effectContextMenu {
+  position: fixed;
+  z-index: 220;
+  min-width: 170px;
+  padding: 5px;
+  background: #171c22;
+  border: 1px solid #414952;
+  border-radius: 7px;
+  box-shadow: 0 6px 24px #0009;
+}
+#effectContextMenu button {
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  background: transparent;
+  color: #ffd0c8;
+  text-align: left;
+  border-radius: 4px;
+  cursor: pointer;
+}
+#effectContextMenu button:hover,
+#effectContextMenu button:focus-visible {
+  background: #39414c;
+  outline: 1px solid #ffc82e;
+}
+.element-label small {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  color: #a7b6c4;
+  font-weight: normal;
+}
+.attachment-bar.noise-effect {
+  background: #203c35;
+  cursor: pointer;
+}
+.attachment-bar.bypassed {
+  opacity: 0.55;
+}
+
+/* Use the supplied app artwork without the old letter badge transformation. */
+.brand-icon.app-logo {
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  transform: none;
+  object-fit: contain;
+  border-radius: 0;
+}
+.app-dialog-brand .app-logo {
+  width: 24px;
+  height: 24px;
 }

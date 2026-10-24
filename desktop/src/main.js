@@ -418,8 +418,16 @@ ipcMain.handle("recording-toolbar", async (_e, state) => {
     await recordingToolbar.loadFile(path.join(__dirname, "toolbar.html"));
     recordingToolbar.show();
   }
-  if (recordingToolbar && !recordingToolbar.isDestroyed())
+  if (recordingToolbar && !recordingToolbar.isDestroyed()) {
+    const pinned = !!(
+      recorderWindowState.active ||
+      recorderWindowState.countdown ||
+      recorderWindowState.finishing
+    );
+    if (recordingToolbar.isAlwaysOnTop() !== pinned)
+      recordingToolbar.setAlwaysOnTop(pinned, "floating");
     recordingToolbar.webContents.send("recording-state", recorderWindowState);
+  }
 });
 ipcMain.on("recording-control", (event, action) => {
   if (event.sender === recordingToolbar?.webContents && action === "minimize")
