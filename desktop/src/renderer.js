@@ -193,7 +193,15 @@ try {
   keys = { ...keys, ...JSON.parse(localStorage.getItem("crea-keys") || "{}") };
 } catch {}
 const mediaOf = (c) => project.media.find((m) => m.id === c.mediaId),
-  selected = () => project.clips.filter((c) => selection.has(c.id)),
+  selected = () =>
+    project.clips
+      .flatMap((c) => [
+        c,
+        ...(c.attachments || []).map((a) =>
+          Object.assign(a, Timeline.attachmentClip(c, a)),
+        ),
+      ])
+      .filter((c) => selection.has(c.id)),
   first = () => selected().find((c) => c.id === previewFocus) || selected()[0];
 const fmt = (t) => {
   t = Math.max(0, t || 0);
@@ -586,7 +594,7 @@ function renderTimeline() {
     const members = block.members,
       c = members[0],
       m = mediaOf(c),
-      group = false,
+      group = !!block.compact,
       node = el(
         "div",
         `clip${group ? " group" : ""}${m.kind === "audio" ? " audio" : ""}${m.kind === "annotation" ? " annotation" : ""}${members.some((c) => selection.has(c.id)) ? " selected" : ""}`,
@@ -598,7 +606,7 @@ function renderTimeline() {
     node.style.height = rowHeight - 2 * padding + "px";
     node.style.top = padding + "px";
     node.classList.toggle("compact-track", rowHeight < 64);
-    if (c.groupId) {
+    if (c.groupId && !group) {
       node.classList.add("group");
       const join = joins.get(c.id);
       if (join?.left) {
@@ -609,7 +617,11 @@ function renderTimeline() {
     }
     if (c.linkId) {
       node.classList.add("linked");
-      const badge = el("span", "link-badge", "🔗 " + c.linkId.slice(0, 4));
+      const badge = el(
+        "span",
+        "link-badge",
+        group ? "🔗 Gruppo" : "🔗 " + c.linkId.slice(0, 4),
+      );
       badge.title = "Elementi raggruppati";
       node.append(badge);
     }
@@ -811,11 +823,13 @@ function beginClipDrag(e, block) {
         inset = n.dataset.track === String(block.track) ? 0 : 12;
       return ev.clientY >= r.top + inset && ev.clientY < r.bottom - inset;
     });
-    let td = newTrack
-      ? Timeline.trackCount(project) - Math.min(...origin.map((o) => o.track))
-      : intentional && target
-        ? Number(target.dataset.track) - block.track
-        : 0;
+    let td = block.compact
+      ? 0
+      : newTrack
+        ? Timeline.trackCount(project) - Math.min(...origin.map((o) => o.track))
+        : intentional && target
+          ? Number(target.dataset.track) - block.track
+          : 0;
     if (!newTrack)
       td = Math.max(
         -Math.min(...origin.map((o) => o.track)),
@@ -977,7 +991,8 @@ function trimDrag(e, c, side) {
   let lastX = x;
   const move = (ev) => {
     lastX = ev.clientX;
-    const delta = (lastX - x + $("timelineScroll").scrollLeft - scroll) / dragScale,
+    const delta =
+        (lastX - x + $("timelineScroll").scrollLeft - scroll) / dragScale,
       rate = old.speed || 1;
     Object.assign(c, old);
     if (side === "left") {
@@ -1197,8 +1212,11 @@ function fitScale() {
     640,
     Math.max(
       0.0001,
-      Math.max(1, $("timelineScroll").clientWidth - 12) /
-        Math.max(1, Timeline.total(project.clips)),
+      Math.max(
+        1,
+        $("timelineScroll").clientWidth -
+          Math.max(100, $("timelineScroll").clientWidth * 0.12),
+      ) / Math.max(1, Timeline.total(project.clips)),
     ),
   );
 }
@@ -1443,12 +1461,29 @@ for (const id of [
     edit((c) => {
       c.effect = {
         type: $("effectType").value,
+        shape: $("effectShape").value,
         strength: Number($("effectStrength").value),
         x: Number($("effectX").value),
         y: Number($("effectY").value),
         width: Number($("effectW").value),
         height: Number($("effectH").value),
       };
+      if (
+        c.effect.shape === "circle" &&
+        (id === "effectW" || id === "effectH")
+      ) {
+        const size = Timeline.projectSize(project),
+          e = c.effect;
+        if (id === "effectH") e.width = (e.height * size.height) / size.width;
+        else e.height = (e.width * size.width) / size.height;
+        const factor = Math.min(
+          1,
+          (100 - e.x) / e.width,
+          (100 - e.y) / e.height,
+        );
+        e.width *= factor;
+        e.height *= factor;
+      }
     });
 for (const id of [
   "annotationText",
@@ -1490,7 +1525,12 @@ function split() {
   } catch (error) {
     return toast(error.message);
   }
-  if (!ids.length) return;
+  const linked = new Set(
+    selected()
+      .map((c) => c.linkId)
+      .filter(Boolean),
+  );
+  if (!ids.length && !linked.size) return;
   pause();
   const before = JSON.stringify(project);
   const newIds = [];
@@ -1523,11 +1563,32 @@ function split() {
       count++;
     }
   }
+  const rightSelection = [];
+  for (const link of linked) {
+    const members = project.clips.filter((c) => c.linkId === link),
+      left = members.filter((c) => c.start < time - 1e-8),
+      right = members.filter((c) => c.start >= time - 1e-8);
+    if (left.length && right.length) {
+      const rightLink = uid(),
+        joins = new Map();
+      for (const c of right) {
+        c.linkId = rightLink;
+        if (c.groupId) {
+          if (!joins.has(c.groupId)) joins.set(c.groupId, uid());
+          c.groupId = joins.get(c.groupId);
+        }
+        rightSelection.push(c.id);
+      }
+      count++;
+    }
+  }
   if (!count)
     return toast("Posiziona la linea verde dentro le clip selezionate.");
   history.push(before);
   future = [];
-  selection = new Set(groupMembers([...ids, ...newIds]));
+  selection = new Set(
+    rightSelection.length ? rightSelection : groupMembers([...ids, ...newIds]),
+  );
   changed();
 }
 function remove() {
@@ -2093,7 +2154,7 @@ function draw() {
   const cv = $("previewCanvas"),
     ctx = cv.getContext("2d"),
     pt = previewTime(),
-    active = Timeline.active(project.clips, pt);
+    active = Timeline.active(Timeline.expanded(project).clips, pt);
   $("stageEmpty").hidden = project.clips.length > 0;
   // Hold the previous composition while a newly entered source has no frame.
   // Empty timeline gaps still render black normally.
@@ -2255,7 +2316,7 @@ $("previewCanvas").onpointerdown = (e) => {
   let box = c && previewBox(c),
     handle = c && hitHandle(box, x, y);
   if (!handle) {
-    c = Timeline.active(project.clips, previewTime())
+    c = Timeline.active(Timeline.expanded(project).clips, previewTime())
       .reverse()
       .find((item) => {
         const b = previewBox(item);
@@ -2270,6 +2331,7 @@ $("previewCanvas").onpointerdown = (e) => {
       draw();
       return;
     }
+    c = Timeline.allClips(project).find((item) => item.id === c.id) || c;
     selectIds([c.id]);
     previewFocus = c.id;
     properties();
@@ -2290,13 +2352,21 @@ $("previewCanvas").onpointerdown = (e) => {
         dirty = true;
       }
       const next = handle
-        ? Timeline.resizeBox(initial, handle, dx, dy, !c.aspectUnlocked)
+        ? Timeline.resizeBox(
+            initial,
+            handle,
+            dx,
+            dy,
+            mediaOf(c).kind === "effect"
+              ? c.effect?.shape === "circle"
+              : !c.aspectUnlocked,
+          )
         : snapPreviewBox(
             { ...initial, x: initial.x + dx, y: initial.y + dy },
             r,
           );
       if (handle) $("alignGuides").replaceChildren();
-      if (handle && !c.aspectUnlocked) {
+      if (handle && !c.aspectUnlocked && mediaOf(c).kind !== "effect") {
         const original =
           mediaOf(c).kind === "effect"
             ? old.effect
@@ -2581,7 +2651,7 @@ document.onkeydown = (e) => {
   }
 };
 async function exportProject(settings) {
-  const output = clone(project);
+  const output = Timeline.expanded(clone(project));
   output.rasters = {};
   const { width: W, height: H } = Timeline.outputSize(project, settings.height);
   for (const c of output.clips) {
@@ -2635,7 +2705,7 @@ function saveExportPreferences() {
 }
 function updateExportControls() {
   const copy = $("preserveOriginal").checked;
-  $("exportCustomQuality").hidden = $("exportPreset").value !== "custom";
+  $("exportCustomQuality").hidden = false;
   $("exportQualityValue").textContent = $("exportQuality").value + "%";
   $("exportCpuControl").hidden = $("exportEncoder").value !== "cpu" || copy;
   $("exportCopyNotice").hidden = !copy;
@@ -2670,7 +2740,10 @@ $("exportBtn").onclick = () => {
   $("exportTechnical").open = false;
   $("exportDialog").showModal();
 };
-$("exportQuality").oninput = updateExportControls;
+$("exportQuality").oninput = () => {
+  $("exportPreset").value = "custom";
+  updateExportControls();
+};
 studio.onProgress((p) => {
   $("exportProgress").value = p.percent;
   $("exportPercent").textContent = p.percent + "%";
@@ -2853,9 +2926,6 @@ async function stopRecording() {
   }
 }
 $("pauseRecording").onclick = toggleRecordingPause;
-studio.onRecordingControl((action) =>
-  action === "pause" ? toggleRecordingPause() : stopRecording(),
-);
 studio.onRecordingProgress((p) => {
   $("status").textContent =
     p.phase + (p.percent == null ? "…" : ` · ${p.percent}%`);
@@ -2965,7 +3035,7 @@ $("refreshMicrophones").onclick = safe(() => microphones(true));
 $("recordQuality").oninput = () => {
   $("recordQualityValue").textContent = $("recordQuality").value + "%";
 };
-async function showRecording() {
+async function showRecording(open = true) {
   if (recorder || finishing)
     return toast("Registrazione o salvataggio in corso.");
   const sources = await studio.sources();
@@ -2987,7 +3057,7 @@ async function showRecording() {
   if (!windows) $("systemAudio").checked = false;
   await microphones();
   $("recordQualityValue").textContent = $("recordQuality").value + "%";
-  $("recordDialog").showModal();
+  if (open) $("recordDialog").showModal();
 }
 $("recordBtn").onclick = safe(showRecording);
 $("railRecord").onclick = safe(showRecording);
@@ -3237,13 +3307,6 @@ $("startRecording").onclick = safe(async () => {
     $("captureDiagnostics").textContent = settings.audioOnly
       ? "Solo audio"
       : `Sorgente ${settings.captureInfo.sourceWidth}×${settings.captureInfo.sourceHeight} → file ${outputSize.width}×${outputSize.height} · ${(chosenRecorder.videoBitsPerSecond / 1e6).toFixed(1)} Mbps richiesti · ${settings.profile === "screen-text" ? "Schermo e testo" : "Video e movimento"}`;
-    if (overdub) {
-      for (let n = 3; n > 0; n--) {
-        $("startRecording").textContent = `Registrazione tra ${n}…`;
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-      $("startRecording").textContent = "● Avvia registrazione";
-    }
     await studio.beginRecording(settings);
     let writes = Promise.resolve(),
       writeError;
@@ -3263,6 +3326,11 @@ $("startRecording").onclick = safe(async () => {
       stopCapture();
       try {
         await writes;
+        if (discardCurrent) {
+          await studio.abortRecording();
+          toast("Registrazione scartata");
+          return;
+        }
         if (writeError) throw writeError;
         toast(
           "Finalizzazione " +
@@ -3322,6 +3390,8 @@ $("startRecording").onclick = safe(async () => {
         toast(e.message);
       } finally {
         finishing = false;
+        discardCurrent = false;
+        await recorderReady();
       }
     };
     recorder.onerror = (e) => {
@@ -3367,7 +3437,15 @@ $("startRecording").onclick = safe(async () => {
         lastToolbar = now;
         toolbarBusy = true;
         studio
-          .recordingToolbar({ paused, time: label, ...state })
+          .recordingToolbar({
+            active: true,
+            finishing: false,
+            countdown: 0,
+            name: $("recordName").value,
+            paused,
+            time: label,
+            ...state,
+          })
           .catch((e) => toast(e.message))
           .finally(() => (toolbarBusy = false));
       }

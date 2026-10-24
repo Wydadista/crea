@@ -1,8 +1,8 @@
-# AKhbar studio 0.3
+# AKhbar studio 0.4.0
 
 Editor desktop per Windows 10/11 x64, derivato dal commit `427ae12b48a1d8e685e362506b92c78621b7fede` di Wydadista/crea. Conserva timeline multitraccia, tagli, gruppi, velocità di lavoro/ripristino, effetti, annotazioni, anteprima, recupero automatico e apertura dei progetti precedenti `.creastudio`. Il vecchio `../creapost.html` è indipendente.
 
-Verifiche della versione 0.3.5 e limiti delle prove: [VERIFICA-0.3.5.md](VERIFICA-0.3.5.md).
+Novità e verifiche della versione attuale: [VERIFICA-0.4.0.md](VERIFICA-0.4.0.md). Le verifiche precedenti restano in [VERIFICA-0.3.5.md](VERIFICA-0.3.5.md).
 
 ## Avvio e installer Windows
 
@@ -19,7 +19,7 @@ Chiudere l'app prima di creare l'installer:
 npm run build:win
 ```
 
-Risultato: `dist/AKhbar-studio-0.3.5-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
+Risultato: `dist/AKhbar-studio-0.4.0-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
 
 ```powershell
 npm run build:release
@@ -56,7 +56,7 @@ Verifiche della grafica: [VERIFICA-GRAFICA.md](VERIFICA-GRAFICA.md).
 - **Calamita e bordo sinistro**: al rilascio, dopo un accorciamento, la clip raggiunge la fine della precedente sulla stessa traccia. I nuovi punti sorgente restano tagliati. Vale anche per gli elementi uniti. Se una clip estranea impedisce lo spostamento degli spezzoni successivi, questi rimangono fermi e l'accorciamento viene conservato. Con calamita disattiva il vuoto rimane. Durante il trascinamento lo zoom di “Adatta tutto” rimane stabile. Verifiche: [VERIFICA-CALAMITA-COLORI.md](VERIFICA-CALAMITA-COLORI.md).
 
 - **Unisci selezionati** conserva l'unione dei segmenti contigui della stessa clip inserita. Il contorno esterno è marcato, i tagli interni rimangono riferimenti sottili senza maniglie. Si ridimensiona soltanto dalle due estremità; **Separa elementi uniti** rende nuovamente modificabili i singoli segmenti. Accorciare oltre un taglio e riallungare conserva i riferimenti originali, anche dopo salvataggio.
-- **Raggruppa** (`Ctrl+G`) collega video, immagini e audio anche su tracce diverse, conservando durate, distanze e sovrapposizioni. Il trascinamento muove tutti con lo stesso spostamento. I segmenti conservano il colore della clip originale; un indicatore comune segnala il gruppo. **Separa gruppo** (`Ctrl+Shift+G`) scioglie il collegamento senza spostare nulla.
+- **Raggruppa** (`Ctrl+G`) collega video, immagini e audio anche su tracce diverse, conservando durate, distanze e sovrapposizioni. Nella timeline appare un unico blocco nella traccia 1: le tracce reali restano memorizzate per composizione e separazione. Il trascinamento muove tutti con lo stesso spostamento; **S** divide il gruppo in due gruppi indipendenti. I segmenti conservano il colore della clip originale; un indicatore comune segnala il gruppo. **Separa gruppo** (`Ctrl+Shift+G`) scioglie il collegamento senza spostare nulla.
 - **Taglia** (`Ctrl+X`) e **Incolla** (`Ctrl+V`) mantengono proprietà, tagli, velocità, effetti e disposizione relativa sulle tracce. Taglia lascia fermi gli elementi non selezionati e conserva il cursore. Le scorciatoie rispettano i campi di testo; taglio e incolla hanno passaggi Annulla separati.
 - **Dividi** senza selezione opera soltanto se la linea verde attraversa un unico elemento, contando tutte le tracce. Con più elementi mostra un messaggio e richiede la selezione. Sui bordi non crea segmenti di durata zero. Con una selezione divide soltanto gli elementi selezionati attraversati.
 - Queste operazioni sono incluse in **Annulla/Ripristina**. Verifica dedicata: `node --test test/group-cut.test.js` e, nell'ambiente cloud con display, `DISPLAY=:99 node test/group-cut-ui.cjs`. Nessun installer è necessario per eseguire le prove.

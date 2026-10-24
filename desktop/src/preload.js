@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("studio", {
   chooseExport: (options) => ipcRenderer.invoke("choose-export", options),
   thumbnail: (file, t) => ipcRenderer.invoke("thumbnail", file, t),
   freezeFrame: (m, t) => ipcRenderer.invoke("freeze-frame", m, t),
+  closeRecorder: () => ipcRenderer.invoke("close-recorder"),
   recordingToolbar: (state) => ipcRenderer.invoke("recording-toolbar", state),
   onRecordingControl: (fn) =>
     ipcRenderer.on("recording-control", (_e, a) => fn(a)),

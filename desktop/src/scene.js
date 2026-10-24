@@ -84,9 +84,15 @@
           );
         }
         ctx.fillStyle = a.color;
-        lines.forEach((line, i) =>
-          ctx.fillText(line, x, y + (i - (lines.length - 1) / 2) * lh),
-        );
+        lines.forEach((line, i) => {
+          const yLine = y + (i - (lines.length - 1) / 2) * lh;
+          if (a.strokeWidth) {
+            ctx.strokeStyle = a.strokeColor || "#000000";
+            ctx.lineWidth = a.strokeWidth * s;
+            ctx.strokeText(line, x, yLine);
+          }
+          ctx.fillText(line, x, yLine);
+        });
       } else if (a.type === "arrow") {
         const r = (a.angle * Math.PI) / 180,
           len = (a.length / 100) * W,
@@ -162,7 +168,12 @@
         );
       const z = c.zoom || { from: 1, to: 1, x: 0.5, y: 0.5 },
         v = Math.max(0, Math.min(1, (t - c.in) / (c.out - c.in))),
-        zoom = z.from + (z.to - z.from) * v;
+        frame = root.Timeline?.zoomAt(c, t) || {
+          scale: z.from + (z.to - z.from) * v,
+          x: z.x,
+          y: z.y,
+        },
+        zoom = frame.scale;
       if (zoom !== 1) {
         const cp = buffer(c.id, "zoom", rw, rh);
         cp.getContext("2d").clearRect(0, 0, rw, rh);
@@ -170,8 +181,8 @@
         p.clearRect(0, 0, rw, rh);
         p.drawImage(
           cp,
-          (rw - rw / zoom) * z.x,
-          (rh - rh / zoom) * z.y,
+          (rw - rw / zoom) * frame.x,
+          (rh - rh / zoom) * frame.y,
           rw / zoom,
           rh / zoom,
           0,
@@ -207,7 +218,9 @@
           cp.getContext("2d").drawImage(layer, 0, 0);
           p.save();
           p.beginPath();
-          p.rect(x, y, w, h);
+          if (e.shape === "circle")
+            p.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+          else p.rect(x, y, w, h);
           p.clip();
           p.filter = `blur(${(e.strength * rh) / 1080}px)`;
           p.drawImage(cp, 0, 0);
@@ -226,6 +239,11 @@
             cp.height,
           );
           p.save();
+          if (e.shape === "circle") {
+            p.beginPath();
+            p.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+            p.clip();
+          }
           p.imageSmoothingEnabled = false;
           p.drawImage(cp, 0, 0, cp.width, cp.height, x, y, w, h);
           p.restore();

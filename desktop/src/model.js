@@ -152,6 +152,122 @@
           c.muted = true;
       return api.validate(p);
     },
+    allClips(p) {
+      return p.clips.flatMap((c) => [c, ...(c.attachments || [])]);
+    },
+    attachmentClip(parent, a) {
+      const lo = Math.max(parent.in, a.sourceIn),
+        hi = Math.min(parent.out, a.sourceOut);
+      return {
+        ...a,
+        track: parent.track,
+        parentId: parent.id,
+        start: parent.start + (lo - parent.in) / (parent.speed || 1),
+        in: (lo - a.sourceIn) / (parent.speed || 1),
+        out: (hi - a.sourceIn) / (parent.speed || 1),
+        speed: 1,
+      };
+    },
+    expanded(p) {
+      if (!p.clips.some((c) => c.attachments?.length)) return p;
+      const out = { ...p, clips: [], trackMuted: [], trackHeights: [] };
+      let layer = 0;
+      for (const track of [...new Set(p.clips.map((c) => c.track))].sort(
+        (a, b) => a - b,
+      )) {
+        const row = p.clips.filter((c) => c.track === track);
+        const count = Math.max(
+          0,
+          ...row.map((c) => c.attachments?.length || 0),
+        );
+        for (const c of row) {
+          out.clips.push({ ...c, attachments: undefined, track: layer });
+          for (const [i, a] of (c.attachments || []).entries()) {
+            const child = api.attachmentClip(c, a);
+            if (child.out > child.in + 1e-8)
+              out.clips.push({ ...child, track: layer + i + 1 });
+          }
+        }
+        for (let i = 0; i <= count; i++) {
+          out.trackMuted.push(!!p.trackMuted?.[track]);
+          out.trackHeights.push(100);
+        }
+        layer += count + 1;
+      }
+      out.trackCount = Math.max(1, layer);
+      if (out.trackCount > api.MAX_TRACKS)
+        throw Error("Troppi livelli di composizione per esportare");
+      return out;
+    },
+    zoomAt(c, source) {
+      const z = c.zoom || { from: 1, to: 1, x: 0.5, y: 0.5 };
+      if (z.keys?.length) {
+        const keys = z.keys;
+        if (source <= keys[0].time) return { ...keys[0] };
+        for (let i = 1; i < keys.length; i++)
+          if (source <= keys[i].time) {
+            const a = keys[i - 1],
+              b = keys[i];
+            let u = Math.max(
+              0,
+              Math.min(1, (source - a.time) / (b.time - a.time || 1)),
+            );
+            u = u * u * (3 - 2 * u);
+            return {
+              scale: a.scale + (b.scale - a.scale) * u,
+              x: a.x + (b.x - a.x) * u,
+              y: a.y + (b.y - a.y) * u,
+            };
+          }
+        return { ...keys.at(-1) };
+      }
+      const u = Math.max(0, Math.min(1, (source - c.in) / (c.out - c.in)));
+      return { scale: z.from + (z.to - z.from) * u, x: z.x, y: z.y };
+    },
+    zoomExpression(c, field, source) {
+      const z = c.zoom;
+      if (!z?.keys?.length)
+        return field === "scale"
+          ? `${z?.from || 1}+(${(z?.to || 1) - (z?.from || 1)})*max(0,min(1,((${source})-${c.in})/${c.out - c.in}))`
+          : String(z?.[field] ?? 0.5);
+      let expr = String(z.keys.at(-1)[field]);
+      for (let i = z.keys.length - 1; i > 0; i--) {
+        const a = z.keys[i - 1],
+          b = z.keys[i],
+          u = `max(0,min(1,((${source})-${a.time})/${b.time - a.time || 1}))`;
+        expr = `if(lt((${source}),${b.time}),${a[field]}+(${b[field] - a[field]})*(${u})*(${u})*(3-2*(${u})),${expr})`;
+      }
+      return expr;
+    },
+    insertionPoint(p, track, time, tolerance) {
+      const row = p.clips.filter((c) => c.track === track);
+      const edges = [
+        ...new Set(row.flatMap((c) => [c.start, c.start + api.duration(c)])),
+      ];
+      return (
+        edges
+          .filter((at) => Math.abs(at - time) <= tolerance)
+          .sort((a, b) => Math.abs(a - time) - Math.abs(b - time))[0] ?? null
+      );
+    },
+    insertMedia(input, clip, at) {
+      const p = JSON.parse(JSON.stringify(input)),
+        d = api.duration(clip);
+      const row = p.clips.filter((c) => c.track === clip.track);
+      if (
+        row.some(
+          (c) => c.start < at - 1e-8 && c.start + api.duration(c) > at + 1e-8,
+        )
+      )
+        throw Error("Inserisci fra due clip");
+      const shifting = new Set(
+        row.filter((c) => c.start >= at - 1e-8).map((c) => c.id),
+      );
+      for (const id of api.linkedIds(p.clips, [...shifting])) shifting.add(id);
+      for (const c of p.clips) if (shifting.has(c.id)) c.start += d;
+      p.clips.push({ ...clip, start: at });
+      return api.validate(p);
+    },
     sourceFamily(c) {
       return c.sourceInstanceId || c.id;
     },
@@ -289,6 +405,12 @@
           start: start + c.start - timeOrigin,
           track: track + c.track - trackOrigin,
         };
+        if (c.attachments)
+          next.attachments = c.attachments.map((a) => ({
+            ...a,
+            id: makeId(),
+            parentId: next.id,
+          }));
         if (c.groupId) next.groupId = remap(groups, c.groupId);
         if (c.linkId) next.linkId = remap(links, c.linkId);
         if (c.joinedSegments)
@@ -546,8 +668,31 @@
           i,
           1,
           { ...JSON.parse(JSON.stringify(c)), out: cut },
-          { ...JSON.parse(JSON.stringify(c)), id, in: cut, start: time },
+          {
+            ...JSON.parse(JSON.stringify(c)),
+            id,
+            in: cut,
+            start: time,
+            ...(c.attachments
+              ? {
+                  attachments: c.attachments
+                    .filter((a) => a.sourceOut > cut + 1e-8)
+                    .map((a) => ({
+                      ...JSON.parse(JSON.stringify(a)),
+                      id:
+                        typeof makeId === "function"
+                          ? makeId()
+                          : `${id}-` + a.id,
+                      parentId: id,
+                    })),
+                }
+              : {}),
+          },
         );
+        if (clips[i].attachments)
+          clips[i].attachments = clips[i].attachments.filter(
+            (a) => a.sourceIn < cut - 1e-8,
+          );
         count++;
       }
       return count;
@@ -886,14 +1031,16 @@
       const out = [],
         seen = new Set();
       for (const c of clips) {
-        const key = c.id;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        const members = [c];
+        if (seen.has(c.id)) continue;
+        const members = c.linkId
+          ? clips.filter((x) => x.linkId === c.linkId)
+          : [c];
+        members.forEach((x) => seen.add(x.id));
         out.push({
-          key,
+          key: c.linkId || c.id,
           groupId: c.groupId,
-          track: c.track,
+          compact: !!c.linkId,
+          track: c.linkId ? 0 : c.track,
           start: Math.min(...members.map((x) => x.start)),
           end: Math.max(...members.map((x) => x.start + api.duration(x))),
           members,
@@ -1058,16 +1205,52 @@
           )
             throw Error("Geometria visiva non valida");
         }
+        if (c.attachments) {
+          if (!Array.isArray(c.attachments) || c.attachments.length > 64)
+            throw Error("Troppi effetti nella clip");
+          for (const a of c.attachments) {
+            if (
+              a.attachments ||
+              !n(a.sourceIn, 0, 604800) ||
+              !n(a.sourceOut, a.sourceIn + 0.001, 604800)
+            )
+              throw Error("Intervallo effetto non valido");
+            const effective = api.attachmentClip(c, a);
+            if (effective.out > effective.in + 0.001)
+              api.validate({ ...p, clips: [effective] });
+          }
+        }
         if (c.zoom) {
           for (const k of ["from", "to"])
             if (!n(c.zoom[k], 1, 5)) throw Error("Zoom non valido");
           for (const k of ["x", "y"])
             if (!n(c.zoom[k], 0, 1)) throw Error("Centro zoom non valido");
         }
+        if (c.zoom?.keys) {
+          if (
+            !Array.isArray(c.zoom.keys) ||
+            c.zoom.keys.length < 2 ||
+            c.zoom.keys.length > 16
+          )
+            throw Error("Movimento zoom non valido");
+          let prior = -1;
+          for (const k of c.zoom.keys) {
+            if (
+              !n(k.time, 0, 604800) ||
+              k.time <= prior ||
+              !n(k.scale, 1, 5) ||
+              !n(k.x, 0, 1) ||
+              !n(k.y, 0, 1)
+            )
+              throw Error("Inquadratura zoom non valida");
+            prior = k.time;
+          }
+        }
         if (c.effect) {
           const e = c.effect;
           if (
             !["none", "blur", "pixel"].includes(e.type) ||
+            (e.shape !== undefined && !["rect", "circle"].includes(e.shape)) ||
             !n(e.strength, 1, 100) ||
             !n(e.x, 0, 99) ||
             !n(e.y, 0, 99) ||
@@ -1098,6 +1281,16 @@
           )
             throw Error("Annotazione non valida");
         }
+        if (
+          c.annotation?.strokeWidth !== undefined &&
+          !n(c.annotation.strokeWidth, 0, 30)
+        )
+          throw Error("Contorno testo non valido");
+        if (
+          c.annotation?.strokeColor !== undefined &&
+          !/^#[0-9a-f]{6}$/i.test(c.annotation.strokeColor)
+        )
+          throw Error("Colore contorno non valido");
         if (c.annotation?.width !== undefined && !n(c.annotation.width, 1, 100))
           throw Error("Riquadro testo non valido");
         ids.add(c.id);

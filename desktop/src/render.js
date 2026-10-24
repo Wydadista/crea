@@ -4,6 +4,14 @@ const fs = require("node:fs/promises"),
   path = require("node:path");
 const T = require("./model");
 const { audioFilters } = require("./audio");
+function maskedEffect(filters, effect, name, id) {
+  if (effect.shape !== "circle") return name;
+  const masked = `mask${id}`;
+  filters.push(
+    `[${name}]format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lte(pow((X-W/2)/(W/2),2)+pow((Y-H/2)/(H/2),2),1),255,0)'[${masked}]`,
+  );
+  return masked;
+}
 function encoding(s, project) {
   const fps = Number(s.fps),
     { width, height } = T.outputSize(project || { media: [] }, s.height);
@@ -450,9 +458,10 @@ async function renderProject(
               e.type === "blur"
                 ? `gblur=sigma=${Math.max(0.1, (e.strength * H) / 1080)}`
                 : `scale=${Math.max(1, Math.round(w / Math.max(2, (e.strength * H) / 1080)))}:${Math.max(1, Math.round(h / Math.max(2, (e.strength * H) / 1080)))}:flags=area,scale=${w}:${h}:flags=neighbor`;
+            filters.push(`[ec${id}]crop=${w}:${h}:${x}:${y},${fx}[ef${id}]`);
+            const masked = maskedEffect(filters, e, `ef${id}`, id);
             filters.push(
-              `[ec${id}]crop=${w}:${h}:${x}:${y},${fx}[ef${id}]`,
-              `[eb${id}][ef${id}]overlay=${x}:${y}:shortest=1:format=${cfg.pixelFormat === "yuv444p" ? "auto" : "yuv420"}[v${id}]`,
+              `[eb${id}][${masked}]overlay=${x}:${y}:shortest=1:format=${cfg.pixelFormat === "yuv444p" ? "auto" : "yuv420"}[v${id}]`,
             );
             video = `v${id}`;
           }
@@ -524,11 +533,18 @@ async function renderProject(
             chain = `[${inputIndex}:v]setpts=(PTS-STARTPTS)/${speed},fps=${fps},tpad=stop_mode=clone:stop_duration=${d},scale=${w}:${h},pad=${rw}:${rh}:${x}:${y}:color=black${m.kind === "image" ? "@0" : ""},setsar=1,format=rgba`;
           }
           const z = c.zoom || { from: 1, to: 1, x: 0.5, y: 0.5 };
-          if (m.kind !== "annotation" && (z.from !== 1 || z.to !== 1)) {
+          if (
+            m.kind !== "annotation" &&
+            (z.from !== 1 || z.to !== 1 || z.keys?.some((k) => k.scale !== 1))
+          ) {
             const at = (offset - c.in) / (c.out - c.in),
               slope = (z.to - z.from) / (((c.out - c.in) / speed) * fps),
               base = z.from + (z.to - z.from) * at;
-            const zoomFilter = `zoompan=z='max(1,min(5,${base}+on*${slope}))':x='(iw-iw/zoom)*${z.x}':y='(ih-ih/zoom)*${z.y}':d=1:s=${rw}x${rh}:fps=${fps}`;
+            const source = `${offset}+on*${speed}/${fps}`;
+            const zz = T.zoomExpression(c, "scale", source),
+              zx = T.zoomExpression(c, "x", source),
+              zy = T.zoomExpression(c, "y", source);
+            const zoomFilter = `zoompan=z='max(1,min(5,${zz}))':x='(iw-iw/zoom)*(${zx})':y='(ih-ih/zoom)*(${zy})':d=1:s=${rw}x${rh}:fps=${fps}`;
             if (m.kind === "image") {
               filters.push(
                 chain + `,split[zc${id}][za${id}]`,
@@ -558,9 +574,10 @@ async function renderProject(
               const b = Math.max(2, (e.strength * rh) / 1080);
               effect += `,scale=${Math.max(1, Math.round(w / b))}:${Math.max(1, Math.round(h / b))}:flags=area,scale=${w}:${h}:flags=neighbor`;
             }
+            filters.push(effect + `[effect${id}]`);
+            const masked = maskedEffect(filters, e, `effect${id}`, id);
             filters.push(
-              effect + `[effect${id}]`,
-              `[base${id}][effect${id}]overlay=${x}:${y}:shortest=1:format=${cfg.pixelFormat === "yuv444p" ? "auto" : "yuv420"}[layer${id}]`,
+              `[base${id}][${masked}]overlay=${x}:${y}:shortest=1:format=${cfg.pixelFormat === "yuv444p" ? "auto" : "yuv420"}[layer${id}]`,
             );
           } else filters.push(chain + `[layer${id}]`);
           filters.push(
@@ -588,8 +605,12 @@ async function renderProject(
       );
       const part = `part-${interval}.nut`;
       args.push(
-        "-filter_complex",
-        filters.join(";"),
+        "-filter_complex_script",
+        await (async () => {
+          const graph = path.join(dir, `graph-${start}.txt`);
+          await fs.writeFile(graph, filters.join(";"));
+          return graph;
+        })(),
         "-map",
         `[${video}]`,
         "-map",
@@ -680,7 +701,7 @@ function simpleClip(p) {
             l.content.y !== 0 ||
             l.content.width !== 100 ||
             l.content.height !== 100)))) ||
-    (z && (z.from !== 1 || z.to !== 1))
+    (z && (z.from !== 1 || z.to !== 1 || z.keys?.some((k) => k.scale !== 1)))
   )
     return null;
   return { c, m };

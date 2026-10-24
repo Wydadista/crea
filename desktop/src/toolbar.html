@@ -6,45 +6,102 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; style-src 'self' 'unsafe-inline'"
     />
-    <title>AKhbar studio · Registrazione</title>
+    <title>AKhbar studio · Registratore</title>
     <link rel="stylesheet" href="meter.css" />
     <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
       body {
         margin: 0;
-        padding: 14px;
+        padding: 20px;
         background: #19222c;
-        color: white;
-        font: 14px Arial;
+        color: #e8edf5;
+        font:
+          14px "Segoe UI",
+          Arial;
+        display: grid;
+        gap: 14px;
+      }
+      header {
         display: flex;
-        gap: 10px;
         align-items: center;
-        -webkit-app-region: drag;
+        justify-content: space-between;
       }
-      button,
-      meter {
-        -webkit-app-region: no-drag;
-      }
-      button {
-        padding: 10px;
-        border: 0;
-        border-radius: 5px;
-        cursor: pointer;
-      }
-      #stop {
-        background: #ed4c5c;
-        color: white;
-      }
-      meter {
-        width: 65px;
+      strong {
+        color: #b4ed70;
       }
       #state {
-        min-width: 82px;
+        font: 28px monospace;
+        min-width: 100px;
+      }
+      label {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      input {
+        flex: 1;
+        min-width: 0;
+        padding: 9px;
+        border: 1px solid #455366;
+        background: #121a24;
+        color: white;
+        border-radius: 6px;
+      }
+      button {
+        padding: 9px 12px;
+        border: 1px solid #4a5669;
+        background: #2b3745;
+        color: white;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      #start {
+        background: #b4ed70;
+        color: #14220d;
+        font-weight: bold;
+      }
+      #stop {
+        background: #a33b48;
+      }
+      #discard {
+        color: #ffbdb5;
+      }
+      .controls {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .mic-meter {
+        width: 100%;
+      }
+      #message {
+        color: #aab9c9;
+        font-size: 12px;
+        min-height: 16px;
+      }
+      #countdown {
+        color: #b4ed70;
+        font-size: 13px;
       }
     </style>
   </head>
   <body>
-    <span id="state">● 00:00</span>
-    <div class="mic-meter" aria-label="Microfono da −60 a 0 dBFS">
+    <header>
+      <strong>AKhbar STUDIO · Registratore</strong><span id="state">00:00</span>
+    </header>
+    <label
+      >Nome clip<input id="name" maxlength="128" placeholder="Registrazione"
+    /></label>
+    <div class="mic-meter" aria-label="Livello del microfono">
       <div class="mic-meter-track">
         <span id="level" class="mic-meter-fill"></span
         ><span id="peak" class="mic-meter-peak"></span>
@@ -58,7 +115,14 @@
         ><span id="micStatus" class="mic-meter-status"></span>
       </div>
     </div>
-    <button id="pause">Pausa</button><button id="stop">■ Stop</button>
+    <div class="controls">
+      <button id="start">Inizia registrazione</button
+      ><button id="pause" disabled>Pausa</button
+      ><button id="stop" disabled>Stop</button
+      ><button id="discard" disabled>Scarta</button
+      ><button id="settings">Impostazioni</button>
+    </div>
+    <div id="message" role="status">Pronto per registrare</div>
     <script src="meter.js"></script>
     <script src="toolbar.js"></script>
   </body>

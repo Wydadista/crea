@@ -366,23 +366,28 @@ ipcMain.handle("recording-finish", async (_e, duration) => {
     await discardRecording();
   }
 });
+let recorderWindowState = { active: false, time: "00:00" };
 ipcMain.handle("recording-toolbar", async (_e, state) => {
   if (!state) {
-    recordingToolbar?.close();
-    recordingToolbar = null;
-    return;
+    if (!recordingToolbar) return;
+    state = { active: false, finishing: true, time: "00:00" };
   }
+  recorderWindowState = { ...recorderWindowState, ...state };
   if (!recordingToolbar) {
     const area = screen.getPrimaryDisplay().workArea;
     recordingToolbar = new BrowserWindow({
-      width: 540,
-      height: 86,
+      width: 580,
+      height: 300,
+      minWidth: 500,
+      minHeight: 280,
+      title: "AKhbar studio · Registratore",
+      icon: path.join(__dirname, "project-icon.ico"),
       x: area.x + 30,
       y: area.y + 30,
-      frame: false,
-      resizable: false,
-      alwaysOnTop: true,
-      skipTaskbar: true,
+      frame: true,
+      resizable: true,
+      alwaysOnTop: false,
+      skipTaskbar: false,
       show: false,
       webPreferences: {
         preload: path.join(__dirname, "toolbar-preload.js"),
@@ -392,22 +397,51 @@ ipcMain.handle("recording-toolbar", async (_e, state) => {
       },
     });
     recordingToolbar.setContentProtection(true);
-    recordingToolbar.setAlwaysOnTop(true, "screen-saver");
+
     recordingToolbar.setVisibleOnAllWorkspaces(true);
+    recordingToolbar.on("close", (event) => {
+      if (
+        recorderWindowState.active ||
+        recorderWindowState.countdown ||
+        recorderWindowState.finishing
+      ) {
+        event.preventDefault();
+        win?.show();
+        win?.focus();
+        win?.webContents.send("recording-control", "close");
+      } else win?.webContents.send("recording-control", "closed");
+    });
     recordingToolbar.on("closed", () => (recordingToolbar = null));
     await recordingToolbar.loadFile(path.join(__dirname, "toolbar.html"));
-    recordingToolbar.showInactive();
+    recordingToolbar.show();
   }
-  recordingToolbar.webContents.send("recording-state", state);
+  if (recordingToolbar && !recordingToolbar.isDestroyed())
+    recordingToolbar.webContents.send("recording-state", recorderWindowState);
 });
 ipcMain.on("recording-control", (event, action) => {
   if (
     event.sender === recordingToolbar?.webContents &&
-    ["pause", "stop"].includes(action)
-  )
-    win?.webContents.send("recording-control", action);
+    ["pause", "stop", "start", "discard", "settings", "name"].includes(
+      typeof action === "string" ? action : action?.type,
+    )
+  ) {
+    if (action === "settings") {
+      win?.show();
+      win?.focus();
+    }
+    win?.webContents.send(
+      "recording-control",
+      typeof action === "object"
+        ? { type: action.type, value: String(action.value || "").slice(0, 128) }
+        : action,
+    );
+  }
 });
-app.on("before-quit", () => recordingToolbar?.close());
+ipcMain.handle("close-recorder", () => {
+  recordingToolbar?.destroy();
+  recordingToolbar = null;
+});
+app.on("before-quit", () => recordingToolbar?.destroy());
 const thumbnailCache = new Map();
 ipcMain.handle("thumbnail", async (_e, file, seconds = 0) => {
   if (!Number.isFinite(seconds) || seconds < 0) throw Error("Tempo non valido");

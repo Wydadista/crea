@@ -15,7 +15,7 @@
     <header>
       <div class="brand">
         <span class="brand-icon">A</span> AKhbar <b>STUDIO</b
-        ><span class="badge">DESKTOP · 0.3.5</span>
+        ><span class="badge">DESKTOP · 0.4.0</span>
       </div>
       <details id="fileMenu" class="file-menu">
         <summary>File ▾</summary>
@@ -117,7 +117,16 @@
           </div>
         </div>
         <div id="elementsPanel" hidden>
-          <h2>Elementi ed effetti</h2>
+          <div class="elements-heading">
+            <h2>Elementi ed effetti</h2>
+            <div class="element-sizes">
+              <button id="elementLarger" title="Anteprime più grandi">−</button
+              ><output id="elementColumns">2</output
+              ><button id="elementSmaller" title="Anteprime più piccole">
+                +
+              </button>
+            </div>
+          </div>
           <div
             class="annotation-tools"
             aria-label="Elementi da aggiungere o trascinare"
@@ -336,7 +345,78 @@
             </div>
           </details>
           <details id="layoutPanel">
-            <summary>Inquadratura</summary>
+            <summary>Inquadratura e zoom animato</summary>
+            <div id="motionControls" class="control-group">
+              <button id="pickZoomFrame" aria-pressed="false">
+                Scegli inquadratura nell’anteprima</button
+              ><label
+                >Inquadratura da modificare<select id="motionEndpoint">
+                  <option value="end">Dettaglio finale</option>
+                  <option value="start">Vista iniziale</option>
+                </select></label
+              >
+              <div class="form-grid">
+                <label
+                  >Inizio movimento (s)<input
+                    id="motionStart"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value="0" /></label
+                ><label
+                  >Fine entrata (s)<input
+                    id="motionEnter"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value="1" /></label
+                ><label
+                  >Fine pausa (s)<input
+                    id="motionHold"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value="3" /></label
+                ><label
+                  >Fine ritorno (s)<input
+                    id="motionEnd"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value="4" /></label
+                ><label
+                  >X iniziale %<input
+                    id="motionFromX"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value="50" /></label
+                ><label
+                  >Y iniziale %<input
+                    id="motionFromY"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value="50" /></label
+                ><label
+                  >X dettaglio %<input
+                    id="motionToX"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value="50" /></label
+                ><label
+                  >Y dettaglio %<input
+                    id="motionToY"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value="50"
+                /></label>
+              </div>
+              <button id="applyMotion">Applica movimento</button
+              ><button id="removeMotion">Rimuovi movimento</button>
+            </div>
             <div class="control-group">
               <label
                 >Ingrandimento<input
@@ -408,6 +488,12 @@
           </details>
           <details id="effectsPanel">
             <summary>Sfocatura e pixelatura</summary>
+            <label
+              >Forma dell’area<select id="effectShape">
+                <option value="rect">Rettangolo / quadrato</option>
+                <option value="circle">Circolare</option>
+              </select></label
+            >
             <div class="control-group">
               <label
                 >Effetto<select id="effectType">
@@ -454,6 +540,28 @@
           </details>
           <details id="annotationPanel" open>
             <summary>Testo e indicatori</summary>
+            <div class="text-style-controls">
+              <label
+                >Nome stile<input
+                  id="textStyleName"
+                  placeholder="Sottotitoli" /></label
+              ><button id="saveTextStyle">Salva stile</button
+              ><select id="textStyles" aria-label="Stili di testo"></select
+              ><button id="applyTextStyle">Applica stile</button
+              ><label
+                >Contorno (px)<input
+                  id="textStrokeWidth"
+                  type="number"
+                  min="0"
+                  max="30"
+                  value="0" /></label
+              ><label
+                >Colore contorno<input
+                  id="textStrokeColor"
+                  type="color"
+                  value="#000000"
+              /></label>
+            </div>
             <div class="control-group">
               <label hidden
                 >Larghezza riquadro testo %<input
@@ -1203,6 +1311,7 @@
         </div>
       </div>
       ><button id="pauseRecording">Pausa</button
+      ><button id="discardRecording" type="button">Scarta registrazione</button
       ><button id="stopRecording">■ Ferma e salva</button>
     </div>
     <div id="toast" role="status" hidden></div>
@@ -1214,5 +1323,7 @@
     <script src="capture-processor.js"></script>
     <script src="meter.js"></script>
     <script src="renderer.js"></script>
+    <script src="studio-v4.js"></script>
+    <script src="recorder-v4.js"></script>
   </body>
 </html>
