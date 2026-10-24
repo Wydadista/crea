@@ -57,9 +57,11 @@ async function detect(ffmpeg, config = {}) {
           "-f",
           "lavfi",
           "-i",
-          `color=s=${config.width || 128}x${config.height || 128}:r=25`,
+          // Tiny probes can fall below a working hardware encoder's minimum size.
+          // Keep explicit export dimensions so unsupported exports still fall back.
+          `color=s=${config.width || 640}x${config.height || 360}:r=25`,
           "-frames:v",
-          "2",
+          "10",
           ...args(id, 23),
           "-pix_fmt",
           config.pixelFormat || "yuv420p",
