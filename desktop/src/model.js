@@ -4,6 +4,7 @@
   const api = {
     MAX_TRACKS: 128,
     MIN_TRACK_HEIGHT: 32,
+    MAX_VOLUME: 2,
     empty: () => ({
       version: 2,
       trackCount: 1,
@@ -1269,7 +1270,7 @@
               ? 86400
               : m.duration + 0.01,
           ) ||
-          !n(c.volume, 0, 1) ||
+          !n(c.volume, 0, api.MAX_VOLUME) ||
           !n(c.speed ?? 1, 0.1, 16) ||
           (c.groupId !== undefined && typeof c.groupId !== "string") ||
           (c.linkId !== undefined && typeof c.linkId !== "string") ||

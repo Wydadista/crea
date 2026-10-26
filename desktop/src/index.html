@@ -16,7 +16,7 @@
     <header>
       <div class="brand">
         <img class="brand-icon app-logo" src="project-icon.png" alt="" /> AKhbar <b>STUDIO</b
-        ><span class="badge">DESKTOP · 0.4.9</span>
+        ><span class="badge">DESKTOP · 0.4.10</span>
       </div>
       <details id="fileMenu" class="file-menu">
         <summary>File ▾</summary>
@@ -352,7 +352,8 @@
               ><button id="resetSpeed">Ripristina velocità originale</button
               ><label
                 >Volume <span id="volumeValue"></span
-                ><input id="clipVolume" type="range" min="0" max="100" /></label
+                ><input id="clipVolume" type="range" min="0" max="200" /></label
+              ><button id="editClipVolume" type="button">Modifica volume</button
               ><label
                 ><input type="checkbox" id="muteClip" /> Silenzia clip</label
               ><label
@@ -1318,6 +1319,7 @@
         title="Seleziona esplicitamente tutti i segmenti della sorgente e apri il controllo velocità"
       >
         Velocità su tutta la sorgente…</button
+      ><button data-action="edit-volume">Modifica volume</button
       ><button data-action="mute">Silenzia audio clip</button
       ><button data-action="detach-audio">Separa audio dal video</button
       ><button data-action="delete">Elimina selezione</button>
@@ -1353,6 +1355,7 @@
     <script src="renderer.js"></script>
     <script src="studio-v4.js"></script>
     <script src="studio-v41.js"></script>
+    <script src="volume-editing.js"></script>
     <script src="recorder-v4.js"></script>
   </body>
 </html>

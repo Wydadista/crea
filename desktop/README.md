@@ -1,8 +1,8 @@
-# AKhbar studio 0.4.9
+# AKhbar studio 0.4.10
 
 Editor desktop per Windows 10/11 x64, derivato dal commit `427ae12b48a1d8e685e362506b92c78621b7fede` di Wydadista/crea. Conserva timeline multitraccia, tagli, gruppi, velocità di lavoro/ripristino, effetti, annotazioni, anteprima, recupero automatico e apertura dei progetti precedenti `.creastudio`. Il vecchio `../creapost.html` è indipendente.
 
-Novità e verifiche della versione attuale: [VERIFICA-0.4.9.md](VERIFICA-0.4.9.md). La verifica delle sovrapposizioni resta in [VERIFICA-0.4.8.md](VERIFICA-0.4.8.md). La verifica dei suggerimenti resta in [VERIFICA-0.4.7.md](VERIFICA-0.4.7.md). La verifica dell’assemblaggio resta in [VERIFICA-0.4.6.md](VERIFICA-0.4.6.md). La verifica dei blocchi resta in [VERIFICA-0.4.5.md](VERIFICA-0.4.5.md). La verifica GPU resta in [VERIFICA-0.4.4.md](VERIFICA-0.4.4.md). La verifica dei tagli resta in [VERIFICA-0.4.3.md](VERIFICA-0.4.3.md). La verifica 0.4.2 resta in [VERIFICA-0.4.2.md](VERIFICA-0.4.2.md). La verifica precedente resta in [VERIFICA-0.4.1.md](VERIFICA-0.4.1.md). Le novità 0.4.0 restano in [VERIFICA-0.4.0.md](VERIFICA-0.4.0.md). Le verifiche precedenti restano in [VERIFICA-0.3.5.md](VERIFICA-0.3.5.md).
+Novità e verifiche della versione attuale: [VERIFICA-0.4.10.md](VERIFICA-0.4.10.md). La verifica dell’ombra resta in [VERIFICA-0.4.9.md](VERIFICA-0.4.9.md). La verifica delle sovrapposizioni resta in [VERIFICA-0.4.8.md](VERIFICA-0.4.8.md). La verifica dei suggerimenti resta in [VERIFICA-0.4.7.md](VERIFICA-0.4.7.md). La verifica dell’assemblaggio resta in [VERIFICA-0.4.6.md](VERIFICA-0.4.6.md). La verifica dei blocchi resta in [VERIFICA-0.4.5.md](VERIFICA-0.4.5.md). La verifica GPU resta in [VERIFICA-0.4.4.md](VERIFICA-0.4.4.md). La verifica dei tagli resta in [VERIFICA-0.4.3.md](VERIFICA-0.4.3.md). La verifica 0.4.2 resta in [VERIFICA-0.4.2.md](VERIFICA-0.4.2.md). La verifica precedente resta in [VERIFICA-0.4.1.md](VERIFICA-0.4.1.md). Le novità 0.4.0 restano in [VERIFICA-0.4.0.md](VERIFICA-0.4.0.md). Le verifiche precedenti restano in [VERIFICA-0.3.5.md](VERIFICA-0.3.5.md).
 
 ## Avvio e installer Windows
 
@@ -21,7 +21,7 @@ Chiudere l'app prima di creare l'installer:
 npm run build:win
 ```
 
-Risultato: `dist/AKhbar-studio-0.4.9-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
+Risultato: `dist/AKhbar-studio-0.4.10-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
 
 ```powershell
 npm run build:release
@@ -56,6 +56,8 @@ La calamita è un pulsante con la sola icona: verde quando la chiusura degli spa
 Verifiche della grafica: [VERIFICA-GRAFICA.md](VERIFICA-GRAFICA.md).
 
 ## Montaggio e navigazione
+
+**Modifica volume** nelle proprietà o nel menu del tasto destro mostra una linea gialla sulla clip. Trascinarla verso l’alto aumenta il volume fino al 200%; verso il basso lo riduce fino allo 0%. Le clip nuove partono dal 100%; quelle esistenti mantengono il valore salvato. La percentuale è visibile sulla linea. Il comando diventa **Nascondi modifica volume** per richiudere il controllo. Il guadagno viene salvato ed esportato; le modifiche supportano Annulla/Ripristina.
 
 Passando il mouse su una clip, il suggerimento mostra nome e durata effettiva nella timeline. Per gli elementi uniti mostra la durata della sequenza contigua; per un gruppo mostra l’intervallo dal primo all’ultimo elemento, comprese sovrapposizioni e distanze interne.
 

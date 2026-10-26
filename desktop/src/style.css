@@ -3005,6 +3005,56 @@ header .project-name {
 .attachment-bar.bypassed {
   opacity: 0.55;
 }
+.clip-volume-control {
+  position: absolute;
+  inset: 25px 8px 8px;
+  z-index: 7;
+  pointer-events: none;
+}
+.clip.compact-track .clip-volume-control {
+  top: 14px;
+  bottom: 5px;
+}
+.clip-volume-line {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  transform: translateY(-50%);
+  cursor: ns-resize;
+  touch-action: none;
+  pointer-events: auto;
+}
+.clip-volume-line::before {
+  content: "";
+  position: absolute;
+  inset: 5px 0 auto;
+  height: 2px;
+  background: #ffc82e;
+  box-shadow: 0 1px 2px #000;
+}
+.clip-volume-line:focus-visible {
+  outline: 1px solid #ffc82e;
+}
+.clip-volume-line:hover {
+  background: transparent;
+}
+.clip-volume-label {
+  position: absolute;
+  right: 1px;
+  bottom: 9px;
+  padding: 1px 3px;
+  border-radius: 3px;
+  background: #10151de8;
+  color: #ffe296;
+  font-size: 10px;
+  line-height: 12px;
+  pointer-events: none;
+}
 
 /* Use the supplied app artwork without the old letter badge transformation. */
 .brand-icon.app-logo {
