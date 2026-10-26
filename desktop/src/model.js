@@ -675,6 +675,7 @@
         "layout",
         "zoom",
         "effect",
+        "backgroundBlur",
         "annotation",
         "aspectUnlocked",
         "speedHomeTrack",
@@ -1310,6 +1311,12 @@
           throw Error("Audio non valido");
         if (c.mono !== undefined && typeof c.mono !== "boolean")
           throw Error("Mono non valido");
+        if (
+          c.backgroundBlur !== undefined &&
+          (typeof c.backgroundBlur !== "boolean" ||
+            (c.backgroundBlur && m.kind !== "video"))
+        )
+          throw Error("Sfondo sfocato non valido");
         if (c.voice && (!n(c.voice.noise, 0, 1) || !n(c.voice.level, 0, 1)))
           throw Error("Voce non valida");
         if (c.layout)

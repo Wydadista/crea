@@ -1,8 +1,8 @@
-# AKhbar studio 0.4.7
+# AKhbar studio 0.4.8
 
 Editor desktop per Windows 10/11 x64, derivato dal commit `427ae12b48a1d8e685e362506b92c78621b7fede` di Wydadista/crea. Conserva timeline multitraccia, tagli, gruppi, velocità di lavoro/ripristino, effetti, annotazioni, anteprima, recupero automatico e apertura dei progetti precedenti `.creastudio`. Il vecchio `../creapost.html` è indipendente.
 
-Novità e verifiche della versione attuale: [VERIFICA-0.4.7.md](VERIFICA-0.4.7.md). La verifica dell’assemblaggio resta in [VERIFICA-0.4.6.md](VERIFICA-0.4.6.md). La verifica dei blocchi resta in [VERIFICA-0.4.5.md](VERIFICA-0.4.5.md). La verifica GPU resta in [VERIFICA-0.4.4.md](VERIFICA-0.4.4.md). La verifica dei tagli resta in [VERIFICA-0.4.3.md](VERIFICA-0.4.3.md). La verifica 0.4.2 resta in [VERIFICA-0.4.2.md](VERIFICA-0.4.2.md). La verifica precedente resta in [VERIFICA-0.4.1.md](VERIFICA-0.4.1.md). Le novità 0.4.0 restano in [VERIFICA-0.4.0.md](VERIFICA-0.4.0.md). Le verifiche precedenti restano in [VERIFICA-0.3.5.md](VERIFICA-0.3.5.md).
+Novità e verifiche della versione attuale: [VERIFICA-0.4.8.md](VERIFICA-0.4.8.md). La verifica dei suggerimenti resta in [VERIFICA-0.4.7.md](VERIFICA-0.4.7.md). La verifica dell’assemblaggio resta in [VERIFICA-0.4.6.md](VERIFICA-0.4.6.md). La verifica dei blocchi resta in [VERIFICA-0.4.5.md](VERIFICA-0.4.5.md). La verifica GPU resta in [VERIFICA-0.4.4.md](VERIFICA-0.4.4.md). La verifica dei tagli resta in [VERIFICA-0.4.3.md](VERIFICA-0.4.3.md). La verifica 0.4.2 resta in [VERIFICA-0.4.2.md](VERIFICA-0.4.2.md). La verifica precedente resta in [VERIFICA-0.4.1.md](VERIFICA-0.4.1.md). Le novità 0.4.0 restano in [VERIFICA-0.4.0.md](VERIFICA-0.4.0.md). Le verifiche precedenti restano in [VERIFICA-0.3.5.md](VERIFICA-0.3.5.md).
 
 ## Avvio e installer Windows
 
@@ -21,7 +21,7 @@ Chiudere l'app prima di creare l'installer:
 npm run build:win
 ```
 
-Risultato: `dist/AKhbar-studio-0.4.7-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
+Risultato: `dist/AKhbar-studio-0.4.8-x64-Setup.exe`. Il programma include Electron, FFmpeg e FFprobe: l'utente finale non deve installarli separatamente. L'installer di sviluppo non è firmato. Per generare anche ZIP portabile, sorgenti e checksum:
 
 ```powershell
 npm run build:release
@@ -46,6 +46,8 @@ Qualità 65% corrisponde a CRF/CQ 23 in questa versione; le percentuali di Camta
 Risultati e limiti dei benchmark: [PERFORMANCE.md](PERFORMANCE.md). Nessuna equivalenza con Camtasia è dichiarata senza una prova sulla stessa sorgente e sullo stesso PC.
 
 ## Interfaccia
+
+Le aree vuote attorno a un video verticale o di proporzioni diverse sono trasparenti: mostrano le tracce sottostanti. Senza altre clip rimane lo sfondo nero del progetto. Per sostituirlo, selezionare il video e scegliere **Elementi ed effetti → Sfondo sfocato**, oppure trascinare il riquadro sopra la clip. Lo stesso fotogramma viene ingrandito e sfocato a tutto schermo, con il video nitido davanti. La barra dell’effetto permette di rimuoverlo con il tasto destro; applicazione e rimozione supportano Annulla/Ripristina.
 
 Le conferme di chiusura/salvataggio, sostituzione e recupero automatico usano finestre interne con logo e colori di AKhbar studio. **Annulla** o **Esc** conservano il progetto; **Salva** deve completarsi prima di chiudere. I selettori di file e cartelle continuano a usare il sistema operativo.
 

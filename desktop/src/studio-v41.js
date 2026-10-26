@@ -11,6 +11,7 @@ attachElement = function (parent, type) {
   const scope = sequenceScope(parent);
   if (type === "zoom") return applyZoomFromGallery(scope);
   if (type === "denoise") return applyDenoiseFromGallery(scope);
+  if (type === "background-blur") return applyBackgroundBlurFromGallery(scope);
   if (!scope || scope.members.some((c) => (c.attachments?.length || 0) >= 64))
     return;
   checkpoint();
@@ -417,6 +418,7 @@ function sequenceApplicationBars(scope, node) {
     }
   const hasZoom = !!owner.zoom?.keys?.length;
   const hasNoise = scope.members.some((c) => c.voice?.noise > 0);
+  const hasBackground = scope.members.some((c) => c.backgroundBlur);
   const inlineEffects = new Map();
   for (const c of scope.members)
     if (c.effect && c.effect.type !== "none") {
@@ -424,7 +426,14 @@ function sequenceApplicationBars(scope, node) {
       if (!inlineEffects.has(key)) inlineEffects.set(key, []);
       inlineEffects.get(key).push(c);
     }
-  if (!apps.size && !hasZoom && !hasNoise && !inlineEffects.size) return;
+  if (
+    !apps.size &&
+    !hasZoom &&
+    !hasNoise &&
+    !hasBackground &&
+    !inlineEffects.size
+  )
+    return;
   const toggle = el(
     "button",
     "expand-clip",
@@ -599,6 +608,13 @@ function sequenceApplicationBars(scope, node) {
         for (const c of scope.members) if (c.voice) c.voice.noise = 0;
       },
     );
+  if (hasBackground)
+    staticBar(
+      "Sfondo sfocato",
+      "background-effect",
+      scope.members.filter((c) => c.backgroundBlur),
+      () => setSequenceBackground(scope, false),
+    );
   for (const clips of inlineEffects.values())
     staticBar(
       clips[0].effect.type === "blur" ? "Sfocatura" : "Pixelizzazione",
@@ -612,6 +628,7 @@ function sequenceApplicationBars(scope, node) {
       (apps.size +
         (hasZoom ? 1 : 0) +
         (hasNoise ? 1 : 0) +
+        (hasBackground ? 1 : 0) +
         inlineEffects.size) *
         15,
   );
@@ -780,9 +797,30 @@ function applyDenoiseFromGallery(scope = sequenceScope()) {
   $("voiceNoise").closest("details").open = true;
   changed();
 }
+function setSequenceBackground(scope, enabled) {
+  for (const c of scope.members) {
+    if (mediaOf(c).kind === "video") c.backgroundBlur = enabled;
+    // Keep portions hidden by joined-edge trimming consistent when restored.
+    for (const saved of c.joinedSegments || [])
+      if (mediaOf(saved).kind === "video") saved.backgroundBlur = enabled;
+  }
+}
+function applyBackgroundBlurFromGallery(scope = sequenceScope()) {
+  const clips = scope?.members.filter((c) => mediaOf(c).kind === "video") || [];
+  if (!clips.length)
+    return toast("Seleziona una clip video per applicare lo sfondo sfocato");
+  pause();
+  checkpoint();
+  setSequenceBackground(scope, true);
+  expandedClips.add(sequenceOwner(scope).id);
+  selection = new Set(clips.map((c) => c.id));
+  previewFocus = clips[0].id;
+  changed();
+}
 for (const [id, type, apply] of [
   ["addZoom", "zoom", applyZoomFromGallery],
   ["addDenoise", "denoise", applyDenoiseFromGallery],
+  ["addBackgroundBlur", "background-blur", applyBackgroundBlurFromGallery],
 ]) {
   const button = $(id);
   button.onclick = () => apply();

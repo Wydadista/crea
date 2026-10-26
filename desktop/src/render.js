@@ -8,7 +8,7 @@ function maskedEffect(filters, effect, name, id) {
   if (effect.shape !== "circle") return name;
   const masked = `mask${id}`;
   filters.push(
-    `[${name}]format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lte(pow((X-W/2)/(W/2),2)+pow((Y-H/2)/(H/2),2),1),255,0)'[${masked}]`,
+    `[${name}]format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lte(pow((X-W/2)/(W/2),2)+pow((Y-H/2)/(H/2),2),1),alpha(X,Y),0)'[${masked}]`,
   );
   return masked;
 }
@@ -802,7 +802,23 @@ async function renderProject(
               m.kind === "annotation"
                 ? H
                 : Math.max(2, Math.round((H * l.height) / 100));
-          let chain = `[${inputIndex}:v]setpts=PTS/${speed},fps=${fps}:start_time=0:round=up,tpad=stop_mode=clone:stop_duration=${d},trim=duration=${d},scale=${rw}:${rh}:force_original_aspect_ratio=decrease,pad=${rw}:${rh}:(ow-iw)/2:(oh-ih)/2:color=black${["annotation", "image"].includes(m.kind) ? "@0" : ""},setsar=1,format=rgba`;
+          let inputChain = `[${inputIndex}:v]setpts=PTS/${speed},fps=${fps}:start_time=0:round=up,tpad=stop_mode=clone:stop_duration=${d},trim=duration=${d},`;
+          if (c.backgroundBlur) {
+            const sigma = Math.max(1, (30 * H) / 1080),
+              margin = Math.ceil(3 * sigma),
+              bw = W + 2 * margin,
+              bh = H + 2 * margin;
+            filters.push(
+              inputChain + `split[fg${id}][bg${id}]`,
+              `[bg${id}]scale=${bw}:${bh}:force_original_aspect_ratio=increase,crop=${bw}:${bh},gblur=sigma=${sigma},crop=${W}:${H}:${margin}:${margin},setsar=1[bgfill${id}]`,
+              `[${video}][bgfill${id}]overlay=0:0:eof_action=pass:shortest=0:repeatlast=0:format=${cfg.pixelFormat === "yuv444p" ? "auto" : "yuv420"}[background${id}]`,
+            );
+            video = `background${id}`;
+            inputChain = `[fg${id}]`;
+          }
+          let chain =
+            inputChain +
+            `scale=${rw}:${rh}:force_original_aspect_ratio=decrease,format=rgba,pad=${rw}:${rh}:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1`;
           if (l.content && m.kind !== "annotation") {
             const b = l.content,
               x = Math.round((b.x / 100) * rw),
@@ -815,7 +831,9 @@ async function renderProject(
                 1,
                 Math.min(rh - y, Math.round((b.height / 100) * rh)),
               );
-            chain = `[${inputIndex}:v]setpts=PTS/${speed},fps=${fps}:start_time=0:round=up,tpad=stop_mode=clone:stop_duration=${d},trim=duration=${d},scale=${w}:${h},pad=${rw}:${rh}:${x}:${y}:color=black${m.kind === "image" ? "@0" : ""},setsar=1,format=rgba`;
+            chain =
+              inputChain +
+              `scale=${w}:${h},format=rgba,pad=${rw}:${rh}:${x}:${y}:color=black@0,setsar=1`;
           }
           const z = c.zoom || { from: 1, to: 1, x: 0.5, y: 0.5 };
           if (
@@ -830,7 +848,15 @@ async function renderProject(
               zx = T.zoomExpression(c, "x", source),
               zy = T.zoomExpression(c, "y", source);
             const zoomFilter = `zoompan=z='max(1,min(20,${zz}))':x='(iw-iw/zoom)*(${zx})':y='(ih-ih/zoom)*(${zy})':d=1:s=${rw}x${rh}:fps=${fps}`;
-            if (m.kind === "image") {
+            // zoompan drops alpha. Preserve it for letterboxed/resized video,
+            // using the same mask path already used for transparent images.
+            if (
+              m.kind === "image" ||
+              l.content ||
+              !m.width ||
+              !m.height ||
+              m.width * rh !== m.height * rw
+            ) {
               filters.push(
                 chain + `,split[zc${id}][za${id}]`,
                 `[za${id}]alphaextract,${zoomFilter}[zam${id}]`,
@@ -1005,6 +1031,7 @@ function simpleClip(p) {
     c.start !== 0 ||
     (c.speed || 1) !== 1 ||
     (c.effect && c.effect.type !== "none") ||
+    c.backgroundBlur ||
     (l &&
       (l.x !== 0 ||
         l.y !== 0 ||

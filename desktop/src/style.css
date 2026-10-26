@@ -2982,6 +2982,25 @@ header .project-name {
   background: #203c35;
   cursor: pointer;
 }
+.background-blur-preview {
+  position: relative;
+  overflow: hidden;
+}
+.background-blur-preview img {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(5px);
+  transform: scale(1.12);
+}
+.background-blur-preview img + img {
+  width: 34%;
+  left: 33%;
+  filter: none;
+  transform: none;
+  border-inline: 1px solid #c1d0dc;
+}
 .attachment-bar.bypassed {
   opacity: 0.55;
 }

@@ -143,12 +143,31 @@
         rh = Math.max(2, Math.round((H * l.height) / 100));
       const layer = buffer(c.id, "layer", rw, rh);
       const p = layer.getContext("2d");
-      p.fillStyle = "#000";
-      if (m.kind === "image") p.clearRect(0, 0, rw, rh);
-      else p.fillRect(0, 0, rw, rh);
+      // Letterboxing belongs to the project background, not this source layer.
+      // Keep unused space transparent so lower tracks remain visible.
+      p.clearRect(0, 0, rw, rh);
       const sw = source.videoWidth || source.naturalWidth || source.width || 1,
         sh = source.videoHeight || source.naturalHeight || source.height || 1,
         k = Math.min(rw / sw, rh / sh);
+      if (c.backgroundBlur) {
+        const background = buffer(c.id, "background", W, H),
+          b = background.getContext("2d"),
+          sigma = Math.max(1, (30 * H) / 1080),
+          margin = Math.ceil(3 * sigma),
+          cover = Math.max((W + 2 * margin) / sw, (H + 2 * margin) / sh);
+        b.clearRect(0, 0, W, H);
+        b.save();
+        b.filter = `blur(${sigma}px)`;
+        b.drawImage(
+          source,
+          (W - sw * cover) / 2,
+          (H - sh * cover) / 2,
+          sw * cover,
+          sh * cover,
+        );
+        b.restore();
+        ctx.drawImage(background, 0, 0);
+      }
       if (l.content) {
         const b = l.content;
         p.drawImage(
