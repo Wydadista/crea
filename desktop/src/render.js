@@ -891,8 +891,22 @@ async function renderProject(
               `[base${id}][${masked}]overlay=${x}:${y}:shortest=1:format=${cfg.pixelFormat === "yuv444p" ? "auto" : "yuv420"}[layer${id}]`,
             );
           } else filters.push(chain + `[layer${id}]`);
+          let foreground = `layer${id}`;
+          if (c.backgroundBlur) {
+            const sigma = Math.max(1, (24 * H) / 1080),
+              margin = Math.ceil(3 * sigma),
+              x = Math.round((l.x / 100) * W),
+              y = Math.round((l.y / 100) * H);
+            filters.push(
+              `[layer${id}]split[foreground${id}][shadow-source${id}]`,
+              `[shadow-source${id}]format=rgba,colorchannelmixer=rr=0:gg=0:bb=0:aa=0.75,pad=${rw + 2 * margin}:${rh + 2 * margin}:${margin}:${margin}:color=black@0,gblur=sigma=${sigma}:planes=8[shadow${id}]`,
+              `[${video}][shadow${id}]overlay=${x - margin}:${y - margin}:eof_action=pass:shortest=0:repeatlast=0:format=${cfg.pixelFormat === "yuv444p" ? "auto" : "yuv420"}[shadowed${id}]`,
+            );
+            video = `shadowed${id}`;
+            foreground = `foreground${id}`;
+          }
           filters.push(
-            `[${video}][layer${id}]overlay=${m.kind === "annotation" ? 0 : Math.round((l.x / 100) * W)}:${m.kind === "annotation" ? 0 : Math.round((l.y / 100) * H)}:eof_action=pass:shortest=0:repeatlast=0:format=${cfg.pixelFormat === "yuv444p" ? "auto" : "yuv420"}[v${id}]`,
+            `[${video}][${foreground}]overlay=${m.kind === "annotation" ? 0 : Math.round((l.x / 100) * W)}:${m.kind === "annotation" ? 0 : Math.round((l.y / 100) * H)}:eof_action=pass:shortest=0:repeatlast=0:format=${cfg.pixelFormat === "yuv444p" ? "auto" : "yuv420"}[v${id}]`,
           );
           video = `v${id}`;
         }

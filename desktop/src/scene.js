@@ -268,6 +268,28 @@
           p.restore();
         }
       }
+      if (c.backgroundBlur) {
+        // Blur the foreground alpha underneath it; never darken the sharp video.
+        const sigma = Math.max(1, (24 * H) / 1080),
+          margin = Math.ceil(3 * sigma),
+          shadow = buffer(c.id, "shadow", rw + 2 * margin, rh + 2 * margin),
+          s = shadow.getContext("2d");
+        s.clearRect(0, 0, shadow.width, shadow.height);
+        s.save();
+        s.drawImage(layer, margin, margin);
+        s.globalCompositeOperation = "source-in";
+        s.fillStyle = "rgba(0,0,0,0.75)";
+        s.fillRect(0, 0, shadow.width, shadow.height);
+        s.restore();
+        ctx.save();
+        ctx.filter = `blur(${sigma}px)`;
+        ctx.drawImage(
+          shadow,
+          (l.x / 100) * W - margin,
+          (l.y / 100) * H - margin,
+        );
+        ctx.restore();
+      }
       ctx.drawImage(layer, (l.x / 100) * W, (l.y / 100) * H, rw, rh);
     },
   };

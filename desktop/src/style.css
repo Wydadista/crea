@@ -3000,6 +3000,7 @@ header .project-name {
   filter: none;
   transform: none;
   border-inline: 1px solid #c1d0dc;
+  box-shadow: 0 0 14px 4px #000b;
 }
 .attachment-bar.bypassed {
   opacity: 0.55;
