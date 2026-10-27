@@ -73,6 +73,17 @@ const { _electron } = require("playwright"),
     const toolbar = app.windows().find((w) => w.url().includes("toolbar.html"));
     assert.ok(toolbar);
     toolbar.setDefaultTimeout(12000);
+    const checkIdle = async () => {
+      for (const id of ["state", "pause", "stop", "discard"])
+        assert.equal(await toolbar.locator("#" + id).isVisible(), false);
+      for (const id of ["name", "start", "settings", "minimize", "close"])
+        assert.ok(await toolbar.locator("#" + id).isVisible());
+      assert.ok(await toolbar.locator(".meter").isVisible());
+      assert.ok(
+        await toolbar.evaluate(() => document.body.scrollWidth <= innerWidth),
+      );
+    };
+    await checkIdle();
     await toolbar.locator("#name").fill("Registrazione prova");
     await toolbar.locator("#start").click();
     await page.waitForFunction(() => recorder?.state === "recording");
@@ -154,7 +165,8 @@ const { _electron } = require("playwright"),
     await toolbar.waitForFunction(
       () => !document.body.classList.contains("compact"),
     );
-    assert.equal((await native()).bounds.width, 1080);
+    assert.equal((await native()).bounds.width, 720);
+    await checkIdle();
     assert.equal((await native()).top, false);
     assert.ok(await toolbar.locator("#name").isVisible());
     assert.equal(

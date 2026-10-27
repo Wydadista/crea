@@ -377,9 +377,9 @@ ipcMain.handle("recording-toolbar", async (_e, state) => {
   if (!recordingToolbar) {
     const area = screen.getPrimaryDisplay().workArea;
     recordingToolbar = new BrowserWindow({
-      width: 1080,
+      width: 720,
       height: 76,
-      minWidth: 1080,
+      minWidth: 720,
       minHeight: 76,
       title: "AKhbar studio · Registratore",
       icon: path.join(__dirname, "project-icon.ico"),

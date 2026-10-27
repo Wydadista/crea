@@ -40,7 +40,7 @@ test("recorder keeps its topmost level across pause and meter ticks, respects mi
   assert.deepEqual(
     calls.filter((c) => c[0] === "setSize"),
     [
-      ["setSize", 1080, 76, false],
+      ["setSize", 720, 76, false],
       ["setSize", 480, 64, false],
     ],
   );

@@ -27,7 +27,7 @@ function recorderPresentation(window, workArea) {
     const busy = !!(state.active || state.countdown || state.finishing);
     if (compact !== busy) {
       compact = busy;
-      const [width, height] = busy ? [480, 64] : [1080, 76];
+      const [width, height] = busy ? [480, 64] : [720, 76];
       window.setMinimumSize(width, height);
       window.setSize(width, height, false);
       const area = workArea(window.getBounds()),
