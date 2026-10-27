@@ -3368,12 +3368,15 @@ $("startRecording").onclick = safe(async () => {
       const capturedDuration = elapsedRecording();
       stopCapture();
       try {
-        await writes;
         if (discardCurrent) {
+          // Cancel the capture writer first: a pending conversion write may be
+          // waiting for more input and must not delay an explicit discard.
           await studio.abortRecording();
+          await writes;
           toast("Registrazione scartata");
           return;
         }
+        await writes;
         if (writeError) throw writeError;
         toast(
           "Finalizzazione " +

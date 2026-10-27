@@ -4,7 +4,8 @@ let discardCurrent = false,
   recordingCountdown = false,
   countdownCancel = false,
   recorderStarting = false,
-  closeRecorderAfter = false;
+  closeRecorderAfter = false,
+  restartRecorderAfter = false;
 let idleStream = null,
   idleContext = null,
   idleMeterTimer = null,
@@ -74,6 +75,11 @@ async function recorderReady() {
     recorderOpen = false;
     stopIdleMonitor();
     await studio.closeRecorder();
+    return;
+  }
+  if (restartRecorderAfter && recorderOpen) {
+    restartRecorderAfter = false;
+    $("startRecording").click();
     return;
   }
   if (recorderOpen) {
@@ -198,6 +204,13 @@ studio.onRecordingControl((action) =>
       await discardCapture();
       return;
     }
+    if (type === "restart") {
+      if (finishing || (!recorder && !recordingCountdown && !recorderStarting))
+        return;
+      restartRecorderAfter = true;
+      await discardCapture();
+      return;
+    }
     if (type === "close") {
       if (finishing)
         return toast("Attendi la finalizzazione della registrazione");
@@ -209,6 +222,7 @@ studio.onRecordingControl((action) =>
         cancelId: 2,
       });
       if (choice === 2) return;
+      restartRecorderAfter = false;
       closeRecorderAfter = true;
       if (recordingCountdown) {
         countdownCancel = true;

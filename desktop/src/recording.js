@@ -87,6 +87,7 @@ class Recording {
     while (at < data.length)
       at += (await this.handle.write(data, at)).bytesWritten;
     this.bytes += data.length;
+    if (this.error) throw this.error;
     if (this.child && !this.child.stdin.write(data))
       await once(this.child.stdin, "drain");
     if (this.error) throw this.error;
@@ -190,6 +191,8 @@ class Recording {
   }
   async dispose() {
     if (this.child && this.child.exitCode === null) {
+      this.error ||= Error("Registrazione interrotta");
+      this.child.stdin.destroy(this.error);
       this.child.kill();
       await this.done;
     }

@@ -24,7 +24,8 @@ const binaries = {
   ffmpeg: unpack(require("ffmpeg-static")),
   ffprobe: unpack(require("ffprobe-static").path),
 };
-let recordingToolbar;
+let recordingToolbar, updateRecorderPresentation;
+const { recorderPresentation } = require("./recorder-window");
 let win, chosenSource, exportController, lastExport;
 let projectPath = null,
   savedProject = null,
@@ -396,12 +397,17 @@ ipcMain.handle("recording-toolbar", async (_e, state) => {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        backgroundThrottling: false,
       },
     });
     recordingToolbar.setMenu(null);
     recordingToolbar.setContentProtection(true);
 
     recordingToolbar.setVisibleOnAllWorkspaces(true);
+    updateRecorderPresentation = recorderPresentation(
+      recordingToolbar,
+      (bounds) => screen.getDisplayMatching(bounds).workArea,
+    );
     recordingToolbar.on("close", (event) => {
       if (
         recorderWindowState.active ||
@@ -419,13 +425,7 @@ ipcMain.handle("recording-toolbar", async (_e, state) => {
     recordingToolbar.show();
   }
   if (recordingToolbar && !recordingToolbar.isDestroyed()) {
-    const pinned = !!(
-      recorderWindowState.active ||
-      recorderWindowState.countdown ||
-      recorderWindowState.finishing
-    );
-    if (recordingToolbar.isAlwaysOnTop() !== pinned)
-      recordingToolbar.setAlwaysOnTop(pinned, "floating");
+    updateRecorderPresentation(recorderWindowState);
     recordingToolbar.webContents.send("recording-state", recorderWindowState);
   }
 });
@@ -439,9 +439,15 @@ ipcMain.on("recording-control", (event, action) => {
     return recordingToolbar.close();
   if (
     event.sender === recordingToolbar?.webContents &&
-    ["pause", "stop", "start", "discard", "settings", "name"].includes(
-      typeof action === "string" ? action : action?.type,
-    )
+    [
+      "pause",
+      "stop",
+      "start",
+      "discard",
+      "restart",
+      "settings",
+      "name",
+    ].includes(typeof action === "string" ? action : action?.type)
   ) {
     if (action === "settings") {
       win?.show();

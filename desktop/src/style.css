@@ -624,19 +624,19 @@ kbd {
   height: 59px;
   border-radius: 5px;
   background: #4e426e;
-  border: 1px solid #8d76ba;
+  border: 1px solid #69717b;
   cursor: grab;
   overflow: hidden;
   min-width: 5px;
   user-select: none;
 }
 .clip.selected {
-  border: 2px solid var(--accent);
-  box-shadow: 0 0 0 1px #b4ed7020;
+  border: 2px solid #ffc82e;
+  box-shadow: none;
 }
 .clip.audio {
   background: #264c49;
-  border-color: #4b8a80;
+  border-color: #69717b;
 }
 .clip .clip-name {
   display: block;
@@ -990,7 +990,7 @@ main {
 }
 .clip.annotation {
   background: #71512d;
-  border-color: #d1974c;
+  border-color: #69717b;
 }
 .clip.audio:after {
   display: none;
@@ -1978,7 +1978,7 @@ header .project-name {
 }
 .clip.group {
   background: var(--clip-color) !important;
-  border: 1px solid #ffc82e;
+  border: 1px solid #69717b;
   border-radius: 6px;
 }
 .clip.group.joined-left {
@@ -1992,7 +1992,7 @@ header .project-name {
   border-bottom-right-radius: 0;
 }
 .clip.group.selected {
-  border-color: #d5c9ff;
+  border-color: #ffc82e;
   box-shadow: none;
 }
 .group-cut {
@@ -2374,9 +2374,9 @@ header .project-name {
   user-select: none;
 }
 
-/* Joined segments share a strong outer silhouette; internal cuts are references. */
+/* Internal cuts remain references; only selection strengthens the outline. */
 .clip.group {
-  border-width: 2px;
+  border-width: 1px;
 }
 .clip.group.joined-left {
   border-left-width: 0;
@@ -2406,8 +2406,7 @@ header .project-name {
   pointer-events: none;
 }
 .clip.linked.selected:not(.group) {
-  outline: 2px solid #ffe486;
-  outline-offset: -2px;
+  outline: none;
 }
 
 /* Compact timeline controls and recognisable, platform-independent icons. */
@@ -2741,7 +2740,7 @@ header .project-name {
   position: relative;
 }
 .compact-group {
-  border: 2px solid var(--purple) !important;
+  border: 1px solid #69717b;
   background: linear-gradient(120deg, #414562, #253344) !important;
 }
 .compact-group .clip-name {
@@ -2861,7 +2860,7 @@ header .project-name {
   z-index: 15;
 }
 .clip.group {
-  border-color: #ffc82e;
+  border-color: #69717b;
 }
 .sequence-bars {
   position: absolute;
@@ -2905,9 +2904,20 @@ header .project-name {
   pointer-events: none;
   background: #000;
 }
-.clip.group.selected {
+.clip.selected,
+.clip.group.selected,
+.clip.audio.selected,
+.clip.annotation.selected,
+.clip.compact-group.selected {
+  border-width: 2px;
   border-color: #ffc82e;
-  box-shadow: 0 0 0 1px #fff8;
+  box-shadow: none;
+}
+.clip.group.selected.joined-left {
+  border-left-width: 0;
+}
+.clip.group.selected.joined-right {
+  border-right-width: 0;
 }
 #timelineScroll {
   display: block;

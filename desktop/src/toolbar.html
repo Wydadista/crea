@@ -118,6 +118,45 @@
         margin-left: auto;
         gap: 1px;
       }
+      body.compact {
+        height: 64px;
+        padding: 10px 14px;
+        gap: 10px;
+      }
+      .compact label,
+      .compact #start,
+      .compact #settings {
+        display: none;
+      }
+      .compact #state {
+        order: 0;
+        width: 105px;
+        font-size: 22px;
+      }
+      .compact .meter {
+        order: 1;
+        width: 75px;
+      }
+      .compact #discard {
+        order: 2;
+        margin-left: 8px;
+        font-size: 23px;
+      }
+      .compact #pause {
+        order: 3;
+        font-size: 20px;
+      }
+      .compact #stop {
+        order: 4;
+      }
+      .compact > button {
+        width: 44px;
+        height: 42px;
+        padding: 4px;
+      }
+      .compact #window-controls {
+        order: 5;
+      }
     </style>
   </head>
   <body>

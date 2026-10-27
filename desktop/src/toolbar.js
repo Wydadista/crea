@@ -3,6 +3,7 @@ let lastState = {};
 recordingControls.onState((s) => {
   lastState = s;
   const busy = s.active || s.countdown || s.finishing;
+  document.body.classList.toggle("compact", !!busy);
   $("state").textContent = s.countdown
     ? String(s.countdown)
     : (s.paused ? "Ⅱ " : "") + (s.time || "00:00");
@@ -17,6 +18,9 @@ recordingControls.onState((s) => {
   $("pause").disabled = !s.active || s.finishing;
   $("stop").disabled = !s.active && !s.countdown;
   $("discard").disabled = (!s.active && !s.countdown) || s.finishing;
+  $("discard").title = busy ? "Scarta e ricomincia" : "Scarta registrazione";
+  $("discard").setAttribute("aria-label", $("discard").title);
+  $("discard").textContent = busy ? "↻" : "Scarta";
   $("start").disabled = !!busy;
   $("settings").disabled = !!busy;
   $("name").disabled = !!busy;
@@ -42,10 +46,13 @@ for (const [id, action] of [
   ["start", "start"],
   ["pause", "pause"],
   ["stop", "stop"],
-  ["discard", "discard"],
   ["settings", "settings"],
 ])
   $(id).onclick = () => recordingControls.control(action);
+$("discard").onclick = () =>
+  recordingControls.control(
+    lastState.active || lastState.countdown ? "restart" : "discard",
+  );
 
 $("minimize").onclick = () => recordingControls.control("minimize");
 $("close").onclick = () => recordingControls.control("close-window");
