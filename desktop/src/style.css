@@ -3079,3 +3079,120 @@ header .project-name {
   width: 24px;
   height: 24px;
 }
+
+/* Library thumbnails: compact, consistent controls in grid and list views. */
+.media-poster {
+  position: relative;
+  width: 92px;
+  height: 60px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #10151b;
+}
+#mediaList.grid .media-poster {
+  width: 100%;
+  height: auto;
+  min-height: 54px;
+  aspect-ratio: 16/9;
+}
+#mediaList .media-poster .media-thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  object-fit: contain;
+}
+.media-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #b1c0d0;
+  font-size: 26px;
+}
+.media-poster:has(.media-thumb:not([hidden])) .media-placeholder {
+  display: none;
+}
+.media-duration {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  z-index: 3;
+  padding: 1px 3px;
+  border-radius: 3px;
+  color: #fff;
+  background: #000c;
+  font:
+    10px "Segoe UI",
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+#mediaList .media-poster .add-media,
+#mediaList .media-poster .remove-media {
+  position: absolute;
+  top: 3px;
+  width: 21px;
+  height: 21px;
+  border: 1px solid #ffffff30;
+  border-radius: 50%;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+  font-size: 16px;
+  background: #1c2633e8;
+  z-index: 5;
+}
+#mediaList .media-poster .add-media {
+  left: 3px;
+  color: var(--accent);
+}
+#mediaList .media-poster .remove-media {
+  right: 3px;
+  color: #ffd4ce;
+}
+#mediaList .media-poster button:hover {
+  background: #3d4d60 !important;
+}
+#previewPreparation {
+  width: min(460px, calc(100vw - 40px));
+  padding: 26px;
+}
+#previewPreparation::backdrop {
+  background: #060a10b8;
+  backdrop-filter: blur(3px);
+}
+#previewPreparation h2 {
+  margin: 0 0 16px;
+  font-size: 19px;
+}
+#previewPreparation p {
+  color: var(--muted);
+  font-size: 12px;
+}
+.preview-preparation-meter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+}
+#previewPreparationProgress {
+  width: 100%;
+  height: 12px;
+  accent-color: var(--accent);
+}
+#previewPreparationProgress::-webkit-progress-bar {
+  background: #313b48;
+  border-radius: 8px;
+}
+#previewPreparationProgress::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: 8px;
+}
+#previewPreparationPercent {
+  min-width: 42px;
+  text-align: right;
+  font-weight: 600;
+}

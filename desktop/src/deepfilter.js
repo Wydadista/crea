@@ -21,8 +21,9 @@ function enginePaths() {
     model: path.join(dir, "DeepFilterNet3_onnx.tar.gz"),
   };
 }
-async function denoisedMedia(c, m, ffmpeg, signal) {
+async function denoisedMedia(c, m, ffmpeg, signal, notify = () => {}) {
   if (!c.voice?.noise || c.voice.bypass || !m.hasAudio) return m;
+  notify({ percent: 0, phase: "Preparazione dell’audio sorgente…" });
   const stat = await fs.stat(m.path),
     intensity = Math.max(0, Math.min(1, c.voice.noise)),
     attenuation = 6 + intensity * 18;
@@ -83,6 +84,10 @@ async function denoisedMedia(c, m, ffmpeg, signal) {
           ],
           opts,
         );
+        notify({
+          percent: 20,
+          phase: "DeepFilterNet3 · riduzione del rumore in corso…",
+        });
         const out = path.join(dir, "clean");
         await fs.mkdir(out, { recursive: true });
         await run(
@@ -90,6 +95,7 @@ async function denoisedMedia(c, m, ffmpeg, signal) {
           ["-m", model, "-D", "-a", String(attenuation), "-o", out, input],
           opts,
         );
+        notify({ percent: 75, phase: "Ricostruzione dell’audio elaborato…" });
         const candidates = (await fs.readdir(out)).filter((f) =>
           f.endsWith(".wav"),
         );
@@ -134,6 +140,8 @@ async function denoisedMedia(c, m, ffmpeg, signal) {
         throw e;
       }),
     );
-  return cache.get(key);
+  const result = await cache.get(key);
+  notify({ percent: 80, phase: "Preparazione dell’anteprima audio…" });
+  return result;
 }
 module.exports = { denoisedMedia, enginePaths };

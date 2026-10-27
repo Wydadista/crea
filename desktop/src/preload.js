@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld("studio", {
     ipcRenderer.on("recording-control", (_e, a) => fn(a)),
   onRecordingProgress: (fn) =>
     ipcRenderer.on("recording-progress", (_e, p) => fn(p)),
+  onAudioPreparationProgress: (fn) =>
+    ipcRenderer.on("audio-preparation-progress", (_e, p) => fn(p)),
   autosave: (p) => ipcRenderer.invoke("autosave", p),
   recover: () => ipcRenderer.invoke("recover"),
   projectFile: () => ipcRenderer.invoke("project-file"),

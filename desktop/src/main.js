@@ -807,11 +807,19 @@ app.on("before-quit", () => previewAudioController.abort());
 const continuousAudio = (c) =>
   !c.voice?.bypass && (c.voice?.noise > 0 || c.voice?.level > 0);
 async function previewAudio(clip, media, page = 0) {
+  const notify = (state) => {
+    if (clip.voice?.noise > 0 && !clip.voice.bypass)
+      win?.webContents.send("audio-preparation-progress", {
+        clipId: clip.id,
+        ...state,
+      });
+  };
   media = await require("./deepfilter").denoisedMedia(
     clip,
     media,
     binaries.ffmpeg,
     previewAudioController.signal,
+    notify,
   );
   const { audioFilters } = require("./audio");
   const effects = await audioFilters(clip, media, binaries.ffmpeg);
@@ -870,7 +878,9 @@ async function previewAudio(clip, media, page = 0) {
         throw e;
       }),
     );
-  return processedAudio.get(key);
+  const result = await processedAudio.get(key);
+  notify({ percent: 100, phase: "Audio elaborato pronto" });
+  return result;
 }
 ipcMain.handle("audio-preview", (_e, c, m) => previewAudio(c, m));
 ipcMain.handle("audio-data", async (_e, c, m, page = 0) => {

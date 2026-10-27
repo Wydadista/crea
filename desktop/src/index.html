@@ -16,7 +16,7 @@
     <header>
       <div class="brand">
         <img class="brand-icon app-logo" src="project-icon.png" alt="" /> AKhbar <b>STUDIO</b
-        ><span class="badge">DESKTOP · 0.4.12</span>
+        ><span class="badge">DESKTOP · 0.4.13</span>
       </div>
       <details id="fileMenu" class="file-menu">
         <summary>File ▾</summary>
@@ -1344,6 +1344,12 @@
       ><button id="discardRecording" type="button">Scarta registrazione</button
       ><button id="stopRecording">■ Ferma e salva</button>
     </div>
+    <dialog id="previewPreparation" aria-labelledby="previewPreparationTitle" aria-busy="true">
+      <h2 id="previewPreparationTitle">Preparazione delle anteprime</h2>
+      <p id="previewPreparationPhase" role="status">Preparazione dei file…</p>
+      <div class="preview-preparation-meter"><progress id="previewPreparationProgress" max="100" value="0"></progress><output id="previewPreparationPercent">0%</output></div>
+      <p id="previewPreparationCount">Preparazione…</p>
+    </dialog>
     <div id="toast" role="status" hidden></div>
     <script src="model.js"></script>
     <script src="scene.js"></script>
@@ -1352,6 +1358,7 @@
     <script src="recording-policy.js"></script>
     <script src="capture-processor.js"></script>
     <script src="meter.js"></script>
+    <script src="preview-preparation.js"></script>
     <script src="renderer.js"></script>
     <script src="studio-v4.js"></script>
     <script src="studio-v41.js"></script>

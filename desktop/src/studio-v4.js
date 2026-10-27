@@ -65,7 +65,7 @@ renderLibrary = function () {
       e.stopPropagation();
       safe(() => removeLibraryMedia(card.dataset.mediaId))();
     };
-    card.append(button);
+    card.querySelector(".media-poster").append(button);
     card.addEventListener("keydown", (e) => {
       if (e.key === "Delete") {
         e.preventDefault();

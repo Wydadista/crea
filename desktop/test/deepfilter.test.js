@@ -38,7 +38,18 @@ test(
         await denoisedMedia({ voice: { noise: 0.5, bypass: true } }, m, ffmpeg),
         m,
       );
-      const clean = await denoisedMedia({ voice: { noise: 0.5 } }, m, ffmpeg);
+      const progress = [];
+      const clean = await denoisedMedia(
+        { voice: { noise: 0.5 } },
+        m,
+        ffmpeg,
+        undefined,
+        (p) => progress.push(p),
+      );
+      assert.equal(progress[0].percent, 0);
+      assert.equal(progress.at(-1).percent, 80);
+      assert.ok(progress.some((p) => p.percent === 20));
+      assert.ok(progress.some((p) => p.percent === 75));
       assert.notEqual(clean.path, file);
       const probe = JSON.parse(
         (

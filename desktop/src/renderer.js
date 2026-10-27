@@ -102,24 +102,95 @@ let rippleFamily = localStorage.getItem("akhbar-family-ripple") === "true";
 let fitTimeline = false;
 const thumbCache = new Map();
 let thumbQueue = Promise.resolve();
-function thumbnail(m, at, image) {
-  if (m.kind === "image") {
-    image.src = m.url;
-    return;
+let previewPreparation = null;
+function beginPreviewPreparation(title = "Preparazione delle anteprime") {
+  const dialog = $("previewPreparation");
+  $("previewPreparationTitle").textContent = title;
+  $("previewPreparationPhase").textContent = "Preparazione dei file…";
+  const batch = new PreparationBatch(
+    (state) => {
+      if (previewPreparation !== batch) return;
+      $("previewPreparationProgress").value = state.percent;
+      $("previewPreparationPercent").textContent = state.percent + "%";
+      $("previewPreparationCount").textContent =
+        `${state.done} / ${state.total} operazioni completate`;
+      if (state.phase) $("previewPreparationPhase").textContent = state.phase;
+    },
+    (state) => {
+      if (previewPreparation !== batch) return;
+      $("previewPreparationPhase").textContent = state.failed
+        ? "Preparazione completata con alcuni file non disponibili"
+        : "Pronto";
+      draw();
+      setTimeout(() => {
+        if (previewPreparation !== batch) return;
+        previewPreparation = null;
+        dialog.close();
+        if (state.failed)
+          toast(
+            "Alcune anteprime non sono disponibili. Controlla i file originali.",
+          );
+        else
+          toast(
+            title.includes("DeepFilterNet3")
+              ? "Riduzione del rumore pronta."
+              : "Anteprime pronte.",
+          );
+      }, 300);
+    },
+  );
+  previewPreparation = batch;
+  $("previewPreparationProgress").value = 0;
+  $("previewPreparationPercent").textContent = "0%";
+  $("previewPreparationCount").textContent = "Preparazione…";
+  if (!dialog.open) dialog.showModal();
+  queueMicrotask(() => queueMicrotask(() => batch.seal()));
+  return batch;
+}
+$("previewPreparation").addEventListener("cancel", (e) => e.preventDefault());
+studio.onAudioPreparationProgress((state) => {
+  previewPreparation?.report(
+    "noise:" + state.clipId,
+    state.percent,
+    state.phase,
+  );
+  previewPreparation?.report("initial-audio", state.percent, state.phase);
+});
+function prepareNoisePreviews(clips) {
+  clips = clips.filter(
+    (c) => c.voice?.noise > 0 && !c.voice.bypass && mediaOf(c).hasAudio,
+  );
+  if (!clips.length) return;
+  const batch = beginPreviewPreparation(
+    "Riduzione del rumore · DeepFilterNet3",
+  );
+  for (const c of clips) {
+    const job = studio.audioPreview(clone(c), clone(mediaOf(c)));
+    batch.track("noise:" + c.id, job);
+    job.catch((e) => toast("Riduzione del rumore: " + e.message));
   }
+}
+function thumbnail(m, at, image) {
   const key = m.path + ":" + at.toFixed(4);
-  if (!thumbCache.has(key)) {
+  if (m.kind !== "image" && !thumbCache.has(key)) {
     const job = thumbQueue.then(() => studio.thumbnail(m.path, at));
     thumbQueue = job.catch(() => {});
     thumbCache.set(key, job);
     job.catch(() => thumbCache.delete(key));
   }
-  thumbCache
-    .get(key)
-    .then((url) => {
-      if (image.isConnected) image.src = url;
-    })
-    .catch(() => {});
+  const loaded = Promise.resolve(
+    m.kind === "image" ? m.url : thumbCache.get(key),
+  ).then(async (url) => {
+    if (image.isConnected) image.src = url;
+    else return;
+    await image.decode();
+  });
+  previewPreparation?.track("thumbnail:" + key, loaded);
+  loaded.catch(() => {
+    image.hidden = true;
+    image.closest(".media-poster")?.classList.add("unavailable");
+  });
+  return loaded;
 }
 let cleanProjectJSON = JSON.stringify(project),
   transitionBusy = false;
@@ -293,15 +364,15 @@ function selectIds(ids, add = false, toggle = false) {
   draw();
 }
 function warmAudio() {
-  transport
-    .prepare(project, time)
-    .catch((e) => toast("Preparazione audio: " + e.message));
+  const job = transport.prepare(project, time);
+  previewPreparation?.track("initial-audio", job);
+  job.catch((e) => toast("Preparazione audio: " + e.message));
 }
 function requestWave(m) {
   if (!m.hasAudio || waves.has(m.id)) return;
   waves.set(m.id, { pending: true });
   const epoch = waveEpoch;
-  waveQueue = waveQueue.then(async () => {
+  const job = waveQueue.then(async () => {
     if (epoch !== waveEpoch) return;
     try {
       const wave = await studio.waveform(m.path, m.audioChannels);
@@ -313,9 +384,14 @@ function requestWave(m) {
     } catch (e) {
       waves.set(m.id, { error: e.message });
       toast("Forma d’onda non disponibile per " + m.name + ": " + e.message);
+      throw e;
+    } finally {
+      if (epoch === waveEpoch) renderTimeline();
     }
-    renderTimeline();
   });
+  waveQueue = job.catch(() => {});
+  previewPreparation?.track("waveform:" + m.id, job);
+  return job;
 }
 function renderLibrary() {
   const list = $("mediaList");
@@ -349,30 +425,38 @@ function renderLibrary() {
     card.onkeydown = (e) => {
       if (e.key === "Enter") showSource(m);
     };
+    const poster = el("div", "media-poster");
+    poster.append(
+      el("span", "media-placeholder", m.kind === "audio" ? "♫" : "▷"),
+    );
     if (m.kind !== "audio") {
       const img = el("img", "media-thumb");
       img.alt = m.name;
-      card.append(img);
+      poster.append(img);
       queueMicrotask(() => thumbnail(m, 0, img));
     }
-    card.draggable = true;
-    card.append(
+    const seconds = Math.max(0, Math.floor(m.duration || 0));
+    poster.append(
       el(
         "span",
-        "media-icon",
-        m.kind === "audio" ? "♫" : m.kind === "image" ? "▧" : "▷",
+        "media-duration",
+        `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`,
       ),
     );
+    card.append(poster);
+    card.draggable = true;
     const text = el("div", "media-meta");
-    text.append(
-      el("strong", "", m.name),
-      el("small", "", `${m.kind.toUpperCase()} · ${fmt(m.duration)}`),
-    );
+    text.append(el("strong", "", m.name));
+    text.title = m.name;
     card.append(text);
-    const add = el("button", "", "＋");
+    const add = el("button", "add-media", "＋");
     add.title = "Aggiungi al cursore, sulla traccia scelta";
+    add.setAttribute(
+      "aria-label",
+      "Aggiungi " + m.name + " alla traccia selezionata",
+    );
     add.onclick = () => addMedia(m.id, time, Number($("activeTrack").value));
-    card.append(add);
+    poster.append(add);
     card.ondragend = () => {
       draggedMedia = null;
       document.querySelectorAll(".drop-ghost").forEach((n) => n.remove());
@@ -389,6 +473,7 @@ function renderLibrary() {
 }
 async function imported(result) {
   if (result.media.length) {
+    beginPreviewPreparation();
     checkpoint();
     project.media.push(...result.media);
     if (
@@ -3583,6 +3668,12 @@ for (const id of ["voiceNoise", "voiceLevel"])
         level: Number($("voiceLevel").value) / 100,
       };
     });
+const changeNoise = $("voiceNoise").onchange;
+$("voiceNoise").onchange = (event) => {
+  pause();
+  changeNoise(event);
+  prepareNoisePreviews(selected());
+};
 $("textWidth").onchange = () =>
   edit((c) => {
     if (c.annotation) c.annotation.width = Number($("textWidth").value);
@@ -3969,7 +4060,9 @@ function applyOpened(data, recovered = false) {
   history = [];
   future = [];
   resetPlayers();
+  const preparation = beginPreviewPreparation();
   render();
+  preparation.track("initial-video", readyVideos());
   for (const m of project.media) requestWave(m);
   cleanProjectJSON = recovered ? "" : JSON.stringify(project);
   exportOutputPath = null;

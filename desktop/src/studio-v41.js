@@ -796,6 +796,7 @@ function applyDenoiseFromGallery(scope = sequenceScope()) {
   previewFocus = clips[0].id;
   $("voiceNoise").closest("details").open = true;
   changed();
+  prepareNoisePreviews(clips);
 }
 function setSequenceBackground(scope, enabled) {
   for (const c of scope.members) {
