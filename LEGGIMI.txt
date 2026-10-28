@@ -10,7 +10,8 @@ COME CREARE IL PROGRAMMA DAL CMD
 4. Avvia dist\MP4Leggero.exe
 
 Non servono npm, Electron, Visual Studio o un SDK .NET da scaricare.
-Il comando usa il compilatore di .NET Framework presente in Windows.
+Il comando usa il compilatore di .NET Framework presente in Windows,
+con riferimenti espliciti a WPF e System.Xaml (corretto errore CS0012).
 L'EXE non include un browser o un motore video: usa WPF e i codec di Windows.
 Mantieni il file MP4Leggero.exe.config accanto all'EXE.
 Nessuna installazione, account, connessione Internet o telemetria.

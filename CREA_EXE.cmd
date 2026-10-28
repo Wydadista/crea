@@ -7,9 +7,12 @@ if not exist "%PLAYER_FRAMEWORK%\csc.exe" goto missing
 for %%A in (WindowsBase PresentationCore PresentationFramework) do (
   if not exist "%PLAYER_FRAMEWORK%\WPF\%%A.dll" goto missing
 )
+set "PLAYER_XAML=%PLAYER_FRAMEWORK%\System.Xaml.dll"
+if not exist "%PLAYER_XAML%" set "PLAYER_XAML=%PLAYER_FRAMEWORK%\WPF\System.Xaml.dll"
+if not exist "%PLAYER_XAML%" goto missing
 if not exist dist mkdir dist
 if not exist dist goto failed
-"%PLAYER_FRAMEWORK%\csc.exe" /nologo /target:winexe /optimize+ /platform:anycpu /codepage:65001 /out:"dist\MP4Leggero.exe" /reference:System.dll /reference:System.Core.dll /reference:"%PLAYER_FRAMEWORK%\WPF\WindowsBase.dll" /reference:"%PLAYER_FRAMEWORK%\WPF\PresentationCore.dll" /reference:"%PLAYER_FRAMEWORK%\WPF\PresentationFramework.dll" Player.cs
+"%PLAYER_FRAMEWORK%\csc.exe" /nologo /target:winexe /optimize+ /platform:anycpu /codepage:65001 /out:"dist\MP4Leggero.exe" /reference:System.dll /reference:System.Core.dll /reference:"%PLAYER_XAML%" /reference:"%PLAYER_FRAMEWORK%\WPF\WindowsBase.dll" /reference:"%PLAYER_FRAMEWORK%\WPF\PresentationCore.dll" /reference:"%PLAYER_FRAMEWORK%\WPF\PresentationFramework.dll" Player.cs
 if errorlevel 1 goto failed
 copy /y MP4Leggero.exe.config dist\MP4Leggero.exe.config >nul
 if errorlevel 1 goto failed
