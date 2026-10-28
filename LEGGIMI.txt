@@ -1,56 +1,70 @@
-MP4 LEGGERO 1.0 — Windows 10/11
+AK PLAYER 1.1 — lettore leggero per Windows 10/11
 
-COME CREARE IL PROGRAMMA DAL CMD
-1. Estrai tutto lo ZIP in una cartella.
-2. Apri la cartella: nella barra dell'indirizzo scrivi cmd e premi Invio.
+INSTALLARE NEL PC DAL CMD
+1. Estrai tutti i file dello ZIP in una cartella.
+2. Nella barra dell'indirizzo della cartella scrivi cmd e premi Invio.
 3. Esegui:
+
+   INSTALLA.cmd
+
+Il comando crea il programma e poi apre la conferma di installazione.
+Conferma per installare AK Player solo per il tuo utente, senza amministratore.
+Troverai AK Player sul desktop e nel menu Start: non serve cercare la cartella.
+I file vengono copiati in:
+%LOCALAPPDATA%\Programs\AKPlayer
+Dopo l'installazione puoi eliminare la cartella estratta dallo ZIP.
+
+APRIRE UN VIDEO CON AK PLAYER
+Tasto destro sul video > Apri con > AK Player.
+Se non compare subito, scegli Scegli un'altra app > Altre app.
+Puoi anche sfogliare e scegliere questo file:
+%LOCALAPPDATA%\Programs\AKPlayer\AKPlayer.exe
+Per renderlo predefinito, scegli Sempre oppure l'opzione di Windows per usare
+sempre AK Player con i file MP4. L'installazione non cambia il predefinito da sola.
+Registrazione prevista per .mp4 e .m4v, senza sostituire le altre applicazioni.
+
+DISINSTALLARE
+Impostazioni di Windows > App > App installate > AK Player > Disinstalla,
+oppure Start > AK Player > Disinstalla AK Player.
+Chiudi le altre finestre del lettore prima di disinstallare.
+Vengono rimossi solo collegamenti, registrazioni e file di AK Player.
+I tuoi video non vengono modificati o eliminati.
+
+VERSIONE SENZA INSTALLAZIONE
+Se preferisci solo l'EXE portabile, esegui:
 
    CREA_EXE.cmd
 
-4. Avvia dist\MP4Leggero.exe
-
-Non servono npm, Electron, Visual Studio o un SDK .NET da scaricare.
-Il comando mostra quattro passaggi e il percorso del risultato.
-Funziona anche se un comando precedente nel CMD era terminato con un errore.
-Se la compilazione fallisce, trovi l'errore anche in compilazione.log.
-Tutti i percorsi sono assoluti e non dipendono dalla cartella corrente.
-
-Il comando usa il compilatore di .NET Framework presente in Windows,
-con riferimenti espliciti a WPF e System.Xaml (corretto errore CS0012).
-L'EXE non include un browser o un motore video: usa WPF e i codec di Windows.
-Mantieni il file MP4Leggero.exe.config accanto all'EXE.
-Nessuna installazione, account, connessione Internet o telemetria.
-Il programma non modifica i video originali.
+Apri dist\AKPlayer.exe e tieni AKPlayer.exe.config accanto all'EXE.
+Il comando mostra quattro passaggi. Eventuali errori sono in compilazione.log.
+Se hai gia' installato AK Player, INSTALLA.cmd permette di aggiornarlo:
+prima chiudi le finestre del lettore e poi conferma di nuovo l'installazione.
 
 COMANDI
-- Scegli file: apre un video; puoi anche trascinarlo nella finestra.
-- Play e Pausa; barra per cercare un punto nel video.
+- Scegli file oppure trascina un video nella finestra.
+- Play verde con simbolo scuro; Pausa con stato riconoscibile.
+- Barra per spostarti nel video.
 - Velocita': 0,5 / 1 / 1,5 / 2 / 2,5 / 3. Default: 1.
-  Usa la linea o clicca direttamente sul valore desiderato.
-- Primo piano: attiva/disattiva la permanenza sopra le altre finestre.
-  Nella finestra piccola: cerchio pieno = attivo; cerchio vuoto = disattivo.
-- Ridimensiona dai bordi, anche fino a una finestra molto piccola.
-- Doppio clic sul video o F11: entra/esci dallo schermo intero.
-- Esc: esce dallo schermo intero.
-- Spazio: play/pausa. Ctrl+O: scegli file.
-- Freccia destra/sinistra: avanti/indietro di 5 secondi (fuori dai cursori).
-- I comandi si nascondono durante la riproduzione; muovi il mouse per mostrarli.
+  Usa la linea o clicca sul valore.
+- Primo piano: mantiene la finestra sopra gli altri programmi.
+  Nella finestra piccola: cerchio pieno = attivo, vuoto = disattivo.
+- Ridimensiona dai bordi; doppio clic sul video o F11 per schermo intero.
+- Esc esce dallo schermo intero; Spazio alterna play/pausa; Ctrl+O apre un file.
+- Frecce destra/sinistra: avanti/indietro di 5 secondi fuori dai cursori.
+- Durante la riproduzione i comandi si nascondono; muovi il mouse per mostrarli.
 
-COMPATIBILITA'
-Richiede .NET Framework 4.8 (normalmente incluso in Windows 10/11) e i
-componenti multimediali di Windows. Windows N puo' richiedere il Media Feature Pack.
-MP4 e' un contenitore: H.264/AAC normalmente funziona con i codec standard.
-Altri codec, ad esempio HEVC, dipendono dai codec installati sul PC.
-La riproduzione accelerata, l'audio a velocita' elevate e il consumo di RAM
-possono variare con codec, risoluzione, driver e hardware del PC.
-Il primo piano non puo' sovrapporsi alla schermata protetta di Windows/UAC.
+REQUISITI E DIMENSIONI
+Non servono npm, Electron, Visual Studio o un SDK .NET da scaricare.
+Si usano .NET Framework 4.8, WPF e i codec di Windows, senza includerli nel pacchetto.
+Windows N puo' richiedere il Media Feature Pack.
+H.264/AAC normalmente funziona con i codec standard; HEVC e altri codec
+dipendono dai componenti multimediali installati sul PC.
+Non servono account o connessione Internet per installare e riprodurre i file.
+Nessuna telemetria. L'installazione riguarda solo l'utente corrente.
 
-VERIFICA SUL PC
-Apri un MP4, prova play/pausa e tutte le velocita', sposta la barra,
-riduci la finestra, passa a un altro programma con Primo piano attivo,
-prova F11/Esc e apri un secondo file.
-La compilazione C# 5 contro le librerie di riferimento .NET Framework 4.8
-e' stata verificata senza errori, producendo solo una DLL temporanea di controllo
-che non e' inclusa nello ZIP. Nessun EXE e' stato creato qui.
-Il runtime grafico Windows non e' disponibile nell'ambiente Linux di preparazione:
-la verifica effettiva di riproduzione e interfaccia va eseguita sul tuo PC.
+VERIFICHE
+Compilazione C# 5 controllata con i riferimenti .NET Framework 4.8,
+compreso System.Xaml, producendo solo una DLL temporanea non distribuita.
+Nessun EXE e' stato creato qui: lo crei sul tuo PC.
+L'ambiente di preparazione e' Linux: interfaccia, riproduzione, collegamenti,
+Apri con e disinstallazione vanno verificati sul PC Windows.

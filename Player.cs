@@ -9,22 +9,28 @@ using System.Windows.Threading;
 using Microsoft.Win32;
 using System.Reflection;
 
-[assembly: AssemblyTitle("MP4 Leggero")]
+[assembly: AssemblyTitle("AK Player")]
 [assembly: AssemblyDescription("Lettore video essenziale per Windows")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
 
-namespace MP4Leggero
+namespace AKPlayer
 {
     internal static class Program
     {
         [STAThread]
         public static void Main(string[] args)
         {
+            if (args.Length == 1 && (args[0] == "--install" || args[0] == "--uninstall"))
+            {
+                try { Environment.ExitCode = args[0] == "--install" ? Setup.Install() : Setup.Uninstall(); }
+                catch (Exception e) { MessageBox.Show(e.Message, "AK Player - Installazione", MessageBoxButton.OK, MessageBoxImage.Error); Environment.ExitCode = 1; }
+                return;
+            }
             Application app = new Application();
             app.DispatcherUnhandledException += delegate(object sender, DispatcherUnhandledExceptionEventArgs e)
             {
-                MessageBox.Show(e.Exception.Message, "MP4 Leggero", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(e.Exception.Message, "AK Player", MessageBoxButton.OK, MessageBoxImage.Warning);
                 e.Handled = true;
             };
             app.Run(new PlayerWindow(args.Length > 0 ? args[0] : null));
@@ -56,7 +62,7 @@ namespace MP4Leggero
         internal PlayerWindow(string initial)
         {
             initialFile = initial;
-            Title = "MP4 Leggero";
+            Title = "AK Player";
             Width = 800; Height = 490; MinWidth = 170; MinHeight = 140;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             Background = Brushes.Black; Foreground = Brushes.White;
@@ -64,6 +70,7 @@ namespace MP4Leggero
             Icon = new DrawingImage(new GeometryDrawing(new SolidColorBrush(Color.FromRgb(180,237,112)), null,
                 Geometry.Parse("M 2,1 L 18,10 L 2,19 Z")));
             AllowDrop = true;
+            Resources.Add(typeof(Button), CreateButtonStyle());
 
             Grid surface = new Grid();
             Content = surface;
@@ -172,7 +179,7 @@ namespace MP4Leggero
                 bool small=ActualWidth<500;
                 open.Content=small ? "＋" : "Scegli file";
                 clock.Visibility=ActualWidth<330 ? Visibility.Collapsed : Visibility.Visible;
-                PaintPin();
+                PaintPin(); PaintPlayback();
             };
             DragOver += delegate(object sender, DragEventArgs e)
             { e.Effects=e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled=true; };
@@ -226,14 +233,53 @@ namespace MP4Leggero
                 if(!File.Exists(full)) throw new FileNotFoundException("Il file non esiste.",full);
                 video.Close(); opened=false; playing=true; position.IsEnabled=false;
                 updating=true; position.Value=0; updating=false;
-                fileName=Path.GetFileName(full); Title="MP4 Leggero · "+fileName;
+                fileName=Path.GetFileName(full); Title="AK Player · "+fileName;
                 message.Text="Apertura del video…"; message.Visibility=Visibility.Visible;
                 video.Source=new Uri(full,UriKind.Absolute); video.Play(); ApplySpeed(); Reveal(); PaintPlayback();
                 Keyboard.ClearFocus();
             }
             catch(Exception e) { MessageBox.Show(this,e.Message,"Apertura del file",MessageBoxButton.OK,MessageBoxImage.Warning); }
         }
-        private void PaintPlayback() { play.IsEnabled=opened && !playing; pause.IsEnabled=opened && playing; }
+        private void PaintPlayback()
+        {
+            bool small=ActualWidth<500;
+            play.Content=small ? "▶" : "▶ Play";
+            pause.Content=small ? "⏸" : "⏸ Pausa";
+            play.IsEnabled=opened; pause.IsEnabled=opened;
+            Brush green=new SolidColorBrush(Color.FromRgb(180,237,112));
+            Brush dark=new SolidColorBrush(Color.FromRgb(20,34,13));
+            Brush neutral=new SolidColorBrush(Color.FromRgb(42,48,56));
+            play.Background=green; play.Foreground=dark;
+            pause.Background=opened && !playing ? green : neutral;
+            pause.Foreground=opened && !playing ? dark : Brushes.White;
+            play.ToolTip=playing ? "In riproduzione" : "Riproduci (Spazio)";
+            pause.ToolTip=opened && !playing ? "Video in pausa" : "Pausa (Spazio)";
+        }
+        private static Style CreateButtonStyle()
+        {
+            return (Style)System.Windows.Markup.XamlReader.Parse(@"
+<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+       xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='{x:Type Button}'>
+  <Setter Property='FocusVisualStyle' Value='{x:Null}'/>
+  <Setter Property='Template'>
+    <Setter.Value>
+      <ControlTemplate TargetType='{x:Type Button}'>
+        <Border Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}'
+                BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='4'>
+          <ContentPresenter Margin='{TemplateBinding Padding}' HorizontalAlignment='Center'
+                            VerticalAlignment='Center' RecognizesAccessKey='True'/>
+        </Border>
+      </ControlTemplate>
+    </Setter.Value>
+  </Setter>
+  <Style.Triggers>
+    <Trigger Property='IsMouseOver' Value='True'><Setter Property='BorderBrush' Value='#B4ED70'/></Trigger>
+    <Trigger Property='IsKeyboardFocused' Value='True'><Setter Property='BorderBrush' Value='#B4ED70'/></Trigger>
+    <Trigger Property='IsPressed' Value='True'><Setter Property='Opacity' Value='0.8'/></Trigger>
+    <Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='0.45'/></Trigger>
+  </Style.Triggers>
+</Style>");
+        }
         private void Play()
         {
             if(!opened) return;
