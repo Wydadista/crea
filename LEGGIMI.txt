@@ -1,0 +1,50 @@
+MP4 LEGGERO 1.0 — Windows 10/11
+
+COME CREARE IL PROGRAMMA DAL CMD
+1. Estrai tutto lo ZIP in una cartella.
+2. Apri la cartella: nella barra dell'indirizzo scrivi cmd e premi Invio.
+3. Esegui:
+
+   CREA_EXE.cmd
+
+4. Avvia dist\MP4Leggero.exe
+
+Non servono npm, Electron, Visual Studio o un SDK .NET da scaricare.
+Il comando usa il compilatore di .NET Framework presente in Windows.
+L'EXE non include un browser o un motore video: usa WPF e i codec di Windows.
+Mantieni il file MP4Leggero.exe.config accanto all'EXE.
+Nessuna installazione, account, connessione Internet o telemetria.
+Il programma non modifica i video originali.
+
+COMANDI
+- Scegli file: apre un video; puoi anche trascinarlo nella finestra.
+- Play e Pausa; barra per cercare un punto nel video.
+- Velocita': 0,5 / 1 / 1,5 / 2 / 2,5 / 3. Default: 1.
+  Usa la linea o clicca direttamente sul valore desiderato.
+- Primo piano: attiva/disattiva la permanenza sopra le altre finestre.
+  Nella finestra piccola: cerchio pieno = attivo; cerchio vuoto = disattivo.
+- Ridimensiona dai bordi, anche fino a una finestra molto piccola.
+- Doppio clic sul video o F11: entra/esci dallo schermo intero.
+- Esc: esce dallo schermo intero.
+- Spazio: play/pausa. Ctrl+O: scegli file.
+- Freccia destra/sinistra: avanti/indietro di 5 secondi (fuori dai cursori).
+- I comandi si nascondono durante la riproduzione; muovi il mouse per mostrarli.
+
+COMPATIBILITA'
+Richiede .NET Framework 4.8 (normalmente incluso in Windows 10/11) e i
+componenti multimediali di Windows. Windows N puo' richiedere il Media Feature Pack.
+MP4 e' un contenitore: H.264/AAC normalmente funziona con i codec standard.
+Altri codec, ad esempio HEVC, dipendono dai codec installati sul PC.
+La riproduzione accelerata, l'audio a velocita' elevate e il consumo di RAM
+possono variare con codec, risoluzione, driver e hardware del PC.
+Il primo piano non puo' sovrapporsi alla schermata protetta di Windows/UAC.
+
+VERIFICA SUL PC
+Apri un MP4, prova play/pausa e tutte le velocita', sposta la barra,
+riduci la finestra, passa a un altro programma con Primo piano attivo,
+prova F11/Esc e apri un secondo file.
+La compilazione C# 5 contro le librerie di riferimento .NET Framework 4.8
+e' stata verificata senza errori, producendo solo una DLL temporanea di controllo
+che non e' inclusa nello ZIP. Nessun EXE e' stato creato qui.
+Il runtime grafico Windows non e' disponibile nell'ambiente Linux di preparazione:
+la verifica effettiva di riproduzione e interfaccia va eseguita sul tuo PC.
