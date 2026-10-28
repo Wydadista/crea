@@ -16,7 +16,7 @@
     <header>
       <div class="brand">
         <img class="brand-icon app-logo" src="project-icon.png" alt="" /> AKhbar <b>STUDIO</b
-        ><span class="badge">DESKTOP · 0.4.13</span>
+        ><span class="badge">DESKTOP · 0.4.14</span>
       </div>
       <details id="fileMenu" class="file-menu">
         <summary>File ▾</summary>
@@ -1303,22 +1303,13 @@
       <button id="deleteTimelineEffect" role="menuitem"></button>
     </div>
     <div id="contextMenu" hidden>
-      <button data-action="cut">Taglia · Ctrl+X</button>
-      <button data-action="copy">Copia · Ctrl+C</button>
-      <button data-action="paste">Incolla al cursore · Ctrl+V</button>
-      <button data-action="split">✂ Dividi al cursore</button
-      ><button data-action="join">▣ Unisci selezionati</button
+      <button data-action="join">▣ Unisci selezionati</button
       ><button data-action="unjoin">Separa elementi uniti</button
       ><button data-action="group">🔗 Raggruppa</button
       ><button data-action="ungroup">Separa gruppo</button
       ><button data-action="set-speed">
         Velocità · <span id="contextSpeedValue">1×</span></button
       ><button data-action="speed">Ripristina velocità originale</button
-      ><button
-        data-action="source-speed"
-        title="Seleziona esplicitamente tutti i segmenti della sorgente e apri il controllo velocità"
-      >
-        Velocità su tutta la sorgente…</button
       ><button data-action="edit-volume">Modifica volume</button
       ><button data-action="mute">Silenzia audio clip</button
       ><button data-action="detach-audio">Separa audio dal video</button
@@ -1363,6 +1354,8 @@
     <script src="studio-v4.js"></script>
     <script src="studio-v41.js"></script>
     <script src="volume-editing.js"></script>
+    <script src="volume-points.js"></script>
+    <script src="studio-v414.js"></script>
     <script src="recorder-v4.js"></script>
   </body>
 </html>

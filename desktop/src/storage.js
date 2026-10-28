@@ -43,7 +43,7 @@ async function reserveRecording(dir, name, extension, minimum = 1) {
     }
   }
 }
-async function collectProject(project, file) {
+async function collectProject(project, file, options = {}) {
   const copy = structuredClone(project),
     base = path.dirname(file),
     assets = path.join(base, "Media");
@@ -53,6 +53,24 @@ async function collectProject(project, file) {
   for (const m of copy.media) {
     if (!m.path || ["annotation", "effect"].includes(m.kind)) continue;
     const source = path.resolve(m.path);
+    const recordingRelative = options.recordingsDirectory
+      ? path.relative(path.resolve(options.recordingsDirectory), source)
+      : null;
+    const inRecordings =
+      recordingRelative !== null &&
+      recordingRelative !== ".." &&
+      !recordingRelative.startsWith(".." + path.sep) &&
+      !path.isAbsolute(recordingRelative);
+    if (
+      !options.includeRecordings &&
+      (m.recorded === true || m.recordingInfo || inRecordings)
+    ) {
+      await fs.access(source);
+      m.path = source;
+      m.recorded = true;
+      delete m.url;
+      continue;
+    }
     if (!resolved.has(source)) {
       const stat = await fs.stat(source);
       let dest;

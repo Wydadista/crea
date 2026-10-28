@@ -164,7 +164,7 @@ test("ten cuts keep one origin colour through joins, links, paste, trim and disk
   );
 });
 
-test("left shortening closes an existing gap to the actual previous clip, preserving removed content", () => {
+test("left shortening preserves a pre-existing gap to a different insertion, preserving removed content", () => {
   const p = fixture();
   for (const c of p.clips.filter(
     (c) => c.track === 0 && c.sourceInstanceId === "X",
@@ -177,11 +177,11 @@ test("left shortening closes an existing gap to the actual previous clip, preser
     { ...old, start: old.start + 0.5, in: 0.5 },
     true,
   );
-  assert.equal(trimmed.clips.find((c) => c.id === "x0").start, 2);
+  assert.equal(trimmed.clips.find((c) => c.id === "x0").start, 2.75);
   assert.equal(trimmed.clips.find((c) => c.id === "x0").in, 0.5);
   T.groupSelected(p.clips, ["x0", "x1"], uid);
   const joined = T.trimJoined(p, "x0", "left", 0.5, true);
-  assert.equal(joined.clips.find((c) => c.id === "x0").start, 2);
+  assert.equal(joined.clips.find((c) => c.id === "x0").start, 2.75);
   assert.equal(joined.clips.find((c) => c.id === "x0").in, 0.5);
 });
 test("blocked downstream ripple never reverses a valid left trim or moves a foreign clip", () => {

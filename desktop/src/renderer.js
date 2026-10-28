@@ -134,7 +134,9 @@ function beginPreviewPreparation(title = "Preparazione delle anteprime") {
           toast(
             title.includes("DeepFilterNet3")
               ? "Riduzione del rumore pronta."
-              : "Anteprime pronte.",
+              : title.includes("stacchetto")
+                ? "Stacchetto pronto."
+                : "Anteprime pronte.",
           );
       }, 300);
     },
@@ -820,7 +822,10 @@ function drawWave(node, block) {
         Math.max(a + 1, Math.ceil((from + perPixel) * level.rate)),
       );
       for (let i = a; i < b; i++)
-        peak = Math.max(peak, (level.peaks[i] * c.volume) / (wave.max || 1));
+        peak = Math.max(
+          peak,
+          (level.peaks[i] * Timeline.volumeAt(c, from)) / (wave.max || 1),
+        );
     }
     ctx.lineTo(x, cv.height - 1 - Math.min(1, peak) * (cv.height - 2));
   }
@@ -1975,7 +1980,6 @@ function showContext(x, y) {
   const c = first(),
     m = c && mediaOf(c);
   if (c) $("activeTrack").value = c.track;
-  menu.querySelector('[data-action="paste"]').disabled = !timelineClipboard;
   menu.querySelector('[data-action="detach-audio"]').disabled = !(
     c &&
     m.kind === "video" &&
@@ -1984,7 +1988,9 @@ function showContext(x, y) {
   );
   const mute = menu.querySelector('[data-action="mute"]');
   mute.disabled = !(c && m.hasAudio && !c.audioDetached);
-  mute.textContent = c?.muted ? "Riattiva audio clip" : "Silenzia audio clip";
+  mute.textContent = c?.muted
+    ? "🔊 Riattiva audio clip"
+    : "🔇 Silenzia audio clip";
   $("contextSpeedValue").textContent = speedLabel(first()?.speed || 1);
   menu.hidden = false;
   menu.style.left =

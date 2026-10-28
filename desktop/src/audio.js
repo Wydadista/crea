@@ -25,6 +25,23 @@ async function channelLevels(file, ffmpeg) {
   return levels.length > 2 ? levels.slice(0, 2) : [levels[0] || 0, 0];
 }
 const cache = new Map();
+function volumeFilter(c, sourceStart = c.in) {
+  const T = require("./model");
+  if (!c.volumePoints?.length) return `volume=${c.volume}`;
+  const points = c.volumePoints;
+  const rate = c.speed || 1;
+  let expr = String(points.at(-1).value);
+  for (let i = points.length - 1; i > 0; i--) {
+    const a = points[i - 1],
+      b = points[i];
+    const ta = (a.time - sourceStart) / rate,
+      tb = (b.time - sourceStart) / rate;
+    const line = `${a.value}+(${b.value - a.value})*(t-(${ta}))/(${tb - ta})`;
+    expr = `if(lt(t,${tb}),${line},${expr})`;
+  }
+  expr = `if(lt(t,${(points[0].time - sourceStart) / rate}),${points[0].value},${expr})`;
+  return `volume='if(isnan(t),${T.volumeAt(c, sourceStart)},${expr})':eval=frame`;
+}
 async function audioFilters(c, m, ffmpeg) {
   const filters = [];
   if (c.mono && m.audioChannels === 1) filters.push("pan=stereo|c0=c0|c1=c0");
@@ -63,4 +80,4 @@ function rememberLevels(file, stat, levels, channels) {
   if (!cache.has(key))
     cache.set(key, Promise.resolve(channels === 1 ? [levels[0], 0] : levels));
 }
-module.exports = { audioFilters, channelLevels, rememberLevels };
+module.exports = { audioFilters, channelLevels, rememberLevels, volumeFilter };

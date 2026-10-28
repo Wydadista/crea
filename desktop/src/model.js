@@ -5,6 +5,26 @@
     MAX_TRACKS: 128,
     MIN_TRACK_HEIGHT: 32,
     MAX_VOLUME: 2,
+    volumeAt(c, sourceTime) {
+      const points = c.volumePoints;
+      if (!points?.length) return c.volume;
+      if (sourceTime <= points[0].time) return points[0].value;
+      for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1],
+          b = points[i];
+        if (sourceTime <= b.time)
+          return (
+            a.value +
+            ((b.value - a.value) * (sourceTime - a.time)) / (b.time - a.time)
+          );
+      }
+      return points.at(-1).value;
+    },
+    hasVolume(c) {
+      return c.volumePoints?.length
+        ? c.volumePoints.some((p) => p.value > 0)
+        : c.volume > 0;
+    },
     empty: () => ({
       version: 2,
       trackCount: 1,
@@ -409,18 +429,9 @@
       if (head < 1e-8 && tail < 1e-8) return;
       const ids = new Set(trimmed.map((c) => c.id));
       const track = previous[0].track;
-      // Preserve source cuts and attach the shortened unit to its predecessor.
-      const preceding = p.clips.filter(
-        (c) =>
-          !ids.has(c.id) &&
-          c.track === track &&
-          c.start + api.duration(c) <= start + 1e-8,
-      );
-      const anchor =
-        head > 1e-8 && preceding.length
-          ? Math.max(...preceding.map((c) => c.start + api.duration(c)))
-          : start;
-      const shift = head + (head > 1e-8 ? Math.max(0, start - anchor) : 0);
+      // Close only the gap created by this trim. Existing spaces and unrelated
+      // insertions must never become an implicit left-hand anchor.
+      const shift = head;
       for (const c of trimmed) c.start -= shift;
       const families = new Set(
         previous.map((c) => c.sourceInstanceId).filter(Boolean),
@@ -457,6 +468,172 @@
           "Chiusura spazio bloccata da un’altra clip: nessuna modifica applicata",
         );
       return api.validate(p);
+    },
+    makeStinger(p, ids, name) {
+      if (typeof name !== "string" || !name.trim() || name.length > 120)
+        throw Error("Scrivi un nome per lo stacchetto");
+      const content = api.copySelection(p, api.linkedIds(p.clips, ids));
+      const origin = Math.min(...content.clips.map((c) => c.start));
+      const media = new Map(content.media.map((m) => [m.id, m]));
+      const visual = content.clips.filter((c) =>
+        ["video", "image"].includes(media.get(c.mediaId)?.kind),
+      );
+      if (!visual.length)
+        throw Error("Lo stacchetto deve contenere un video o un’immagine");
+      const duration =
+        Math.max(...visual.map((c) => c.start + api.duration(c))) - origin;
+      for (const c of content.clips) {
+        c.muted = !!c.muted || !!p.trackMuted?.[c.track];
+        c.start -= origin;
+        for (const saved of c.joinedSegments || []) saved.start -= origin;
+      }
+      return {
+        version: 1,
+        name: name.trim(),
+        duration,
+        content,
+        canvasSize: { ...p.canvasSize },
+      };
+    },
+    insertStinger(input, preset, at, track, makeId) {
+      if (
+        !preset?.content?.clips?.length ||
+        !n(at, 0, 604800) ||
+        !n(preset.duration, 0.001, 604800)
+      )
+        throw Error("Stacchetto non valido");
+      if (
+        !Number.isInteger(track) ||
+        track < 0 ||
+        track >= api.trackCount(input)
+      )
+        throw Error("Traccia non valida");
+      const p = JSON.parse(JSON.stringify(input)),
+        content = JSON.parse(JSON.stringify(preset.content));
+      const media = new Map(content.media.map((m) => [m.id, m]));
+      const visualTracks = [
+        ...new Set(
+          content.clips
+            .filter((c) => media.get(c.mediaId)?.kind !== "audio")
+            .map((c) => c.track),
+        ),
+      ].sort((a, b) => a - b);
+      const audioTracks = [
+        ...new Set(
+          content.clips
+            .filter((c) => media.get(c.mediaId)?.kind === "audio")
+            .map((c) => c.track),
+        ),
+      ].sort((a, b) => a - b);
+      for (const c of p.clips) {
+        if (
+          c.track >= track &&
+          c.track < track + visualTracks.length &&
+          c.start < at - 1e-8 &&
+          c.start + api.duration(c) > at + 1e-8
+        )
+          throw Error(
+            "Posiziona la linea verde tra due clip per inserire lo stacchetto",
+          );
+        if (c.linkId) {
+          const group = p.clips.filter((o) => o.linkId === c.linkId);
+          if (
+            group.some((o) => o.start < at - 1e-8) &&
+            group.some((o) => o.start >= at - 1e-8)
+          )
+            throw Error(
+              "Il punto di inserimento attraversa un gruppo: scegli un confine esterno",
+            );
+        }
+      }
+      for (const c of p.clips)
+        if (c.start >= at - 1e-8) {
+          c.start += preset.duration;
+          for (const saved of c.joinedSegments || [])
+            saved.start += preset.duration;
+        }
+      for (const m of p.markers || [])
+        if (m.time >= at - 1e-8) m.time += preset.duration;
+      while (api.trackCount(p) < track + visualTracks.length) api.addTrack(p);
+      const audioDestinations = new Map();
+      const existingMedia = new Map(p.media.map((m) => [m.id, m]));
+      for (const sourceTrack of audioTracks) {
+        const parts = content.clips.filter(
+          (c) =>
+            c.track === sourceTrack && media.get(c.mediaId)?.kind === "audio",
+        );
+        let destination = -1;
+        for (
+          let lane = track + visualTracks.length;
+          lane < api.trackCount(p);
+          lane++
+        ) {
+          if (
+            p.trackMuted?.[lane] ||
+            [...audioDestinations.values()].includes(lane)
+          )
+            continue;
+          const row = p.clips.filter((c) => c.track === lane);
+          if (row.some((c) => existingMedia.get(c.mediaId)?.kind !== "audio"))
+            continue;
+          if (
+            row.some((c) =>
+              parts.some(
+                (part) =>
+                  at + part.start < c.start + api.duration(c) - 1e-8 &&
+                  at + part.start + api.duration(part) > c.start + 1e-8,
+              ),
+            )
+          )
+            continue;
+          destination = lane;
+          break;
+        }
+        if (destination === -1) destination = api.addTrack(p);
+        audioDestinations.set(sourceTrack, destination);
+      }
+      for (const c of content.clips) {
+        const destination =
+          media.get(c.mediaId)?.kind === "audio"
+            ? audioDestinations.get(c.track)
+            : track + visualTracks.indexOf(c.track);
+        c.track = destination - track;
+        for (const saved of c.joinedSegments || []) saved.track = c.track;
+      }
+      // Repeated uses of a saved preset share its already imported media; the
+      // timeline copies still get independent clip and group identities.
+      const reuse = new Map();
+      for (const m of content.media) {
+        const existing = p.media.find(
+          (other) => other.path === m.path && other.kind === m.kind,
+        );
+        if (existing) {
+          reuse.set(m.id, existing.id);
+          m.id = existing.id;
+        }
+      }
+      for (const c of content.clips) {
+        c.mediaId = reuse.get(c.mediaId) || c.mediaId;
+        for (const a of c.attachments || [])
+          a.mediaId = reuse.get(a.mediaId) || a.mediaId;
+        for (const saved of c.joinedSegments || [])
+          saved.mediaId = reuse.get(saved.mediaId) || saved.mediaId;
+      }
+      const result = api.pasteSelection(p, content, at, track, makeId);
+      const link = makeId();
+      for (const c of result.project.clips.filter((c) =>
+        result.ids.includes(c.id),
+      )) {
+        c.linkId = link;
+        c.stingerId = link;
+        c.stingerName = preset.name;
+        for (const saved of c.joinedSegments || []) saved.track = c.track;
+      }
+      return {
+        ...result,
+        project: api.validate(result.project),
+        duration: preset.duration,
+      };
     },
     copySelection(p, ids) {
       const clips = p.clips.filter((c) => ids.includes(c.id));
@@ -1157,17 +1334,21 @@
     groups(clips) {
       const out = [],
         seen = new Set();
+      const stingerLinks = new Set(
+        clips.filter((c) => c.stingerId && c.linkId).map((c) => c.linkId),
+      );
       for (const c of clips) {
         if (seen.has(c.id)) continue;
-        const members = c.linkId
+        const compact = !!c.linkId && !stingerLinks.has(c.linkId);
+        const members = compact
           ? clips.filter((x) => x.linkId === c.linkId)
           : [c];
         members.forEach((x) => seen.add(x.id));
         out.push({
-          key: c.linkId || c.id,
+          key: compact ? c.linkId : c.id,
           groupId: c.groupId,
-          compact: !!c.linkId,
-          track: c.linkId ? 0 : c.track,
+          compact,
+          track: compact ? 0 : c.track,
           start: Math.min(...members.map((x) => x.start)),
           end: Math.max(...members.map((x) => x.start + api.duration(x))),
           members,
@@ -1186,6 +1367,24 @@
         p.clips.length > 1000
       )
         throw Error("Progetto non valido");
+      if (p.markers !== undefined) {
+        const ids = new Set();
+        if (!Array.isArray(p.markers) || p.markers.length > 1000)
+          throw Error("Segnalibri non validi");
+        for (const m of p.markers) {
+          if (
+            !m ||
+            typeof m.id !== "string" ||
+            ids.has(m.id) ||
+            !n(m.time, 0, 604800) ||
+            typeof m.name !== "string" ||
+            !m.name.trim() ||
+            m.name.length > 200
+          )
+            throw Error("Segnalibro non valido");
+          ids.add(m.id);
+        }
+      }
       // Legacy projects had implicit tracks and allowed overlaps. Keep every cut and
       // source time, allocating separate lanes only when those old tracks overlap.
       if (p.trackCount === undefined) {
@@ -1277,6 +1476,22 @@
           (c.colorSourceId !== undefined && typeof c.colorSourceId !== "string")
         )
           throw Error("Clip non valida");
+        if (c.volumePoints !== undefined) {
+          if (
+            !Array.isArray(c.volumePoints) ||
+            c.volumePoints.length > 1000 ||
+            c.volumePoints.some(
+              (point, i, list) =>
+                !point ||
+                !n(point.time, -604800, 604800) ||
+                !n(point.value, 0, api.MAX_VOLUME) ||
+                (i > 0 && point.time <= list[i - 1].time),
+            )
+          )
+            throw Error("Punti volume non validi");
+        }
+        if (c.stingerId !== undefined && typeof c.stingerId !== "string")
+          throw Error("Stacchetto non valido");
         if (
           c.sourceInstanceId !== undefined &&
           typeof c.sourceInstanceId !== "string"

@@ -1,5 +1,10 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 contextBridge.exposeInMainWorld("studio", {
+  stingers: () => ipcRenderer.invoke("stingers-list"),
+  saveStinger: (project, ids, name) =>
+    ipcRenderer.invoke("stingers-save", project, ids, name),
+  loadStinger: (id) => ipcRenderer.invoke("stingers-load", id),
+  removeStinger: (id) => ipcRenderer.invoke("stingers-remove", id),
   preferences: () => ipcRenderer.invoke("preferences"),
   setPreferences: (v) => ipcRenderer.invoke("set-preferences", v),
   chooseDirectory: () => ipcRenderer.invoke("choose-directory"),

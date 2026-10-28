@@ -262,7 +262,12 @@ renderTimeline = function () {
   for (const node of document.querySelectorAll(".clip[data-id]")) {
     const c = project.clips.find((c) => c.id === node.dataset.id);
     if (!c) continue;
-    if (c.linkId) {
+    if (
+      c.linkId &&
+      !project.clips.some(
+        (other) => other.linkId === c.linkId && other.stingerId,
+      )
+    ) {
       node.classList.add("compact-group");
       continue;
     }

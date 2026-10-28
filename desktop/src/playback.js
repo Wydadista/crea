@@ -66,7 +66,7 @@
           !m?.hasAudio ||
           c.muted ||
           project.trackMuted?.[c.track] ||
-          !c.volume ||
+          !Timeline.hasVolume(c) ||
           end <= position ||
           c.start > position + 3
         )
@@ -151,7 +151,10 @@
         const node = this.context.createBufferSource(),
           gain = this.context.createGain();
         node.buffer = buffer;
-        gain.gain.value = s.c.volume;
+        gain.gain.value = Timeline.volumeAt(
+          s.c,
+          Timeline.sourceTime(s.c, s.start),
+        );
         node.connect(gain);
         gain.connect(this.analyser);
         const when = this.anchor + s.start - position;
@@ -175,6 +178,27 @@
           node.disconnect();
           gain.disconnect();
           return;
+        }
+        if (s.c.volumePoints?.length) {
+          gain.gain.setValueAtTime(
+            Timeline.volumeAt(s.c, Timeline.sourceTime(s.c, s.start)),
+            when,
+          );
+          for (const point of s.c.volumePoints) {
+            const at = s.c.start + (point.time - s.c.in) / (s.c.speed || 1);
+            if (at > s.start && at < s.start + duration)
+              gain.gain.linearRampToValueAtTime(
+                point.value,
+                when + at - s.start,
+              );
+          }
+          gain.gain.linearRampToValueAtTime(
+            Timeline.volumeAt(
+              s.c,
+              Timeline.sourceTime(s.c, s.start + duration),
+            ),
+            when + duration,
+          );
         }
         node.start(Math.max(0, when), offset, duration);
         this.nodes.add(node);

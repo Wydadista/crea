@@ -34,6 +34,16 @@ const { collectProject, safeName, reserveRecording } = require("./storage");
 const { Recording } = require("./recording");
 const preferencesFile = () =>
   path.join(app.getPath("userData"), "preferences.json");
+const stingerStore = () =>
+  new (require("./stingers").StingerStore)(
+    path.join(app.getPath("userData"), "stacchetti"),
+  );
+ipcMain.handle("stingers-list", () => stingerStore().list());
+ipcMain.handle("stingers-save", (_e, project, ids, name) =>
+  stingerStore().save(project, ids, name),
+);
+ipcMain.handle("stingers-load", (_e, id) => stingerStore().load(id));
+ipcMain.handle("stingers-remove", (_e, id) => stingerStore().remove(id));
 if (process.platform === "win32") app.setAppUserModelId("it.crea.studio");
 async function preferences() {
   let saved = {};
@@ -350,6 +360,7 @@ ipcMain.handle("recording-finish", async (_e, duration) => {
       fps: media.fps,
       codec: media.codec,
     };
+    media.recorded = true;
     return media;
   } catch (e) {
     if (!ready) {
@@ -712,7 +723,9 @@ ipcMain.handle("save-project", async (_e, input, options = {}) => {
       )
     )
       throw Error("Non sovrascrivere un file multimediale con il progetto");
-    await collectProject(project, target);
+    await collectProject(project, target, {
+      recordingsDirectory: (await preferences()).recordings,
+    });
     projectPath = target;
     savedProject = JSON.stringify(project);
     await fs.rm(recoveryPath(), { force: true });

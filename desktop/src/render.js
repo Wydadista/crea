@@ -3,7 +3,7 @@ const fs = require("node:fs/promises"),
   os = require("node:os"),
   path = require("node:path");
 const T = require("./model");
-const { audioFilters } = require("./audio");
+const { audioFilters, volumeFilter } = require("./audio");
 function maskedEffect(filters, effect, name, id) {
   if (effect.shape !== "circle") return name;
   const masked = `mask${id}`;
@@ -314,7 +314,7 @@ async function renderProject(
           }
         }
         const audible =
-          m.hasAudio && !c.muted && !p.trackMuted?.[c.track] && c.volume > 0;
+          m.hasAudio && !c.muted && !p.trackMuted?.[c.track] && T.hasVolume(c);
         const args = [
           "-y",
           "-ss",
@@ -353,7 +353,7 @@ async function renderProject(
           m.hasAudio &&
           !c.muted &&
           !p.trackMuted?.[c.track] &&
-          c.volume > 0
+          T.hasVolume(c)
         ) {
           const af = await audioFilters(c, m, binaries.ffmpeg);
           args.push(
@@ -364,7 +364,7 @@ async function renderProject(
               "atrim=start=0",
               "asetpts=PTS-STARTPTS",
               af,
-              `volume=${c.volume}`,
+              volumeFilter(c),
               "apad",
               `atrim=duration=${total}`,
             ]
@@ -415,7 +415,7 @@ async function renderProject(
         m.path,
       ];
       const audible =
-        m.hasAudio && !c.muted && !p.trackMuted?.[c.track] && c.volume > 0;
+        m.hasAudio && !c.muted && !p.trackMuted?.[c.track] && T.hasVolume(c);
       if (!audible)
         args.push(
           "-f",
@@ -454,7 +454,7 @@ async function renderProject(
             "atrim=start=0",
             "asetpts=PTS-STARTPTS",
             processing,
-            `volume=${c.volume}`,
+            volumeFilter(c, offset),
             "apad",
             `atrim=duration=${duration}`,
           ]
@@ -523,7 +523,7 @@ async function renderProject(
         ];
         filters.push(`[${videoInput}:v:0]${video.join(",")}[v${i}]`);
         const audible =
-          m.hasAudio && !c.muted && !p.trackMuted?.[c.track] && c.volume > 0;
+          m.hasAudio && !c.muted && !p.trackMuted?.[c.track] && T.hasVolume(c);
         if (audible) {
           const processing = await audioFilters(c, m, binaries.ffmpeg);
           filters.push(
@@ -532,7 +532,7 @@ async function renderProject(
                 "atrim=start=0",
                 "asetpts=PTS-STARTPTS",
                 processing,
-                `volume=${c.volume}`,
+                volumeFilter(c, offset),
                 "apad",
                 `atrim=duration=${d}`,
                 "aformat=sample_fmts=s16:sample_rates=48000:channel_layouts=stereo",
@@ -912,7 +912,7 @@ async function renderProject(
         }
         if (
           m.hasAudio &&
-          c.volume > 0 &&
+          T.hasVolume(c) &&
           !c.muted &&
           !p.trackMuted?.[c.track] &&
           ["video", "audio"].includes(m.kind)
@@ -920,7 +920,7 @@ async function renderProject(
           const label = `a${inputIndex}`;
           const processing = await audioFilters(c, m, binaries.ffmpeg);
           filters.push(
-            `[${inputIndex}:a]atrim=start=0:duration=${d * speed},asetpts=PTS-STARTPTS,${tempo(speed)},${processing ? processing + "," : ""}volume=${c.volume},apad,atrim=duration=${d}[${label}]`,
+            `[${inputIndex}:a]atrim=start=0:duration=${d * speed},asetpts=PTS-STARTPTS,${tempo(speed)},${processing ? processing + "," : ""}${volumeFilter(c, offset)},apad,atrim=duration=${d}[${label}]`,
           );
           audios.push(`[${label}]`);
         }
@@ -1069,6 +1069,7 @@ async function canCopy(c, m, cfg, p, probe, keyframeSeconds) {
     c.muted ||
     p.trackMuted?.[c.track] ||
     c.volume !== 1 ||
+    c.volumePoints?.length ||
     c.voice?.noise ||
     c.voice?.level
   )
