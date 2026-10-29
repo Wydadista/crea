@@ -8,8 +8,9 @@
   const pane = el("div");
   pane.id = "transitionsPanel";
   pane.hidden = true;
+  pane.style.setProperty("--element-columns", elementColumns);
   pane.innerHTML =
-    '<h2>Transizioni</h2><h3>I miei stacchetti</h3><button id="saveStinger" class="import">＋ Salva selezione come stacchetto</button><p class="hint">Video e musica restano separati. La coda audio si sovrappone alla notizia successiva.</p><div id="stingerList"></div>';
+    '<h2>Transizioni</h2><h3>I miei stacchetti</h3><button id="saveStinger" class="import">＋ Salva selezione come stacchetto</button><p class="hint">Video e musica restano separati. La coda audio si sovrappone alla notizia successiva.</p><div id="stingerList" class="annotation-tools"></div>';
   $("mediaPanel").before(pane);
   const previousPanel = libraryPanel;
   libraryPanel = function (elements) {
@@ -72,17 +73,19 @@
         ),
       );
     for (const preset of presets) {
-      const card = el("div", "stinger-card");
+      const card = el("div", "stinger-card element-tile");
       card.dataset.stingerId = preset.id;
       if (preset.preview) {
         const img = el("img", "stinger-thumb");
         img.alt = preset.name;
-        card.append(img);
+        const poster = el("div", "element-preview");
+        poster.append(img);
+        card.append(poster);
         queueMicrotask(() =>
           thumbnail(preset.preview, preset.previewAt || 0, img),
         );
       }
-      card.append(el("strong", "", preset.name));
+      card.append(el("strong", "element-label", preset.name));
       card.append(
         el(
           "small",
@@ -237,12 +240,30 @@
     true,
   );
 
-  // Markers belong to the project, never to Scene or an exported video frame.
+  // Anchors use source time, so moving/splitting/retiming keeps the exact content point.
+  function clipAt(at) {
+    const crossed = project.clips.filter(
+      (c) =>
+        !c.parentId && at >= c.start && at < c.start + Timeline.duration(c),
+    );
+    return (
+      crossed.find((c) => c.id === previewFocus && selection.has(c.id)) ||
+      crossed.find((c) => selection.has(c.id)) ||
+      crossed.find((c) => c.track === Number($("activeTrack").value)) ||
+      crossed.sort((a, b) => b.track - a.track)[0]
+    );
+  }
   const markerButton = el("button", "", "⚑ Segnalibro");
   markerButton.id = "addTimelineMarker";
   markerButton.title = "Aggiungi un segnalibro alla linea verde";
   document.querySelector(".timeline-toolbar").append(markerButton);
   markerButton.onclick = safe(async () => {
+    const at = time,
+      clip = clipAt(at);
+    if (!clip)
+      return toast(
+        "Posiziona la linea verde su una clip per aggiungere il segnalibro",
+      );
     const name = await askName(
       "Nuovo segnalibro",
       "",
@@ -250,7 +271,9 @@
     );
     if (!name) return;
     checkpoint();
-    (project.markers ||= []).push({ id: uid(), time, name });
+    (project.markers ||= []).push(
+      Timeline.anchorMarker({ id: uid(), name }, clip, at),
+    );
     changed();
   });
   async function editMarker(marker) {
@@ -268,6 +291,13 @@
   renderRuler = function () {
     previousRuler();
     for (const marker of project.markers || []) {
+      if (!marker.clipAnchor) {
+        const c = clipAt(marker.time);
+        if (c) Timeline.anchorMarker(marker, c, marker.time);
+      }
+      const markerTime = Timeline.markerTime(project, marker);
+      if (markerTime === null) continue; // Trimmed/deleted content stays hidden; undo can restore it.
+      marker.time = markerTime;
       const flag = el("button", "timeline-marker", "⚑");
       flag.type = "button";
       flag.dataset.markerId = marker.id;
@@ -290,15 +320,21 @@
         const move = (ev) => {
           if (Math.abs(ev.clientX - x) > 3) moved = true;
           if (!moved) return;
-          marker.time = Math.max(
-            0,
-            Math.min(
-              604800,
-              original +
-                (ev.clientX - x + $("timelineScroll").scrollLeft - scroll) /
-                  dragScale,
-            ),
-          );
+          const c = Timeline.markerClip(project, marker);
+          const at =
+            original +
+            (ev.clientX - x + $("timelineScroll").scrollLeft - scroll) /
+              dragScale;
+          if (c)
+            Timeline.anchorMarker(
+              marker,
+              c,
+              Math.max(
+                c.start,
+                Math.min(c.start + Timeline.duration(c) - 1e-6, at),
+              ),
+            );
+          else marker.time = Math.max(0, Math.min(604800, at));
           flag.style.left = marker.time * scale + "px";
           flag.title = marker.name + " · " + fmt(marker.time);
         };

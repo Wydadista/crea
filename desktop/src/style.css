@@ -2510,13 +2510,15 @@ header .project-name {
 }
 
 /* Real visual samples remain on the draggable buttons, with their original actions. */
-#elementsPanel .annotation-tools {
+#elementsPanel .annotation-tools,
+#transitionsPanel .annotation-tools {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin: 16px 0;
 }
-#elementsPanel .element-tile {
+#elementsPanel .element-tile,
+#transitionsPanel .element-tile {
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -2531,11 +2533,13 @@ header .project-name {
     border-color 120ms,
     background 120ms;
 }
-#elementsPanel .element-tile:hover {
+#elementsPanel .element-tile:hover,
+#transitionsPanel .element-tile:hover {
   border-color: var(--accent);
   background: #2d3941;
 }
-#elementsPanel .element-tile:active {
+#elementsPanel .element-tile:active,
+#transitionsPanel .element-tile:active {
   border-color: var(--accent);
 }
 .element-preview {
@@ -2574,7 +2578,8 @@ header .project-name {
   color: #d3dce5;
   letter-spacing: 0.5px;
 }
-#elementsPanel .element-label {
+#elementsPanel .element-label,
+#transitionsPanel .element-label {
   display: block;
   width: 100%;
   padding: 10px 9px;
@@ -2709,14 +2714,17 @@ header .project-name {
 .element-sizes output {
   font-size: 11px;
 }
-#elementsPanel .annotation-tools {
+#elementsPanel .annotation-tools,
+#transitionsPanel .annotation-tools {
   grid-template-columns: repeat(var(--element-columns, 2), minmax(0, 1fr));
 }
-#elementsPanel .element-preview {
+#elementsPanel .element-preview,
+#transitionsPanel .element-preview {
   height: auto;
   aspect-ratio: 1.3;
 }
-#elementsPanel .element-label {
+#elementsPanel .element-label,
+#transitionsPanel .element-label {
   font-size: 10px;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -3207,36 +3215,32 @@ header .project-name {
   white-space: normal;
 }
 .stinger-card {
-  padding: 9px;
-  margin: 9px 0;
-  background: #202832;
-  border: 1px solid #414d5b;
-  border-radius: 7px;
+  position: relative;
   cursor: grab;
+  align-self: start;
 }
-.stinger-card strong,
-.stinger-card small {
-  display: block;
-  margin: 5px 0;
-  overflow-wrap: anywhere;
+.stinger-card strong {
+  margin: 0;
 }
 .stinger-card small {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
+  padding: 0 8px 6px;
 }
 .stinger-thumb {
   width: 100%;
-  max-height: 90px;
+  height: 100%;
   object-fit: contain;
-  background: #0e1318;
 }
 .stinger-actions {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  gap: 4px;
+  padding: 4px 6px 6px;
 }
 .stinger-actions button {
-  padding: 5px 9px;
+  padding: 3px 5px;
+  font-size: 10px;
 }
 .stinger-insertion-guide {
   position: fixed;
@@ -3358,5 +3362,6 @@ header .project-name {
 #stingerList {
   overflow-y: auto;
   min-height: 0;
+  align-content: start;
   flex: 1;
 }

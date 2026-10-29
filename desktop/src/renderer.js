@@ -4284,17 +4284,30 @@ $("freezeFrame").onclick = safe(async () => {
     time >= c.start + Timeline.duration(c)
   )
     throw Error("Seleziona un video e posiziona il cursore al suo interno");
-  if (Timeline.trackCount(project) >= Timeline.MAX_TRACKS)
-    throw Error("Nessuna traccia disponibile");
+  Timeline.freeOverlayTrack(
+    project,
+    c.track,
+    atTime,
+    workspacePrefs.freezeDuration,
+  );
   const m = await studio.freezeFrame(
     mediaOf(c),
     Timeline.sourceTime(c, atTime),
   );
   if (project !== activeProject)
     throw Error("Il progetto è cambiato durante l’estrazione del fotogramma");
+  const available = Timeline.freeOverlayTrack(
+    project,
+    c.track,
+    atTime,
+    workspacePrefs.freezeDuration,
+  );
   checkpoint();
   project.media.push(m);
-  const track = Timeline.addTrack(project),
+  const track =
+      available < Timeline.trackCount(project)
+        ? available
+        : Timeline.addTrack(project),
     id = uid();
   const still = {
     id,
@@ -4319,7 +4332,7 @@ $("freezeFrame").onclick = safe(async () => {
   selection = new Set([id]);
   render();
   toast(
-    "Fermo immagine inserito su una nuova traccia; durata regolabile trascinando i bordi.",
+    "Fermo immagine inserito nella traccia disponibile; durata regolabile trascinando i bordi.",
   );
 });
 let exportOutputPath = null;

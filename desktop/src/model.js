@@ -25,6 +25,51 @@
         ? c.volumePoints.some((p) => p.value > 0)
         : c.volume > 0;
     },
+    anchorMarker(marker, clip, at) {
+      marker.clipAnchor = {
+        clipId: clip.id,
+        sourceInstanceId: api.sourceFamily(clip),
+        mediaId: clip.mediaId,
+        sourceTime: api.sourceTime(clip, at),
+      };
+      marker.time = at;
+      return marker;
+    },
+    markerClip(p, marker) {
+      const a = marker.clipAnchor;
+      if (!a) return null;
+      const candidates = p.clips.filter(
+        (c) =>
+          c.mediaId === a.mediaId &&
+          api.sourceFamily(c) === a.sourceInstanceId &&
+          a.sourceTime >= c.in - 1e-8 &&
+          a.sourceTime < c.out - 1e-8,
+      );
+      return candidates.find((c) => c.id === a.clipId) || candidates[0] || null;
+    },
+    markerTime(p, marker) {
+      if (!marker.clipAnchor) return marker.time;
+      const c = api.markerClip(p, marker);
+      return c
+        ? c.start + (marker.clipAnchor.sourceTime - c.in) / (c.speed || 1)
+        : null;
+    },
+    freeOverlayTrack(p, sourceTrack, start, duration) {
+      const count = api.trackCount(p);
+      for (let track = sourceTrack + 1; track < count; track++) {
+        if (
+          !p.clips.some(
+            (c) =>
+              c.track === track &&
+              c.start < start + duration - 1e-8 &&
+              c.start + api.duration(c) > start + 1e-8,
+          )
+        )
+          return track;
+      }
+      if (count >= api.MAX_TRACKS) throw Error("Nessuna traccia disponibile");
+      return count;
+    },
     empty: () => ({
       version: 2,
       trackCount: 1,
@@ -1382,6 +1427,17 @@
             m.name.length > 200
           )
             throw Error("Segnalibro non valido");
+          if (m.clipAnchor !== undefined) {
+            const a = m.clipAnchor;
+            if (
+              !a ||
+              typeof a.clipId !== "string" ||
+              typeof a.mediaId !== "string" ||
+              typeof a.sourceInstanceId !== "string" ||
+              !n(a.sourceTime, 0, 604800)
+            )
+              throw Error("Collegamento segnalibro non valido");
+          }
           ids.add(m.id);
         }
       }

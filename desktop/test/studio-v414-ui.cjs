@@ -412,10 +412,109 @@ const run = require("node:util").promisify(
     );
     assert.ok(movedStinger.every((t) => Math.abs(t - 12) < 0.1));
     await page.evaluate(() => undo(history, future));
-    await page.screenshot({ path: "/tmp/akhbar-0.4.14-ui.png" });
+    const gallery = await page
+      .locator(".stinger-card")
+      .first()
+      .evaluate((n) => ({
+        width: n.getBoundingClientRect().width,
+        parent: n.parentElement.getBoundingClientRect().width,
+        border: getComputedStyle(n).borderRadius,
+      }));
+    assert.ok(gallery.width < gallery.parent * 0.75);
+    assert.equal(gallery.border, "10px");
+    await page.evaluate(() => {
+      const c = project.clips.find((c) => c.id === "news");
+      project.markers = [
+        Timeline.anchorMarker({ id: "follow", name: "Frase" }, c, c.start + 2),
+      ];
+      checkpoint();
+      c.start += 30;
+      changed();
+    });
+    assert.equal(await page.evaluate(() => project.markers[0].time), 36);
+    await page.evaluate(() => undo(history, future));
+    assert.equal(await page.evaluate(() => project.markers[0].time), 6);
+    await page.evaluate(() => undo(future, history));
+    assert.equal(await page.evaluate(() => project.markers[0].time), 36);
+    await page.evaluate(() => {
+      const c = project.clips.find((c) => c.id === "news");
+      project.clips = [c];
+      project.trackCount = 3;
+      project.trackHeights = [100, 100, 100];
+      project.trackMuted = [false, false, false];
+      selection = new Set([c.id]);
+      previewFocus = c.id;
+      time = c.start + 1;
+      render();
+    });
+    await page.locator("#freezeFrame").click();
+    await page.waitForFunction(() => project.clips.length === 2);
+    assert.equal(await page.evaluate(() => project.trackCount), 3);
+    assert.equal(
+      await page.evaluate(
+        () => project.clips.find((c) => c.id !== "news").track,
+      ),
+      1,
+    );
+    await page.evaluate(() => undo(history, future));
+    assert.equal(await page.evaluate(() => project.clips.length), 1);
+    await page.evaluate(() => {
+      const c = project.clips[0];
+      c.start = 0;
+      c.in = 0;
+      c.out = 6;
+      c.speed = 0.25;
+      selection = new Set([c.id]);
+      previewFocus = c.id;
+      time = 3;
+      scale = 400;
+      fitTimeline = false;
+      renderTimeline();
+      properties();
+      if (
+        document
+          .getElementById("editClipVolume")
+          .getAttribute("aria-pressed") !== "true"
+      )
+        document.getElementById("editClipVolume").click();
+      document.getElementById("timelineScroll").scrollLeft = 1000;
+    });
+    await page.waitForTimeout(100);
+    const checkPinned = async () => {
+      const b = await page.locator(".volume-add-point").evaluate((n) => {
+        const r = n.getBoundingClientRect(),
+          v = document.getElementById("timelineScroll").getBoundingClientRect();
+        return {
+          left: r.left,
+          right: r.right,
+          vl: v.left,
+          vr: v.left + document.getElementById("timelineScroll").clientWidth,
+          hidden: n.hidden,
+        };
+      });
+      assert.equal(b.hidden, false);
+      assert.ok(b.left >= b.vl && b.right <= b.vr);
+    };
+    await checkPinned();
+    await page.evaluate(() => {
+      scale = 800;
+      renderTimeline();
+      document.getElementById("timelineScroll").scrollLeft = 2000;
+    });
+    await page.waitForTimeout(100);
+    await checkPinned();
+    await page.locator(".volume-add-point").click();
+    assert.ok(
+      await page.evaluate(() =>
+        project.clips[0].volumePoints?.some(
+          (p) => Math.abs(p.time - 0.75) < 0.01,
+        ),
+      ),
+    );
+    await page.screenshot({ path: "/tmp/akhbar-0.4.15-ui.png" });
     assert.deepEqual(errors, []);
     console.log(
-      "PASS: trim gap, context menu, editable volume points/undo, named draggable markers, saved stinger across projects, 4-second insertion/6-second audio, linked lanes, undo/redo and keyboard clipboard",
+      "PASS: trim gap, volume automation and pinned plus at two zoom levels, clip markers with undo/redo, compact stinger gallery and linked insertion, freeze frame on an existing empty track, clipboard and playback",
     );
   } finally {
     if (app) await app.evaluate(({ app }) => app.exit(0)).catch(() => {});

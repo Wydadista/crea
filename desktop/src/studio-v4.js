@@ -10,6 +10,7 @@ const originalRenderTimeline = renderTimeline,
   originalProperties = properties;
 function applyElementColumns() {
   $("elementsPanel").style.setProperty("--element-columns", elementColumns);
+  $("transitionsPanel")?.style.setProperty("--element-columns", elementColumns);
   $("elementColumns").textContent = elementColumns;
   $("elementSmaller").disabled = elementColumns === 4;
   $("elementLarger").disabled = elementColumns === 1;

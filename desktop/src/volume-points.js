@@ -8,9 +8,26 @@
   document.addEventListener("pointerdown", (e) => {
     if (!menu.contains(e.target)) menu.hidden = true;
   });
+  let pinned = [];
+  function pinButtons() {
+    const viewport = $("timelineScroll"),
+      view = viewport.getBoundingClientRect(),
+      visibleRight = view.left + viewport.clientLeft + viewport.clientWidth;
+    for (const { area, add } of pinned) {
+      const r = area.getBoundingClientRect(),
+        left = Math.max(r.left, view.left),
+        right = Math.min(r.right, visibleRight);
+      add.hidden = right - left < 20;
+      add.style.right = "auto";
+      add.style.left = Math.max(0, right - r.left - 21) + "px";
+    }
+  }
+  $("timelineScroll").addEventListener("scroll", pinButtons, { passive: true });
+  new ResizeObserver(pinButtons).observe($("timelineScroll"));
   const previousTimeline = renderTimeline;
   renderTimeline = function () {
     previousTimeline();
+    pinned = [];
     const blocks = new Map(
       Timeline.groups(project.clips).map((b) => [b.members[0].id, b]),
     );
@@ -40,6 +57,7 @@
         "Aggiungi punto alla linea verde · Ctrl+clic sulla linea per scegliere il punto";
       add.setAttribute("aria-label", "Aggiungi punto volume");
       area.append(add);
+      pinned.push({ area, add });
       const toTime = (source) =>
           ref.start + (source - ref.in) / (ref.speed || 1),
         toSource = (c, t) => c.in + (t - c.start) * (c.speed || 1);
@@ -299,6 +317,7 @@
       }
       paint();
     }
+    pinButtons();
   };
   renderTimeline();
 })();
