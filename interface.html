@@ -1,0 +1,40 @@
+<div class="selection-plane" aria-hidden="true"></div>
+<div class="areas"></div>
+<section class="toolbar" aria-label="Akhbar Blur">
+  <header>
+    <strong><span class="logo" aria-hidden="true">A</span> Akhbar Blur</strong
+    ><button
+      type="button"
+      data-command="hide"
+      aria-label="Nascondi pannello"
+      title="Nascondi pannello; le aree restano sfocate"
+    >
+      ×
+    </button>
+  </header>
+  <div class="tools">
+    <button type="button" data-command="select" aria-pressed="true">
+      Fine selezione
+    </button>
+    <label for="blur-strength"
+      >Intensità
+      <output id="blur-value" for="blur-strength">16 px</output></label
+    >
+    <input
+      id="blur-strength"
+      type="range"
+      min="2"
+      max="60"
+      step="1"
+      value="16"
+      aria-label="Intensità della sfocatura"
+    />
+    <div class="actions">
+      <button type="button" data-command="undo">↶ Ultima area</button
+      ><button type="button" data-command="clear">Rimuovi tutte</button>
+    </div>
+    <p role="status" aria-live="polite">
+      Trascina sulla pagina · Esc per finire
+    </p>
+  </div>
+</section>

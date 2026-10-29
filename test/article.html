@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><title>Articolo di prova — Akhbar Blur</title>
+<style>
+body {margin:0;font:18px/1.6 system-ui;color:#19222c;background:#f3f4f5}header{background:#18232f;color:white;padding:20px}main{max-width:880px;margin:30px auto;padding:20px;background:white}.photo{display:block;width:640px;max-width:100%;height:auto}p{margin:25px 0}#spacer{height:42000px;background:linear-gradient(white,#ddd)}#nested{height:160px;overflow:auto;border:1px solid #444;width:360px}#nested p{height:400px;margin:0}button{padding:8px}#last{margin-top:20px}
+</style></head><body><header>NOTIZIE · Articolo dimostrativo</header><main>
+<h1>Fotografie e testo: una pagina lunga da sfocare</h1><p>Questa pagina non usa risorse di rete, né immagini esterne.</p>
+<img id="photo" class="photo" alt="Immagine di prova con linee e testo" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='280'%3E%3Cdefs%3E%3Cpattern id='s' width='16' height='16' patternUnits='userSpaceOnUse'%3E%3Cpath d='M0 0h8v16H0z' fill='%2326374a'/%3E%3Cpath d='M8 0h8v16H8z' fill='%23c6e98a'/%3E%3C/pattern%3E%3C/defs%3E%3Cpath d='M0 0h640v280H0z' fill='url(%23s)'/%3E%3Crect x='70' y='100' width='500' height='70' fill='white'/%3E%3Ctext x='95' y='147' font-size='30'%3ENOME DA SFOCARE%3C/text%3E%3C/svg%3E">
+<p id="text">Un rettangolo può coprire il nome di una persona o una parte della fotografia senza alterare il contenuto originale.</p>
+<button id="page-button" onclick="this.textContent='Funziona'">Verifica clic sulla pagina</button>
+<div id="nested"><p>Scorrimento interno</p><img id="nested-photo" class="photo" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='100'%3E%3Crect width='320' height='100' fill='red'/%3E%3C/svg%3E" alt="Prova scroll interno"><p>Fine</p></div>
+<div id="spacer"></div><img id="last" class="photo" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='200'%3E%3Crect width='640' height='200' fill='navy'/%3E%3Ctext x='20' y='110' fill='white' font-size='40'%3EFINE ARTICOLO%3C/text%3E%3C/svg%3E" alt="Immagine oltre 42 mila pixel">
+</main></body></html>

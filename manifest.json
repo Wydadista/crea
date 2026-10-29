@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Akhbar Blur",
+  "version": "1.0.0",
+  "description": "Sfoca parti di una pagina con rettangoli spostabili e ridimensionabili. Tutto in locale.",
+  "permissions": ["activeTab", "scripting"],
+  "action": {
+    "default_title": "Akhbar Blur — seleziona un’area",
+    "default_icon": { "48": "icons/blur.svg", "96": "icons/blur.svg" }
+  },
+  "icons": { "48": "icons/blur.svg", "96": "icons/blur.svg" },
+  "background": { "scripts": ["background.js"] },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "akhbar-blur@akhbar.local",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": { "required": ["none"] }
+    }
+  }
+}
