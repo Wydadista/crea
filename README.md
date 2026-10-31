@@ -1,15 +1,16 @@
-# Akhbar Post 1.0.0 — Android
+# Akhbar Post 1.1.0 — Android
 
-Prima versione di un'app Android nativa per creare copertine giornalistiche da **due fotografie scelte dal telefono**. Funziona senza Internet, account, abbonamenti o librerie esterne. Il progetto è separato da Akhbar Studio e da Akhbar Blur.
+App Android nativa per creare copertine giornalistiche da **una fotografia principale e un cerchio fotografico opzionale**, scelti dal telefono. Funziona senza Internet, account, abbonamenti o librerie esterne. Il progetto è separato da Akhbar Studio e da Akhbar Blur.
 
 ## Cosa fa
 
 - Copertina verticale **3:4, 1080 × 1440 pixel**, esportata in PNG.
-- Fotografia principale a tutta copertina: trascinamento per l'inquadratura e ingrandimento 100–400%, anche con due dita.
-- Seconda fotografia nel cerchio, con bordo bianco e ombra: inquadratura e zoom indipendenti, posizione e diametro regolabili.
+- Fotografia principale adattata intera allo spazio sopra il titolo, senza ritaglio automatico. L’altezza disponibile segue il testo: la foto entra nella sfumatura, poi si ferma prima del nero pieno. Restano trascinamento e zoom manuale 100–400%, anche con due dita. Con proporzioni diverse possono restare margini neri per non tagliare la foto.
+- Interruttore **Mostra foto nel cerchio**: puoi togliere il cerchio e salvare anche con la sola foto principale. Spegnerlo conserva la foto secondaria per riattivarla. Seconda fotografia nel cerchio, con bordo bianco e ombra: inquadratura e zoom indipendenti, posizione e diametro regolabili.
 - Sfumatura nera progressiva nella parte inferiore, etichetta rossa per categoria/paese e linea verticale rossa accanto al titolo.
 - Titolo bianco, pesante e compatto, adattato a un massimo di quattro righe. Puoi inserire manualmente gli a capo. Le frasi brevi possono occupare meno righe.
 - Parole o frasi scelte evidenziate in giallo, senza sostituire il testo originale. Separale con virgole, punto e virgola o un a capo. Sono riconosciuti anche testi Unicode e parole arabe.
+- Piccola anteprima fissa in alto a destra, aggiornata mentre modifichi categoria, titolo e parole gialle, anche con la tastiera aperta. Condivide le immagini già caricate, senza duplicarle.
 - Nessun logo, data, fonte o watermark aggiunto al PNG.
 - Ultima bozza conservata sul dispositivo, comprese le inquadrature. Le foto sono riaperte dai riferimenti autorizzati, senza duplicarle nella memoria dell'app.
 
@@ -78,14 +79,14 @@ Puoi anche installarla da Android Studio collegando il telefono con il debug USB
 ## Creare una copertina
 
 1. Premi **Foto principale** e seleziona l'immagine.
-2. Premi **Foto nel cerchio** e scegli il dettaglio fotografico.
+2. Se vuoi il cerchio, lascia attivo **Mostra foto nel cerchio** e premi **Foto nel cerchio**. Altrimenti disattiva l’interruttore: la foto secondaria non è richiesta.
 3. Seleziona **Foto**, **Foto cerchio** o **Sposta cerchio**, poi trascina nell'anteprima. Per ingrandire puoi usare due dita o il controllo dedicato.
 4. Regola la dimensione del cerchio. Il cerchio resta sopra il titolo; spostalo per non coprire il volto della fotografia principale.
 5. Inserisci categoria/paese e titolo. Nel campo delle parole gialle scrivi le parole o le frasi presenti nel titolo, separate da virgole.
 6. Se serve, regola la dimensione massima del titolo. La dimensione effettiva si adatta per conservare tutto il testo entro quattro righe. Un titolo troppo lungo viene segnalato e il salvataggio resta disattivato finché non lo accorci: il testo non viene troncato silenziosamente.
 7. Premi **Salva copertina**. Su Android 10 e successivi trovi il PNG nella galleria, nella cartella **Pictures/Akhbar Post**. Su Android 8–9 il sistema chiede dove salvare il PNG.
 
-Il pulsante Salva si abilita quando entrambe le foto, la categoria e il titolo sono presenti e il titolo entra nello spazio previsto. La copertina esportata contiene soltanto la grafica, senza pulsanti o scritte dell'interfaccia.
+Il pulsante Salva si abilita quando la foto principale, l’eventuale foto nel cerchio, la categoria e il titolo sono presenti e il titolo entra nello spazio previsto. La copertina esportata contiene soltanto la grafica, senza pulsanti o scritte dell'interfaccia.
 
 ## Foto, memoria e bozza
 
@@ -95,6 +96,8 @@ Il sistema può mostrare provider cloud nel selettore: per un uso interamente of
 
 ## Verifiche e limiti di questa consegna
 
+Passando dalla 1.0.0, l’inquadratura principale viene riportata una volta all’adattamento automatico; titolo, foto e impostazioni del cerchio vengono conservati. Per aggiornare senza perdere la bozza compila sullo stesso PC, con la stessa chiave di sviluppo, e installa il nuovo APK sopra quello precedente.
+
 I sorgenti Java sono stati compilati contro le API ufficiali **Android 35**. I test JVM verificano proporzioni 3:4, ritaglio senza deformazioni o bordi vuoti, spostamenti e selezione delle parole Unicode/arabe. Manifest e risorse XML sono stati controllati.
 
-**Non è stato eseguito un emulatore né una prova su un telefono fisico, e qui non è stato generato un APK.** Il progetto va compilato e provato sul tuo PC/telefono. I controlli automatici eseguiti qui non superano tre minuti per comando.
+**La versione 1.1.0 non è stata provata su un telefono o emulatore in questo ambiente, e qui non è stato generato un APK.** Il progetto va compilato e provato sul tuo PC/telefono. I controlli automatici eseguiti qui non superano tre minuti per comando.

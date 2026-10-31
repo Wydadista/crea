@@ -2,6 +2,7 @@ package it.akhbar.post;
 
 /** All values are local editor settings; no image bytes are copied into the draft. */
 public final class CoverState {
+    public boolean showCircle = true;
     public String mainUri = "", secondaryUri = "";
     public String category = "NOTIZIE", title = "", keywords = "";
     public float mainZoom = 1f, mainX = 0f, mainY = 0f;

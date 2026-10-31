@@ -15,6 +15,7 @@ public final class CoverView extends View {
     private final TextPaint text = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private final TextPaint label = new TextPaint(Paint.ANTI_ALIAS_FLAG);
     private Bitmap main, secondary;
+    private View thumbnail;
     private int mode = MAIN;
     private float lastX, lastY;
     private final ScaleGestureDetector pinch;
@@ -43,12 +44,27 @@ public final class CoverView extends View {
     public void setMode(int mode) { this.mode = mode; }
     public void setPhoto(boolean isMain, Bitmap image) {
         if (isMain) main = image; else secondary = image;
-        invalidate();
+        refresh();
     }
-    public boolean hasPhotos() { return main != null && secondary != null; }
+    public boolean hasSecondary() { return secondary != null; }
+    public boolean hasPhotos() { return main != null && (!state.showCircle || secondary != null); }
     public boolean titleFits() { prepareTitle(); return titleFits; }
-    public void refresh() { invalidate(); }
-    private void notifyChange() { invalidate(); if (onChange != null) onChange.run(); }
+    public void refresh() { invalidate(); if (thumbnail != null) thumbnail.invalidate(); }
+    public View thumbnailView() {
+        if (thumbnail == null) {
+            thumbnail = new View(getContext()) {
+                @Override protected void onDraw(Canvas canvas) {
+                    super.onDraw(canvas);
+                    canvas.save(); canvas.scale(getWidth() / 1080f, getWidth() / 1080f);
+                    drawCover(canvas, false); canvas.restore();
+                }
+            };
+            thumbnail.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            thumbnail.setContentDescription("Anteprima della copertina aggiornata durante la scrittura");
+        }
+        return thumbnail;
+    }
+    private void notifyChange() { refresh(); if (onChange != null) onChange.run(); }
     @Override protected void onMeasure(int widthSpec, int heightSpec) {
         int width = MeasureSpec.getSize(widthSpec);
         setMeasuredDimension(width, Math.round(width * 4f / 3f));
@@ -83,12 +99,14 @@ public final class CoverView extends View {
         }
         labelTop = 1368 - titleLayout.getHeight() - 82;
     }
-    private void photo(Canvas canvas, Bitmap bitmap, RectF box, float zoom, float x, float y) {
+    private void photo(Canvas canvas, Bitmap bitmap, RectF box, float zoom, float x, float y, boolean fit) {
         if (bitmap == null) {
             paint.setShader(null); paint.setColor(0xFF293542); canvas.drawRect(box, paint); return;
         }
-        CoverGeometry.Crop c = CoverGeometry.crop(bitmap.getWidth(), bitmap.getHeight(), box.left, box.top,
-                box.width(), box.height(), zoom, x, y);
+        CoverGeometry.Crop c = fit
+                ? CoverGeometry.fit(bitmap.getWidth(), bitmap.getHeight(), box.width(), box.height(), zoom, x, y)
+                : CoverGeometry.crop(bitmap.getWidth(), bitmap.getHeight(), box.left, box.top,
+                    box.width(), box.height(), zoom, x, y);
         canvas.save(); canvas.clipRect(box);
         paint.setShader(null); paint.setColor(Color.WHITE);
         canvas.drawBitmap(bitmap, null, new RectF(c.left, c.top, c.left + c.width, c.top + c.height), paint);
@@ -96,17 +114,18 @@ public final class CoverView extends View {
     }
     private void drawCover(Canvas canvas, boolean exporting) {
         prepareTitle();
-        canvas.drawColor(0xFF111820);
-        photo(canvas, main, new RectF(0, 0, 1080, 1440), state.mainZoom, state.mainX, state.mainY);
-        paint.setShader(new LinearGradient(0, 550, 0, 1440,
-                new int[]{0x00000000, 0x40000000, 0xE9000000, 0xFC000000},
-                new float[]{0, 0.36f, 0.74f, 1}, Shader.TileMode.CLAMP));
-        canvas.drawRect(0, 0, 1080, 1440, paint); paint.setShader(null);
+        canvas.drawColor(Color.BLACK);
+        float photoBottom = CoverGeometry.photoBottom(titleLayout.getHeight());
+        photo(canvas, main, new RectF(0, 0, 1080, photoBottom), state.mainZoom, state.mainX, state.mainY, true);
+        paint.setShader(new LinearGradient(0, photoBottom - 200, 0, photoBottom,
+                new int[]{0x00000000, 0x60000000, 0xFF000000},
+                new float[]{0, 0.55f, 1}, Shader.TileMode.CLAMP));
+        canvas.drawRect(0, photoBottom - 200, 1080, photoBottom, paint); paint.setShader(null);
         // Keep the secondary photo above the title/category: it can never cover their lettering.
         float r = state.radius;
         actualCircleX = CoverGeometry.clamp(state.circleX, r + 28, 1080 - r - 28);
         actualCircleY = CoverGeometry.clamp(state.circleY, r + 28, Math.max(r + 28, labelTop - r - 24));
-        if (secondary != null || !exporting) {
+        if (state.showCircle && (secondary != null || !exporting)) {
             paint.setShader(null); paint.setColor(0xFF202832);
             paint.setShadowLayer(18, 0, 7, 0x99000000);
             canvas.drawCircle(actualCircleX, actualCircleY, r + 5, paint);
@@ -114,7 +133,7 @@ public final class CoverView extends View {
             canvas.save(); Path circle = new Path(); circle.addCircle(actualCircleX, actualCircleY, r, Path.Direction.CW);
             canvas.clipPath(circle);
             photo(canvas, secondary, new RectF(actualCircleX - r, actualCircleY - r, actualCircleX + r, actualCircleY + r),
-                    state.secondaryZoom, state.secondaryX, state.secondaryY);
+                    state.secondaryZoom, state.secondaryX, state.secondaryY, false);
             canvas.restore();
             paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(10); paint.setColor(Color.WHITE);
             canvas.drawCircle(actualCircleX, actualCircleY, r, paint); paint.setStyle(Paint.Style.FILL);
@@ -132,7 +151,7 @@ public final class CoverView extends View {
     public Bitmap exportBitmap() {
         prepareTitle();
         if (!hasPhotos() || !titleFits || state.title.trim().isEmpty() || state.category.trim().isEmpty())
-            throw new IllegalStateException("Scegli le due foto e completa categoria e titolo (massimo 4 righe).");
+            throw new IllegalStateException("Scegli le foto richieste e completa categoria e titolo (massimo 4 righe).");
         Bitmap result = Bitmap.createBitmap(1080, 1440, Bitmap.Config.ARGB_8888);
         drawCover(new Canvas(result), true); return result;
     }
@@ -157,9 +176,12 @@ public final class CoverView extends View {
                     Bitmap b = mode == MAIN ? main : secondary;
                     if (b != null) {
                         float size = mode == MAIN ? 1080 : state.radius * 2;
-                        CoverGeometry.Crop crop = CoverGeometry.crop(b.getWidth(), b.getHeight(), 0, 0, size,
-                                mode == MAIN ? 1440 : size, mode == MAIN ? state.mainZoom : state.secondaryZoom,
-                                mode == MAIN ? state.mainX : state.secondaryX, mode == MAIN ? state.mainY : state.secondaryY);
+                        prepareTitle();
+                        CoverGeometry.Crop crop = mode == MAIN
+                                ? CoverGeometry.fit(b.getWidth(), b.getHeight(), 1080, CoverGeometry.photoBottom(titleLayout.getHeight()),
+                                        state.mainZoom, state.mainX, state.mainY)
+                                : CoverGeometry.crop(b.getWidth(), b.getHeight(), 0, 0, size, size,
+                                        state.secondaryZoom, state.secondaryX, state.secondaryY);
                         if (mode == MAIN) { state.mainX = CoverGeometry.pan(state.mainX, dx, crop.marginX); state.mainY = CoverGeometry.pan(state.mainY, dy, crop.marginY); }
                         else { state.secondaryX = CoverGeometry.pan(state.secondaryX, dx, crop.marginX); state.secondaryY = CoverGeometry.pan(state.secondaryY, dy, crop.marginY); }
                     }

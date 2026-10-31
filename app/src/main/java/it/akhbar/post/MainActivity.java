@@ -23,6 +23,8 @@ public final class MainActivity extends Activity {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Handler ui = new Handler(Looper.getMainLooper());
     private CoverView cover;
+    private Switch circleSwitch;
+    private View miniature;
     private LinearLayout content;
     private TextView message, adjustment;
     private ProgressBar progress;
@@ -41,19 +43,30 @@ public final class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(BG);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             v.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(),
-                    insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom()); return insets;
+                    insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
+            if (miniature != null) v.post(() -> resizeMiniature(v));
+            return insets;
         });
         setContentView(root); root.requestApplyInsets();
-        TextView heading = text("Akhbar Post", 24, TEXT); heading.setTypeface(null, 1); heading.setPadding(dp(18), dp(14), dp(18), dp(4)); root.addView(heading);
-        TextView sub = text("Copertine news · 3:4 · senza Internet", 12, MUTED); sub.setPadding(dp(18), 0, dp(18), dp(10)); root.addView(sub);
+        cover = new CoverView(this, state); cover.setOnChange(this::syncSliders);
+        LinearLayout header = row(); header.setGravity(Gravity.CENTER_VERTICAL); header.setPadding(dp(16), dp(6), dp(16), dp(6));
+        LinearLayout branding = new LinearLayout(this); branding.setOrientation(LinearLayout.VERTICAL);
+        TextView heading = text("Akhbar Post", 24, TEXT); heading.setTypeface(null, 1); branding.addView(heading);
+        branding.addView(text("Copertine news · 3:4", 12, MUTED));
+        branding.addView(text("Anteprima sempre visibile →", 11, MUTED));
+        header.addView(branding, new LinearLayout.LayoutParams(0, -2, 1));
+        miniature = cover.thumbnailView(); header.addView(miniature, new LinearLayout.LayoutParams(dp(96), dp(128)));
+        root.addView(header);
+        root.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> resizeMiniature(root));
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL); content.setPadding(dp(16), 0, dp(16), dp(24)); scroll.addView(content);
+        circleSwitch = new Switch(this); circleSwitch.setText("Mostra foto nel cerchio"); circleSwitch.setTextColor(TEXT);
+        circleSwitch.setPadding(0, dp(8), 0, dp(8)); circleSwitch.setChecked(state.showCircle); add(circleSwitch);
         LinearLayout photos = row();
         chooseMain = button("Foto principale", false); chooseSecondary = button("Foto nel cerchio", false);
         photos.addView(chooseMain, weighted()); photos.addView(chooseSecondary, weighted()); add(photos);
         chooseMain.setOnClickListener(v -> pick(PICK_MAIN)); chooseSecondary.setOnClickListener(v -> pick(PICK_SECONDARY));
-        cover = new CoverView(this, state); cover.setOnChange(this::syncSliders);
         LinearLayout.LayoutParams previewParams = new LinearLayout.LayoutParams(-1, -2); previewParams.topMargin = dp(12); content.addView(cover, previewParams);
         TextView hint = text("Trascina nell’anteprima per inquadrare. Usa due dita o i controlli qui sotto.", 12, MUTED); hint.setPadding(0, dp(10), 0, dp(8)); add(hint);
         LinearLayout modeRow = row(); String[] names = {"Foto", "Foto cerchio", "Sposta cerchio"};
@@ -94,14 +107,27 @@ public final class MainActivity extends Activity {
         };
         category.addTextChangedListener(watcher); title.addTextChangedListener(watcher); keywords.addTextChangedListener(watcher);
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal); progress.setIndeterminate(true); progress.setVisibility(View.GONE); add(progress);
-        message = text("Scegli le due foto per cominciare.", 13, MUTED); message.setPadding(0, dp(12), 0, dp(8)); add(message);
+        message = text("Scegli la foto principale per cominciare.", 13, MUTED); message.setPadding(0, dp(12), 0, dp(8)); add(message);
         save = button("Salva copertina · PNG 1080 × 1440", true); add(save); save.setOnClickListener(v -> saveCover());
         TextView privacy = text("Le foto restano sul telefono. La bozza si conserva su questo dispositivo. Nessun watermark nel PNG.", 11, MUTED); privacy.setPadding(0, dp(12), 0, 0); add(privacy);
+        circleSwitch.setOnCheckedChangeListener((button, checked) -> {
+            state.showCircle = checked;
+            if (!checked && mode != CoverView.MAIN) { mode = CoverView.MAIN; cover.setMode(mode); }
+            syncSliders(); cover.refresh(); validate(); persistDraft();
+            if (checked && !cover.hasSecondary() && !state.secondaryUri.isEmpty())
+                loadPhoto(Uri.parse(state.secondaryUri), false, true, null);
+        });
         syncSliders(); validate();
         // Restore sequentially to limit image-decoding memory on small phones.
         String mainUri = state.mainUri, secondaryUri = state.secondaryUri;
-        Runnable restoreSecond = () -> { if (!secondaryUri.isEmpty()) loadPhoto(Uri.parse(secondaryUri), false, true, null); };
+        Runnable restoreSecond = () -> { if (state.showCircle && !secondaryUri.isEmpty()) loadPhoto(Uri.parse(secondaryUri), false, true, null); };
         if (!mainUri.isEmpty()) loadPhoto(Uri.parse(mainUri), true, true, restoreSecond); else restoreSecond.run();
+    }
+    private void resizeMiniature(View root) {
+        int available = root.getHeight() - root.getPaddingTop() - root.getPaddingBottom();
+        int height = Math.max(dp(56), Math.min(dp(144), available / 3));
+        ViewGroup.LayoutParams params = miniature.getLayoutParams();
+        if (params.height != height) { params.height = height; params.width = height * 3 / 4; miniature.setLayoutParams(params); }
     }
     private int dp(float value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private TextView text(String value, int size, int color) { TextView t = new TextView(this); t.setText(value); t.setTextSize(size); t.setTextColor(color); return t; }
@@ -136,7 +162,12 @@ public final class MainActivity extends Activity {
         float value = mode == CoverView.MAIN ? state.mainZoom : state.secondaryZoom;
         zoom.setEnabled(mode != CoverView.CIRCLE); zoom.setProgress(Math.round((value - 1) * 100));
         adjustment.setText(mode == CoverView.CIRCLE ? "Trascina il cerchio nell’anteprima" : "Ingrandimento: " + Math.round(value * 100) + "%");
-        size.setProgress(Math.round(state.radius - 100)); syncing = false;
+        size.setProgress(Math.round(state.radius - 100));
+        size.setEnabled(state.showCircle);
+        modes[1].setEnabled(state.showCircle); modes[2].setEnabled(state.showCircle);
+        chooseSecondary.setEnabled(!busy && state.showCircle);
+        chooseSecondary.setAlpha(state.showCircle ? 1f : 0.45f);
+        syncing = false;
     }
     private void validate() {
         if (save == null) return;
@@ -145,13 +176,13 @@ public final class MainActivity extends Activity {
         save.setAlpha(save.isEnabled() ? 1f : 0.45f);
         if (!busy) {
             if (!fits) message.setText("Titolo troppo lungo: accorcialo per rimanere entro quattro righe leggibili.");
-            else if (!cover.hasPhotos()) message.setText("Scegli la foto principale e quella da inserire nel cerchio.");
+            else if (!cover.hasPhotos()) message.setText(state.showCircle ? "Scegli la foto principale e quella da inserire nel cerchio." : "Scegli la foto principale.");
             else if (state.title.trim().isEmpty() || state.category.trim().isEmpty()) message.setText("Completa categoria e titolo.");
             else message.setText("Pronto · copertina 3:4, 1080 × 1440 pixel.");
         }
     }
     private void setBusy(boolean value, String status) {
-        busy = value; chooseMain.setEnabled(!value); chooseSecondary.setEnabled(!value); progress.setVisibility(value ? View.VISIBLE : View.GONE);
+        busy = value; chooseMain.setEnabled(!value); circleSwitch.setEnabled(!value); chooseSecondary.setEnabled(!value && state.showCircle); progress.setVisibility(value ? View.VISIBLE : View.GONE);
         validate(); if (status != null) message.setText(status);
     }
     private void pick(int request) {
@@ -222,6 +253,7 @@ public final class MainActivity extends Activity {
     private void inform(String message) { Toast.makeText(this, message, Toast.LENGTH_LONG).show(); }
     private void persistDraft() {
         android.content.SharedPreferences.Editor p = getSharedPreferences("draft", MODE_PRIVATE).edit();
+        p.putBoolean("showCircle", state.showCircle).putInt("photoLayoutVersion", 2);
         p.putString("main", state.mainUri).putString("secondary", state.secondaryUri).putString("category", state.category).putString("title", state.title).putString("keywords", state.keywords);
         p.putFloat("mainZoom", state.mainZoom).putFloat("mainX", state.mainX).putFloat("mainY", state.mainY);
         p.putFloat("secondaryZoom", state.secondaryZoom).putFloat("secondaryX", state.secondaryX).putFloat("secondaryY", state.secondaryY);
@@ -229,9 +261,11 @@ public final class MainActivity extends Activity {
     }
     private void restoreDraft() {
         android.content.SharedPreferences p = getSharedPreferences("draft", MODE_PRIVATE);
+        state.showCircle = p.getBoolean("showCircle", true);
         state.mainUri = p.getString("main", ""); state.secondaryUri = p.getString("secondary", ""); state.category = p.getString("category", "NOTIZIE"); state.title = p.getString("title", ""); state.keywords = p.getString("keywords", "");
         state.mainZoom = CoverGeometry.clamp(p.getFloat("mainZoom", 1), 1, 4); state.mainX = CoverGeometry.clamp(p.getFloat("mainX", 0), -1, 1); state.mainY = CoverGeometry.clamp(p.getFloat("mainY", 0), -1, 1);
         state.secondaryZoom = CoverGeometry.clamp(p.getFloat("secondaryZoom", 1), 1, 4); state.secondaryX = CoverGeometry.clamp(p.getFloat("secondaryX", 0), -1, 1); state.secondaryY = CoverGeometry.clamp(p.getFloat("secondaryY", 0), -1, 1);
+        if (p.getInt("photoLayoutVersion", 0) < 2) { state.mainZoom = 1; state.mainX = 0; state.mainY = 0; }
         state.circleX = CoverGeometry.clamp(p.getFloat("circleX", 830), 100, 1000); state.circleY = CoverGeometry.clamp(p.getFloat("circleY", 780), 100, 1300); state.radius = CoverGeometry.clamp(p.getFloat("radius", 170), 100, 230); state.titleMax = CoverGeometry.clamp(p.getFloat("titleMax", 94), 42, 100);
     }
     @Override protected void onPause() { persistDraft(); super.onPause(); }
