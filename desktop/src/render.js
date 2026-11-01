@@ -777,7 +777,14 @@ async function renderProject(
               path.join(r.folder, "%03d.png"),
             );
         } else if (m.kind === "image")
-          args.push("-loop", "1", "-framerate", String(fps), "-i", m.path);
+          // Scrolling reuses one decoded original; tpad below supplies the frames.
+          args.push(
+            ...(c.photoScroll ? [] : ["-loop", "1"]),
+            "-framerate",
+            String(fps),
+            "-i",
+            m.path,
+          );
         else
           // Do not stop the video demuxer at the cut end: a following sparse
           // frame is needed to determine how long the preceding image is held.
@@ -819,7 +826,17 @@ async function renderProject(
           let chain =
             inputChain +
             `scale=${rw}:${rh}:force_original_aspect_ratio=decrease,format=rgba,pad=${rw}:${rh}:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1`;
-          if (l.content && m.kind !== "annotation") {
+          if (c.photoScroll && m.kind === "image") {
+            const phase = T.photoScrollExpression(
+              c,
+              `${offset}+t*${speed}`,
+              fps,
+            );
+            // Crop before scaling, directly from the original high-resolution image.
+            chain =
+              inputChain +
+              `crop=w='min(iw,ih*${rw}/${rh})':h='min(ih,iw*${rh}/${rw})':x='(iw-ow)/2':y='(ih-oh)*(${phase})':exact=1,scale=${rw}:${rh}:flags=lanczos,format=rgba,setsar=1`;
+          } else if (l.content && m.kind !== "annotation") {
             const b = l.content,
               x = Math.round((b.x / 100) * rw),
               y = Math.round((b.y / 100) * rh),
@@ -837,6 +854,7 @@ async function renderProject(
           }
           const z = c.zoom || { from: 1, to: 1, x: 0.5, y: 0.5 };
           if (
+            !c.photoScroll &&
             m.kind !== "annotation" &&
             (z.from !== 1 || z.to !== 1 || z.keys?.some((k) => k.scale !== 1))
           ) {

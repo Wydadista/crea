@@ -298,6 +298,81 @@
         track: clip.track,
       };
     },
+    photoScrollPhase(c, source, fps = 30) {
+      const a = c.photoScroll || { from: 0, to: 1 };
+      const span = Math.max(1e-8, c.out - c.in - (c.speed || 1) / fps);
+      const progress = Math.max(0, Math.min(1, (source - c.in) / span));
+      return a.from + (a.to - a.from) * progress;
+    },
+    photoScrollExpression(c, source, fps) {
+      const a = c.photoScroll;
+      const span = Math.max(1e-8, c.out - c.in - (c.speed || 1) / fps);
+      return `${a.from}+(${a.to - a.from})*max(0,min(1,((${source})-${c.in})/${span}))`;
+    },
+    photoScrollRect(c, source, sw, sh, width, height, fps = 30) {
+      const k = Math.max(width / sw, height / sh);
+      const w = Math.min(sw, width / k),
+        h = Math.min(sh, height / k);
+      return {
+        x: (sw - w) / 2,
+        y: (sh - h) * api.photoScrollPhase(c, source, fps),
+        width: w,
+        height: h,
+      };
+    },
+    enablePhotoScroll(p, ids) {
+      const wanted = new Set(ids);
+      const clips = p.clips
+        .filter(
+          (c) =>
+            wanted.has(c.id) &&
+            p.media.find((m) => m.id === c.mediaId)?.kind === "image",
+        )
+        .sort((a, b) => a.track - b.track || a.start - b.start);
+      const runs = [];
+      for (const c of clips) {
+        const run = runs.at(-1),
+          previous = run?.at(-1);
+        if (
+          previous &&
+          previous.track === c.track &&
+          previous.mediaId === c.mediaId &&
+          Math.abs(previous.start + api.duration(previous) - c.start) < 1e-7
+        )
+          run.push(c);
+        else runs.push([c]);
+      }
+      for (const run of runs) {
+        const start = run[0].start,
+          end = run.at(-1).start + api.duration(run.at(-1));
+        for (const c of run) {
+          c.photoScroll = {
+            from: (c.start - start) / (end - start),
+            to: (c.start + api.duration(c) - start) / (end - start),
+          };
+          c.layout = { x: 0, y: 0, width: 100, height: 100 };
+          delete c.zoom;
+        }
+        for (const c of run)
+          for (const saved of c.joinedSegments || []) {
+            if (p.media.find((m) => m.id === saved.mediaId)?.kind !== "image")
+              continue;
+            const visible = clips.find((v) => v.id === saved.id);
+            saved.photoScroll = visible
+              ? { ...visible.photoScroll }
+              : { from: 0, to: 1 };
+            saved.layout = { x: 0, y: 0, width: 100, height: 100 };
+            delete saved.zoom;
+          }
+      }
+      return clips;
+    },
+    disablePhotoScroll(clips) {
+      for (const c of clips) {
+        delete c.photoScroll;
+        for (const saved of c.joinedSegments || []) delete saved.photoScroll;
+      }
+    },
     zoomEnvelope(frames, start, end, entry = 2, exit = 2) {
       if (
         !Number.isFinite(start) ||
@@ -899,6 +974,7 @@
         "zoom",
         "effect",
         "backgroundBlur",
+        "photoScroll",
         "annotation",
         "aspectUnlocked",
         "speedHomeTrack",
@@ -1038,6 +1114,13 @@
               : {}),
           },
         );
+        if (c.photoScroll) {
+          const phase =
+            c.photoScroll.from +
+            (c.photoScroll.to - c.photoScroll.from) * (offset / d);
+          clips[i].photoScroll.to = phase;
+          clips[i + 1].photoScroll.from = phase;
+        }
         if (clips[i].attachments)
           clips[i].attachments = clips[i].attachments.filter(
             (a) => a.sourceIn < cut - 1e-8,
@@ -1589,6 +1672,14 @@
             (c.backgroundBlur && m.kind !== "video"))
         )
           throw Error("Sfondo sfocato non valido");
+        if (
+          c.photoScroll !== undefined &&
+          (!c.photoScroll ||
+            m.kind !== "image" ||
+            !n(c.photoScroll.from, 0, 1) ||
+            !n(c.photoScroll.to, c.photoScroll.from, 1))
+        )
+          throw Error("Scorrimento foto non valido");
         if (c.voice && (!n(c.voice.noise, 0, 1) || !n(c.voice.level, 0, 1)))
           throw Error("Voce non valida");
         if (c.layout)

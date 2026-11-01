@@ -9,6 +9,7 @@ function sequenceOwner(scope) {
 }
 attachElement = function (parent, type) {
   const scope = sequenceScope(parent);
+  if (type === "photo-scroll") return applyPhotoScrollFromGallery(scope);
   if (type === "zoom") return applyZoomFromGallery(scope);
   if (type === "denoise") return applyDenoiseFromGallery(scope);
   if (type === "background-blur") return applyBackgroundBlurFromGallery(scope);
@@ -419,6 +420,7 @@ function sequenceApplicationBars(scope, node) {
   const hasZoom = !!owner.zoom?.keys?.length;
   const hasNoise = scope.members.some((c) => c.voice?.noise > 0);
   const hasBackground = scope.members.some((c) => c.backgroundBlur);
+  const hasPhotoScroll = scope.members.some((c) => c.photoScroll);
   const inlineEffects = new Map();
   for (const c of scope.members)
     if (c.effect && c.effect.type !== "none") {
@@ -431,6 +433,7 @@ function sequenceApplicationBars(scope, node) {
     !hasZoom &&
     !hasNoise &&
     !hasBackground &&
+    !hasPhotoScroll &&
     !inlineEffects.size
   )
     return;
@@ -608,6 +611,13 @@ function sequenceApplicationBars(scope, node) {
         for (const c of scope.members) if (c.voice) c.voice.noise = 0;
       },
     );
+  if (hasPhotoScroll)
+    staticBar(
+      "↓ Scorrimento foto lunga",
+      "photo-scroll-effect",
+      scope.members.filter((c) => c.photoScroll),
+      () => Timeline.disablePhotoScroll(scope.members),
+    );
   if (hasBackground)
     staticBar(
       "Sfondo sfocato",
@@ -629,6 +639,7 @@ function sequenceApplicationBars(scope, node) {
         (hasZoom ? 1 : 0) +
         (hasNoise ? 1 : 0) +
         (hasBackground ? 1 : 0) +
+        (hasPhotoScroll ? 1 : 0) +
         inlineEffects.size) *
         15,
   );
@@ -756,6 +767,23 @@ window.addEventListener("pointerdown", (e) => {
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") $("effectContextMenu").hidden = true;
 });
+function applyPhotoScrollFromGallery(scope = sequenceScope()) {
+  if (!scope || !scope.members.some((c) => mediaOf(c).kind === "image"))
+    return toast(
+      "Seleziona una foto nella timeline per applicare lo scorrimento",
+    );
+  pause();
+  checkpoint();
+  const clips = Timeline.enablePhotoScroll(
+    project,
+    scope.members.map((c) => c.id),
+  );
+  expandedClips.add(sequenceOwner(scope).id);
+  selection = new Set(clips.map((c) => c.id));
+  previewFocus = clips[0].id;
+  changed();
+  toast("Scorrimento dall’alto verso il basso · durata automatica della foto");
+}
 function applyZoomFromGallery(scope = sequenceScope()) {
   if (
     !scope ||
@@ -766,8 +794,13 @@ function applyZoomFromGallery(scope = sequenceScope()) {
     );
   selection = new Set(scope.members.map((c) => c.id));
   previewFocus = sequenceOwner(scope).id;
+  const replacingScroll = scope.members.some((c) => c.photoScroll);
+  if (replacingScroll) {
+    checkpoint();
+    Timeline.disablePhotoScroll(scope.members);
+  }
   if (!sequenceOwner(scope).zoom?.keys?.length)
-    saveSequenceFrames(scope, sequenceFrames(scope), true, {
+    saveSequenceFrames(scope, sequenceFrames(scope), !replacingScroll, {
       entry: 2,
       exit: 2,
     });
@@ -819,6 +852,7 @@ function applyBackgroundBlurFromGallery(scope = sequenceScope()) {
   changed();
 }
 for (const [id, type, apply] of [
+  ["addPhotoScroll", "photo-scroll", applyPhotoScrollFromGallery],
   ["addZoom", "zoom", applyZoomFromGallery],
   ["addDenoise", "denoise", applyDenoiseFromGallery],
   ["addBackgroundBlur", "background-blur", applyBackgroundBlurFromGallery],

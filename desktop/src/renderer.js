@@ -2342,6 +2342,7 @@ function draw() {
           Timeline.sourceTime(c, pt),
           cv.width,
           cv.height,
+          Number($("exportFps").value) || 30,
         );
     }
   }

@@ -3365,3 +3365,8 @@ header .project-name {
   align-content: start;
   flex: 1;
 }
+
+.photo-scroll-effect {
+  background: #23483f;
+  color: #e4f6da;
+}

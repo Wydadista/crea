@@ -128,7 +128,7 @@
       }
       ctx.restore();
     },
-    draw(ctx, c, m, source, t, W, H) {
+    draw(ctx, c, m, source, t, W, H, fps = 30) {
       if (m.kind === "annotation") {
         const l = c.layout || { x: 0, y: 0, width: 100, height: 100 };
         ctx.save();
@@ -168,7 +168,23 @@
         b.restore();
         ctx.drawImage(background, 0, 0);
       }
-      if (l.content) {
+      p.imageSmoothingEnabled = true;
+      p.imageSmoothingQuality = "high";
+      if (c.photoScroll && m.kind === "image") {
+        // Crop the original photo directly: never magnify the fitted preview layer.
+        const crop = root.Timeline.photoScrollRect(c, t, sw, sh, rw, rh, fps);
+        p.drawImage(
+          source,
+          crop.x,
+          crop.y,
+          crop.width,
+          crop.height,
+          0,
+          0,
+          rw,
+          rh,
+        );
+      } else if (l.content) {
         const b = l.content;
         p.drawImage(
           source,
@@ -193,7 +209,7 @@
           y: z.y,
         },
         zoom = frame.scale;
-      if (zoom !== 1) {
+      if (!c.photoScroll && zoom !== 1) {
         const cp = buffer(c.id, "zoom", rw, rh);
         cp.getContext("2d").clearRect(0, 0, rw, rh);
         cp.getContext("2d").drawImage(layer, 0, 0);
