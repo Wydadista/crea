@@ -23,9 +23,6 @@ recordingControls.onState((s) => {
   $("discard").textContent = busy ? "↻" : "Scarta";
   $("start").disabled = !!busy;
   $("settings").disabled = !!busy;
-  $("name").disabled = !!busy;
-  if (document.activeElement !== $("name") && s.name !== undefined)
-    $("name").value = s.name;
   $("level").style.transform = `scaleX(${s.paused ? 0 : s.level || 0})`;
   $("peak").style.left =
     Math.max(0, Math.min(100, (((s.peakHoldDb ?? -60) + 60) / 60) * 100)) + "%";
@@ -34,14 +31,6 @@ recordingControls.onState((s) => {
     Math.round((s.level || 0) * 100),
   );
 });
-$("name").oninput = () =>
-  recordingControls.control({ type: "name", value: $("name").value });
-$("name").onkeydown = (e) => {
-  if (e.key === "Enter" && !$("start").disabled) {
-    e.preventDefault();
-    $("start").click();
-  }
-};
 for (const [id, action] of [
   ["start", "start"],
   ["pause", "pause"],

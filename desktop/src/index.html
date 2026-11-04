@@ -16,7 +16,7 @@
     <header>
       <div class="brand">
         <img class="brand-icon app-logo" src="project-icon.png" alt="" /> AKhbar <b>STUDIO</b
-        ><span class="badge">DESKTOP · 0.4.16</span>
+        ><span class="badge">DESKTOP · 0.4.17</span>
       </div>
       <details id="fileMenu" class="file-menu">
         <summary>File ▾</summary>
@@ -250,7 +250,7 @@
             <option value="75">75%</option>
             <option value="100">100%</option></select
           ><button
-            id="panPreview"
+            id="panPreview" hidden
             title="Sposta la vista senza muovere gli elementi"
           >
             ✥ Sposta vista</button
@@ -258,9 +258,10 @@
             <option value="1280">Alta</option>
             <option value="854">Media</option>
             <option value="640">Leggera</option></select
-          ><span id="audioMeter">Audio: —</span
+          ><span id="audioMeter" hidden>Audio: —</span
           ><span>Zoom timeline sulla linea verde</span>
         </div>
+        <div class="preview-player">
         <div class="stage">
           <div id="alignGuides" aria-hidden="true"></div>
           <div id="previewSurface">
@@ -289,6 +290,7 @@
             aria-label="Navigazione intero montaggio"
           /><span id="projectSeekTime">00:00 / 00:00</span
           ><span id="playbackState">Aggancio automatico</span>
+        </div>
         </div>
       </section>
       <aside class="properties">
@@ -745,7 +747,7 @@
         </div>
         <div class="zoom-controls">
           <button
-            id="compactTimeline"
+            id="compactTimeline" hidden
             title="Riduci o ripristina l’altezza della timeline"
             aria-pressed="false"
           >
@@ -1097,12 +1099,6 @@
         </fieldset>
         <details class="record-secondary">
           <summary>Altre impostazioni</summary>
-          <label
-            >Nome delle registrazioni<input
-              id="recordName"
-              value="Registrazione"
-              maxlength="100"
-          /></label>
           <div class="form-grid">
             <label
               >Formato finale<select id="recordFormat">

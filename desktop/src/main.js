@@ -30,7 +30,12 @@ let win, chosenSource, exportController, lastExport;
 let projectPath = null,
   savedProject = null,
   savingProject = false;
-const { collectProject, safeName, reserveRecording } = require("./storage");
+const {
+  collectProject,
+  safeName,
+  reserveRecording,
+  recordingDateName,
+} = require("./storage");
 const { Recording } = require("./recording");
 const preferencesFile = () =>
   path.join(app.getPath("userData"), "preferences.json");
@@ -295,7 +300,7 @@ ipcMain.handle("recording-begin", async (_e, settings) => {
   const prefs = await preferences();
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "akhbar-record-"));
   const folder = prefs.recordings;
-  const name = safeName(settings.name),
+  const name = recordingDateName(),
     counters = prefs.recordingCounters || {};
   const output = await reserveRecording(
     folder,

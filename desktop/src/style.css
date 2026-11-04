@@ -3370,3 +3370,131 @@ header .project-name {
   background: #23483f;
   color: #e4f6da;
 }
+
+/* Visible even when the selected framing extends outside the video canvas. */
+.preview-transform-overlay {
+  position: fixed;
+  z-index: 30;
+  pointer-events: none;
+}
+.preview-transform-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid #18220f;
+  border-radius: 2px;
+  background: #b4ed70;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  touch-action: none;
+}
+.preview-transform-handle.nw,
+.preview-transform-handle.se {
+  cursor: nwse-resize;
+}
+.preview-transform-handle.ne,
+.preview-transform-handle.sw {
+  cursor: nesw-resize;
+}
+.preview-transform-handle.n,
+.preview-transform-handle.s {
+  cursor: ns-resize;
+}
+.preview-transform-handle.w,
+.preview-transform-handle.e {
+  cursor: ew-resize;
+}
+
+/* The player is one bounded component: its controls cannot fall below the viewer. */
+.preview-player {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  margin: 0 16px 8px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #303640;
+  border-radius: 4px;
+  overflow: hidden;
+  container-type: inline-size;
+}
+.preview-player .stage {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  min-height: 0;
+  flex: 1 1 0;
+}
+.viewer-head {
+  min-height: 40px;
+  padding: 4px 16px;
+  gap: 8px;
+  flex-wrap: wrap;
+  letter-spacing: normal;
+}
+.viewer-head > span:last-child {
+  display: none;
+}
+.preview-player .transport {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: auto minmax(48px, 1fr) auto;
+  gap: 8px;
+  padding: 5px 8px;
+  border-top: 1px solid #303640;
+  background: #121820;
+}
+.transport #timecode,
+.transport #playbackState {
+  display: none;
+}
+.preview-player .transport > div {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.preview-player .transport button {
+  margin: 0;
+  padding: 4px;
+  width: 30px;
+  height: 30px;
+}
+.preview-player .transport button.play {
+  width: 32px;
+  height: 32px;
+}
+.preview-player #projectSeek {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+.preview-player #projectSeekTime {
+  white-space: nowrap;
+  font-size: 11px;
+}
+@container (max-width:420px) {
+  .preview-player .transport {
+    grid-template-columns: auto 1fr;
+    gap: 4px 8px;
+  }
+  .preview-player #projectSeek {
+    grid-column: 1/-1;
+    grid-row: 2;
+  }
+  .preview-player #projectSeekTime {
+    justify-self: end;
+  }
+}
+/* Prevent navigation's intrinsic height from stretching the single workspace row. */
+main {
+  grid-template-rows: minmax(0, 1fr);
+}
+.rail {
+  min-height: 0;
+  overflow-y: auto;
+}

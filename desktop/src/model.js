@@ -1012,6 +1012,22 @@
         height: h,
       };
     },
+    sourceMinimum(kind) {
+      return ["image", "annotation", "effect"].includes(kind) ? -604800 : 0;
+    },
+    transformLayout(layout, reference, next) {
+      const initial = reference || { x: 0, y: 0, width: 100, height: 100 };
+      const old = layout || { x: 0, y: 0, width: 100, height: 100 };
+      const sx = next.width / initial.width,
+        sy = next.height / initial.height;
+      return {
+        ...JSON.parse(JSON.stringify(old)),
+        x: Math.max(-100, Math.min(100, next.x + (old.x - initial.x) * sx)),
+        y: Math.max(-100, Math.min(100, next.y + (old.y - initial.y) * sy)),
+        width: Math.max(1, Math.min(200, old.width * sx)),
+        height: Math.max(1, Math.min(200, old.height * sy)),
+      };
+    },
     resizeBox(box, handle, dx, dy, locked = true) {
       let left = box.x,
         top = box.y,
@@ -1308,7 +1324,11 @@
         side === "left"
           ? Math.max(
               0,
-              first.start - first.in / (first.speed || 1),
+              api.sourceMinimum(
+                p.media.find((m) => m.id === first.mediaId).kind,
+              ) < 0
+                ? 0
+                : first.start - first.in / (first.speed || 1),
               Math.min(end - 0.02, start + delta),
             )
           : Math.max(start + 0.02, end + delta);
@@ -1517,7 +1537,7 @@
               typeof a.clipId !== "string" ||
               typeof a.mediaId !== "string" ||
               typeof a.sourceInstanceId !== "string" ||
-              !n(a.sourceTime, 0, 604800)
+              !n(a.sourceTime, -604800, 604800)
             )
               throw Error("Collegamento segnalibro non valido");
           }
@@ -1600,7 +1620,7 @@
           !Number.isInteger(c.track) ||
           c.track < 0 ||
           c.track >= p.trackCount ||
-          !n(c.in, 0, 86400 * 7) ||
+          !n(c.in, api.sourceMinimum(m.kind), 86400 * 7) ||
           !n(
             c.out,
             c.in + 0.001,

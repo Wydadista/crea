@@ -1137,7 +1137,10 @@ function trimDrag(e, c, side) {
         0,
         Math.min(old.start + Timeline.duration(old) - 0.02, old.start + delta),
       );
-      c.in = Math.max(0, old.in + (newStart - old.start) * rate);
+      c.in = Math.max(
+        Timeline.sourceMinimum(m.kind),
+        old.in + (newStart - old.start) * rate,
+      );
       c.start = old.start + (c.in - old.in) / rate;
     } else {
       c.out = Math.max(
@@ -2261,6 +2264,105 @@ function previewBox(c) {
     type: "visual",
   };
 }
+function selectedPreviewClip(at = previewTime()) {
+  const active = selected().filter(
+    (c) =>
+      at >= c.start && at < c.start + Timeline.duration(c) && previewBox(c),
+  );
+  return active.find((c) => c.id === previewFocus) || active.at(-1) || null;
+}
+function previewLayoutTargets(c) {
+  if (c.parentId || !["video", "image"].includes(mediaOf(c).kind)) return [c];
+  const ids = new Set(groupMembers([...selection, c.id]));
+  const roots = project.clips.filter(
+    (item) =>
+      ids.has(item.id) && ["video", "image"].includes(mediaOf(item).kind),
+  );
+  // Preserve the same framing on joined portions that a later outer trim can restore.
+  return [
+    ...new Set([
+      ...roots,
+      ...roots.flatMap((item) => item.joinedSegments || []),
+    ]),
+  ].filter((item) => ["video", "image"].includes(mediaOf(item).kind));
+}
+var previewTransformOverlay;
+function updatePreviewHandles() {
+  if (!previewTransformOverlay) {
+    previewTransformOverlay = el("div", "preview-transform-overlay");
+    previewTransformOverlay.id = "previewTransformOverlay";
+    for (const [handle] of boxHandles({
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+    })) {
+      const button = el("button", "preview-transform-handle " + handle);
+      button.type = "button";
+      button.tabIndex = -1;
+      button.dataset.handle = handle;
+      button.setAttribute("aria-label", "Ridimensiona inquadratura " + handle);
+      button.title = "Ridimensiona tutti gli elementi selezionati";
+      button.onpointerdown = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        $("previewCanvas").onpointerdown(e, handle);
+      };
+      previewTransformOverlay.append(button);
+    }
+    document.body.append(previewTransformOverlay);
+  }
+  const c = selectedPreviewClip(),
+    stage = document.querySelector(".stage");
+  const editingFrame =
+    $("pickZoomFrame")?.getAttribute("aria-pressed") === "true";
+  if (!c || editingFrame || !stage) {
+    previewTransformOverlay.hidden = true;
+    return;
+  }
+  const r = previewRect(),
+    viewport = stage.getBoundingClientRect(),
+    b = previewBox(c);
+  const left = Math.max(r.left, viewport.left + stage.clientLeft),
+    top = Math.max(r.top, viewport.top + stage.clientTop),
+    right = Math.min(
+      r.left + r.width,
+      viewport.left + stage.clientLeft + stage.clientWidth,
+    ),
+    bottom = Math.min(
+      r.top + r.height,
+      viewport.top + stage.clientTop + stage.clientHeight,
+    );
+  previewTransformOverlay.hidden = right - left < 20 || bottom - top < 20;
+  Object.assign(previewTransformOverlay.style, {
+    left: left + "px",
+    top: top + "px",
+    width: Math.max(0, right - left) + "px",
+    height: Math.max(0, bottom - top) + "px",
+  });
+  for (const [handle, x, y] of boxHandles(b)) {
+    const button = previewTransformOverlay.querySelector(
+      `[data-handle="${handle}"]`,
+    );
+    button.style.left =
+      Math.max(
+        7,
+        Math.min(right - left - 7, r.left + (x * r.width) / 100 - left),
+      ) + "px";
+    button.style.top =
+      Math.max(
+        7,
+        Math.min(bottom - top - 7, r.top + (y * r.height) / 100 - top),
+      ) + "px";
+  }
+}
+document.addEventListener("scroll", () => updatePreviewHandles(), {
+  capture: true,
+  passive: true,
+});
+window.addEventListener("resize", () => updatePreviewHandles(), {
+  passive: true,
+});
 function boxHandles(b) {
   return [
     ["nw", b.x, b.y],
@@ -2346,8 +2448,8 @@ function draw() {
         );
     }
   }
-  const c = first();
-  if (c && time >= c.start && time < c.start + Timeline.duration(c)) {
+  const c = selectedPreviewClip();
+  if (c) {
     const box = previewBox(c);
     if (box) {
       const x = (box.x * cv.width) / 100,
@@ -2358,20 +2460,10 @@ function draw() {
       ctx.strokeStyle = "#b4ed70";
       ctx.lineWidth = 2;
       ctx.strokeRect(x, y, w, h);
-      ctx.fillStyle = "#b4ed70";
-      const r = previewRect(),
-        hw = (8 / r.width) * cv.width,
-        hh = (8 / r.height) * cv.height;
-      for (const [, hx, hy] of boxHandles(box))
-        ctx.fillRect(
-          (hx / 100) * cv.width - hw / 2,
-          (hy / 100) * cv.height - hh / 2,
-          hw,
-          hh,
-        );
       ctx.restore();
     }
   }
+  updatePreviewHandles();
 }
 function pause() {
   if (playing) time = transport.time();
@@ -2426,7 +2518,7 @@ $("panPreview").onclick = () => {
   $("panPreview").setAttribute("aria-pressed", String(panView));
   $("previewCanvas").style.cursor = panView ? "grab" : "move";
 };
-$("previewCanvas").onpointerdown = (e) => {
+$("previewCanvas").onpointerdown = (e, forcedHandle = null) => {
   if (e.button !== 0 && e.button !== 1) return;
   const stage = document.querySelector(".stage");
   if (e.button === 1 || panView) {
@@ -2446,10 +2538,9 @@ $("previewCanvas").onpointerdown = (e) => {
   const r = previewRect(),
     x = ((e.clientX - r.left) / r.width) * 100,
     y = ((e.clientY - r.top) / r.height) * 100;
-  let c = first();
-  if (c && (time < c.start || time >= c.start + Timeline.duration(c))) c = null;
+  let c = selectedPreviewClip();
   let box = c && previewBox(c),
-    handle = c && hitHandle(box, x, y);
+    handle = forcedHandle || (c && hitHandle(box, x, y));
   if (!handle) {
     c = Timeline.active(Timeline.expanded(project).clips, previewTime())
       .reverse()
@@ -2467,14 +2558,23 @@ $("previewCanvas").onpointerdown = (e) => {
       return;
     }
     c = Timeline.allClips(project).find((item) => item.id === c.id) || c;
-    selectIds([c.id]);
+    if (!selection.has(c.id)) selectIds([c.id]);
     previewFocus = c.id;
     properties();
     draw();
     box = previewBox(c);
   }
+  previewFocus = c.id;
   const old = clone(c),
-    initial = clone(box);
+    initial = clone(box),
+    before = JSON.stringify(project),
+    targets = previewLayoutTargets(c).map((item) => ({
+      clip: item,
+      layout: {
+        ...clone(item.layout || { x: 0, y: 0, width: 100, height: 100 }),
+        content: clone(mediaContent(item)),
+      },
+    }));
   let dirty = false;
   captureMove(
     e,
@@ -2482,10 +2582,7 @@ $("previewCanvas").onpointerdown = (e) => {
       const dx = ((ev.clientX - e.clientX) / r.width) * 100,
         dy = ((ev.clientY - e.clientY) / r.height) * 100;
       if (!dirty && Math.abs(dx) + Math.abs(dy) < 0.05) return;
-      if (!dirty) {
-        checkpoint();
-        dirty = true;
-      }
+      if (!dirty) dirty = true;
       const next = handle
         ? Timeline.resizeBox(
             initial,
@@ -2558,19 +2655,35 @@ $("previewCanvas").onpointerdown = (e) => {
           ...(!c.annotation ? { content: mediaContent(old) } : {}),
         };
       }
+      if (mediaOf(c).kind !== "effect") {
+        for (const target of targets) {
+          if (target.clip === c) continue;
+          target.clip.layout = Timeline.transformLayout(
+            target.layout,
+            old.layout,
+            c.layout,
+          );
+        }
+      }
       properties();
       draw();
     },
     (ev) => {
       $("alignGuides").replaceChildren();
-      if (ev.type === "pointercancel" && dirty) {
-        delete c.layout;
-        Object.assign(c, old);
+      if (!dirty) return;
+      if (ev.type === "pointercancel") project = JSON.parse(before);
+      else if (JSON.stringify(project) !== before) {
+        try {
+          Timeline.validate(project);
+          history.push(before);
+          if (history.length > 80) history.shift();
+          future = [];
+        } catch (error) {
+          project = JSON.parse(before);
+          toast(error.message);
+        }
       }
-      if (dirty) {
-        $("undoBtn").disabled = !history.length;
-        $("redoBtn").disabled = !future.length;
-      }
+      changed(true);
     },
   );
 };
@@ -2958,7 +3071,6 @@ $("cancelExport").onclick = () => {
   studio.cancelExport().finally(() => ($("cancelExport").disabled = false));
 };
 const recordFields = [
-  "recordName",
   "captureSource",
   "cameraDevice",
   "recordFormat",
@@ -3211,7 +3323,6 @@ $("startRecording").onclick = safe(async () => {
   $("startRecording").disabled = true;
   try {
     const settings = {
-        name: $("recordName").value,
         audioOnly: !!overdub,
         format: $("recordFormat").value,
         height: Number($("recordHeight").value),
@@ -3579,7 +3690,6 @@ $("startRecording").onclick = safe(async () => {
             active: true,
             finishing: false,
             countdown: 0,
-            name: $("recordName").value,
             paused,
             time: label,
             ...state,
@@ -4744,3 +4854,15 @@ for (const id of [
 ]) {
   $(id).closest("label").hidden = true;
 }
+
+// Fit the preview to its actual remaining space when the panels are resized.
+let previewResizeFrame = null;
+const previewSizeObserver = new ResizeObserver(() => {
+  if (previewResizeFrame !== null) cancelAnimationFrame(previewResizeFrame);
+  previewResizeFrame = requestAnimationFrame(() => {
+    previewResizeFrame = null;
+    updatePreviewView();
+    draw();
+  });
+});
+previewSizeObserver.observe(document.querySelector(".stage"));

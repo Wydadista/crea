@@ -236,8 +236,7 @@ const ffmpeg = require("ffmpeg-static"),
     await fakeDevices(page);
     await page.locator("#recordBtn").click();
     await page.waitForSelector("#recordDialog[open]");
-    await page.locator("#recordName").fill("ottobre");
-    await page.locator("#recordName").dispatchEvent("change");
+    assert.equal(await page.locator("#recordName").count(), 0);
     await page.locator("#microphone").check();
     await page.locator("#microphoneDevice").selectOption("stable-mic");
     await page.locator("#recordHeight").selectOption("720");
@@ -294,7 +293,7 @@ const ffmpeg = require("ffmpeg-static"),
     assert.equal(await page.locator("#mediaView").inputValue(), "grid");
     await page.locator("#recordBtn").click();
     await page.waitForSelector("#recordDialog[open]");
-    assert.equal(await page.locator("#recordName").inputValue(), "ottobre");
+    assert.equal(await page.locator("#recordName").count(), 0);
     assert.equal(
       await page.locator("#microphoneDevice").inputValue(),
       "stable-mic",

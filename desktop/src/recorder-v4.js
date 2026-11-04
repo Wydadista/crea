@@ -59,7 +59,6 @@ async function idleMonitor() {
         finishing: false,
         countdown: 0,
         paused: false,
-        name: $("recordName").value,
         time: "00:00",
         ...meter.sample([samples], performance.now()),
         micActive: !!analyser,
@@ -89,7 +88,6 @@ async function recorderReady() {
       countdown: 0,
       paused: false,
       time: "00:00",
-      name: $("recordName").value,
     });
     await idleMonitor();
   }
@@ -102,7 +100,6 @@ showRecording = async function () {
       active: !!recorder,
       finishing,
       time: recorder ? fmt(elapsedRecording()) : "00:00",
-      name: $("recordName").value,
     });
   await recordingSettings(false);
   await recorderReady();
@@ -124,7 +121,6 @@ $("startRecording").onclick = safe(async () => {
         countdown: count,
         finishing: false,
         time: String(count),
-        name: $("recordName").value,
       });
       await new Promise((resolve) => setTimeout(resolve, 1000));
       if (countdownCancel) return;
@@ -136,7 +132,6 @@ $("startRecording").onclick = safe(async () => {
       countdown: 0,
       finishing: true,
       time: "00:00",
-      name: $("recordName").value,
     });
     await startImmediately();
     if (discardCurrent && recorder) await stopRecording();
@@ -165,13 +160,6 @@ $("discardRecording").onclick = safe(discardCapture);
 studio.onRecordingControl((action) =>
   safe(async () => {
     const type = typeof action === "string" ? action : action.type;
-    if (type === "name") {
-      if (!recorder && !finishing) {
-        $("recordName").value = action.value;
-        saveRecordingPrefs();
-      }
-      return;
-    }
     if (type === "closed") {
       recorderOpen = false;
       stopIdleMonitor();

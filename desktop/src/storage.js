@@ -21,6 +21,9 @@ function safeName(name, fallback = "Registrazione") {
     ? fallback
     : clean;
 }
+function recordingDateName(date = new Date()) {
+  return `${String(date.getDate()).padStart(2, "0")}-${String(date.getMonth() + 1).padStart(2, "0")}-${date.getFullYear()}`;
+}
 async function reserveRecording(dir, name, extension, minimum = 1) {
   await fs.mkdir(dir, { recursive: true });
   name = safeName(name);
@@ -111,4 +114,10 @@ async function collectProject(project, file, options = {}) {
   await atomic(file, copy);
   return copy;
 }
-module.exports = { atomic, safeName, reserveRecording, collectProject };
+module.exports = {
+  atomic,
+  safeName,
+  reserveRecording,
+  collectProject,
+  recordingDateName,
+};

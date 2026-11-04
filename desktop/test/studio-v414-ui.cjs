@@ -355,6 +355,11 @@ const run = require("node:util").promisify(
     });
     await page.locator("#previewPreparation").waitFor({ state: "hidden" });
     await page.locator("#railTransitions").click();
+    const card = page.locator(".stinger-card").first();
+    assert.equal(await card.locator("small").innerText(), "00:04.00");
+    assert.equal(await card.locator(".stinger-insert").count(), 1);
+    assert.equal(await card.locator(".stinger-delete").count(), 1);
+    assert.ok(!/Video:|Audio\/insieme|music\.wav|stinger\.mp4/.test(await card.innerText()));
     await page.locator(".stinger-insert").click();
     await page.waitForFunction(() => project.clips.length === 3);
     const inserted = await page.evaluate(() => clone(project));

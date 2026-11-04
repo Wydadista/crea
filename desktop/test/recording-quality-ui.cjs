@@ -124,7 +124,7 @@ const { _electron: electron } = require("playwright"),
       await page.locator("#systemAudio").uncheck({ force: true });
       await page.locator(".record-secondary").evaluate((n) => (n.open = true));
       await page.locator("#recordFps").fill("12");
-      await page.locator("#recordName").fill("testo");
+      assert.equal(await page.locator("#recordName").count(), 0);
       await page.locator("#startRecording").click();
       await page.waitForFunction(() => recorder?.state === "recording");
       const meter = await page.evaluate(async () => {

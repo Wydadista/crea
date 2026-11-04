@@ -86,18 +86,12 @@
         );
       }
       card.append(el("strong", "element-label", preset.name));
-      card.append(
-        el(
-          "small",
-          "",
-          preset.error ||
-            `Video ${fmt(preset.duration)} · Audio/insieme ${fmt(preset.total)}`,
-        ),
-      );
+      card.append(el("small", "", fmt(preset.duration)));
       const actions = el("div", "stinger-actions"),
         add = el("button", "stinger-insert", "＋ Inserisci"),
         remove = el("button", "stinger-delete", "×");
       add.disabled = !!preset.error;
+      if (preset.error) card.title = preset.error;
       add.title = "Inserisci al cursore, spostando le notizie successive";
       add.onclick = safe(() =>
         insertPreset(preset.id, time, Number($("activeTrack").value)),
